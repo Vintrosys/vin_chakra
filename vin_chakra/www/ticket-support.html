@@ -1,0 +1,22 @@
+{% extends "templates/web.html" %}
+
+{% block title %}Raise a Support Ticket – Sree Chakra Sewing Systems{% endblock %}
+
+{% block head_include %}
+<meta name="description" content="Raise a service ticket with Sree Chakra Sewing Systems. No login required."/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+  /* Hide Frappe's default navbar/footer for a clean fullscreen look */
+  .web-footer, .navbar, .page-header, .page-header-wrapper { display: none !important; }
+  .main-section { padding: 0 !important; margin: 0 !important; max-width: 100% !important; }
+  .container { max-width: 100% !important; padding: 0 !important; }
+  [data-page-container] { padding: 0 !important; }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div id="ticket-root"></div>
+<script src="/assets/vin_chakra/js/ticket_form.js"></script>
+{% endblock %}

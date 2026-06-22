@@ -1,0 +1,778 @@
+{% extends "templates/web.html" %}
+
+{% block title %}Technician Portal – Sree Chakra{% endblock %}
+
+{% block head_include %}
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #6366f1;
+    --primary-dark: #4f46e5;
+    --primary-light: rgba(99, 102, 241, 0.08);
+    --success: #15803d;
+    --warning: #d97706;
+    --danger: #b91c1c;
+    --bg-color: #f8fafc;
+    --card-bg: #ffffff;
+    --text-main: #0f172a;
+    --text-muted: #475569;
+    --text-light: #94a3b8;
+    --border: #f1f5f9;
+    --radius: 16px;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+    --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  body {
+    background-color: var(--bg-color);
+    font-family: 'Inter', sans-serif;
+    color: var(--text-main);
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Override frappe default styling */
+  .web-footer, .page-header-wrapper { display: none !important; }
+  .main-section { padding: 0 !important; }
+
+  .portal-header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+    padding: 24px;
+    text-align: center;
+    border-bottom-left-radius: 24px;
+    border-bottom-right-radius: 24px;
+    box-shadow: var(--shadow-lg);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .portal-header h2 { margin: 0; font-weight: 800; font-size: 1.75rem; color: white; letter-spacing: -0.5px; }
+  .portal-header p { margin: 5px 0 0; opacity: 0.9; font-size: 0.9rem; }
+
+  .container-fluid {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  .ticket-card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
+    transition: var(--transition);
+    cursor: pointer;
+    animation: fade-up 0.4s ease-out both;
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .ticket-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow);
+    border-color: var(--primary-light);
+  }
+  
+  .ticket-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .ticket-id { font-weight: 800; color: var(--primary); font-size: 1.15rem; }
+  .badge {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .badge-open { background: #f1f5f9; color: #64748b; }
+  .badge-working { background: #e0f2fe; color: #0369a1; }
+  .badge-resolved { background: #dcfce7; color: #15803d; }
+  .badge-pending { background: #fef08a; color: #854d0e; }
+
+  .ticket-body p { margin: 0 0 8px; font-size: 0.95rem; line-height: 1.4; }
+  .ticket-body .label { color: var(--text-muted); font-size: 0.85rem; }
+  .ticket-body .value { font-weight: 500; }
+
+  /* Detailed View */
+  #ticket-detail-view { display: none; }
+  .back-btn {
+    background: none;
+    border: none;
+    color: white;
+    font-size: 1rem;
+    cursor: pointer;
+    position: absolute;
+    left: 20px;
+    top: 24px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .detail-section {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
+    animation: fade-up 0.4s ease-out both;
+  }
+  .detail-section h3 {
+    margin-top: 0;
+    font-size: 1.1rem;
+    color: var(--primary);
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 16px;
+  }
+
+  .action-box {
+    text-align: center;
+    padding: 24px 20px;
+    background: #F0FDF4;
+    border: 2px dashed #86EFAC;
+    border-radius: var(--radius);
+    margin-top: 20px;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 1rem;
+    border: none;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    box-shadow: var(--shadow-sm);
+  }
+  .btn-checkin { background: var(--success); color: white; }
+  .btn-checkin:hover { background: #16a34a; transform: translateY(-2px); box-shadow: var(--shadow); }
+  .btn-checkout { background: var(--primary); color: white; }
+  .btn-checkout:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: var(--shadow); }
+  .btn-pending { background: var(--warning); color: white; }
+  .btn-pending:hover { background: #b45309; transform: translateY(-2px); box-shadow: var(--shadow); }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .otp-container {
+    display: none;
+    margin-top: 16px;
+    text-align: left;
+  }
+  .otp-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1.2rem;
+    text-align: center;
+    letter-spacing: 4px;
+    margin-bottom: 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .otp-input:focus { border-color: var(--primary); }
+
+  .spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .toast-msg {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    z-index: 1000;
+    display: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+
+  /* Log timeline */
+  .log-item {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .log-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .log-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+  .log-in { background: var(--success); }
+  .log-out { background: var(--primary); }
+  .log-details p { margin: 0 0 4px; font-size: 0.9rem; }
+  .log-time { color: var(--text-muted); font-size: 0.8rem; }
+
+  #loader { text-align: center; padding: 40px; color: var(--text-muted); }
+</style>
+{% endblock %}
+
+{% block page_content %}
+<div class="portal-header">
+  <button class="back-btn" id="btn-back" style="display:none;">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg> Back
+  </button>
+  <h2>Technician Portal</h2>
+  <p>Welcome, <span id="user-fullname-display">Technician</span></p>
+</div>
+
+<div class="container-fluid" id="main-container">
+  
+  <!-- List View -->
+  <div id="ticket-list-view">
+    <div id="loader">Loading tickets...</div>
+    <div id="ticket-list"></div>
+  </div>
+
+  <!-- Detail View -->
+  <div id="ticket-detail-view">
+    <div class="detail-section">
+      <div class="ticket-header">
+        <span class="ticket-id" id="dt-name"></span>
+        <span class="badge" id="dt-status"></span>
+      </div>
+      <p style="font-weight:600; margin-bottom:16px; font-size:1.1rem;" id="dt-subject"></p>
+      
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+        <div>
+          <div class="label">Customer</div>
+          <div class="value" id="dt-customer"></div>
+        </div>
+        <div>
+          <div class="label">Phone</div>
+          <div class="value">
+            <a href="#" id="dt-phone-link" style="color:var(--primary); text-decoration:none;">
+              <span id="dt-phone"></span>
+            </a>
+          </div>
+        </div>
+      </div>
+      
+      <div style="margin-bottom: 16px;">
+        <div class="label">Address</div>
+        <div class="value" id="dt-address"></div>
+      </div>
+
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div>
+          <div class="label">Machine</div>
+          <div class="value" id="dt-machine"></div>
+        </div>
+        <div>
+          <div class="label">Problem</div>
+          <div class="value" id="dt-problem"></div>
+        </div>
+      </div>
+      <div style="margin-top: 12px;" id="dt-desc-container">
+         <div class="label">Description</div>
+         <div class="value" id="dt-desc" style="font-size:0.9rem; color:var(--text-muted); background:var(--bg-color); padding:8px; border-radius:6px; margin-top:4px;"></div>
+      </div>
+    </div>
+
+    <!-- Action Section -->
+    <div class="action-box" id="action-section">
+      <h3 style="margin-top:0; color:var(--text-main); font-size:1.1rem; margin-bottom:8px;" id="action-title">Service Actions</h3>
+      <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:16px;" id="action-desc">Location access is required for check-in and check-out.</p>
+      
+      <!-- Check In Button -->
+      <button class="btn btn-checkin" id="btn-checkin" onclick="handleCheckIn()">
+        <span class="spinner" id="spin-in"></span>
+        <span id="txt-in">Check In to Location</span>
+      </button>
+
+      <!-- Check Out Container -->
+      <div id="checkout-container" style="display:none;">
+        <div style="display:flex; gap:12px; margin-bottom:12px;" id="action-buttons">
+          <button class="btn btn-checkout" onclick="showOtpField()">Complete & Check Out</button>
+          <button class="btn btn-pending" onclick="showPendingField()">Mark Pending</button>
+        </div>
+        
+        <!-- OTP Box for Checkout -->
+        <div class="otp-container" id="otp-box" style="display:none; margin-top:0;">
+          <p style="font-size:0.9rem; margin:0 0 8px;">Enter the 4-digit OTP provided to the customer:</p>
+          <input type="text" id="otp-input" class="otp-input" maxlength="4" placeholder="••••" autocomplete="off" pattern="\d*">
+          <div style="display:flex; gap:12px;">
+            <button class="btn btn-checkout" id="btn-checkout" onclick="handleCheckOut()">
+              <span class="spinner" id="spin-out"></span>
+              <span id="txt-out">Verify & Check Out</span>
+            </button>
+            <button class="btn" style="background:#e2e8f0; color:#475569;" onclick="cancelAction()">Cancel</button>
+          </div>
+        </div>
+
+        <!-- Reason Box for Pending -->
+        <div class="otp-container" id="pending-box" style="display:none; margin-top:0;">
+          <p style="font-size:0.9rem; margin:0 0 8px;">Enter the reason for marking as pending:</p>
+          <textarea id="pending-reason" class="otp-input" style="font-size:1rem; letter-spacing:normal; text-align:left; min-height:80px; resize:vertical;" placeholder="E.g., Waiting for spare parts..."></textarea>
+          <div style="display:flex; gap:12px;">
+            <button class="btn btn-pending" id="btn-pending" onclick="handleMarkPending()">
+              <span class="spinner" id="spin-pending"></span>
+              <span id="txt-pending">Submit & Leave</span>
+            </button>
+            <button class="btn" style="background:#e2e8f0; color:#475569;" onclick="cancelAction()">Cancel</button>
+          </div>
+        </div>
+      </div>
+      
+      <div id="action-completed" style="display:none; color:var(--success); font-weight:600; padding:12px; background:#D1FAE5; border-radius:8px;">
+        Service Completed ✓
+      </div>
+    </div>
+
+    <!-- Logs Section -->
+    <div class="detail-section" id="logs-section" style="display:none; margin-top:20px;">
+      <h3>Activity Log</h3>
+      <div id="logs-container"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="toast-msg" id="toast"></div>
+
+<script>
+  let currentTicket = null;
+  let activeCheckIn = false;
+
+  const STATUS_COLORS = {
+    'Open': 'badge-open',
+    'Working': 'badge-working',
+    'Resolved': 'badge-resolved',
+    'Closed': 'badge-resolved',
+    'Pending': 'badge-pending'
+  };
+
+  function showToast(msg, isError = false) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.backgroundColor = isError ? '#EF4444' : '#10B981';
+    t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3000);
+  }
+
+  function formatDate(dStr) {
+    if(!dStr) return '';
+    const d = new Date(dStr);
+    return d.toLocaleString('en-IN', {day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit'});
+  }
+
+  // --- Geolocation ---
+  function getLocation() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation is not supported by your browser."));
+      } else {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          },
+          (err) => {
+            let msg = "Failed to get location.";
+            if(err.code === 1) msg = "Please enable Location permissions to proceed.";
+            else if(err.code === 2) msg = "Location unavailable. Ensure GPS is on.";
+            else if(err.code === 3) msg = "Location request timed out.";
+            reject(new Error(msg));
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+      }
+    });
+  }
+
+  // --- API Calls ---
+  function loadTickets() {
+    frappe.call({
+      method: 'vin_chakra.technician_api.get_my_tickets',
+      callback: function(r) {
+        document.getElementById('loader').style.display = 'none';
+        const list = document.getElementById('ticket-list');
+        if (!r.message || r.message.length === 0) {
+          list.innerHTML = '<div style="text-align:center; padding:40px; color:var(--text-muted);">No tickets assigned to you right now.</div>';
+          return;
+        }
+
+        let html = '';
+        r.message.forEach(t => {
+          const badgeCls = STATUS_COLORS[t.status] || 'badge-open';
+          const addr = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ');
+          
+          html += `
+            <div class="ticket-card" onclick="openTicket('${t.name}')">
+              <div class="ticket-header">
+                <span class="ticket-id">${t.name}</span>
+                <span class="badge ${badgeCls}">${t.status}</span>
+              </div>
+              <div class="ticket-body">
+                <p style="font-weight:600; color:var(--text-main);">${t.subject || 'Support Ticket'}</p>
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                  <span class="label">Customer:</span>
+                  <span class="value">${t.custom_customer_name || 'N/A'}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                  <span class="label">Location:</span>
+                  <span class="value" style="text-align:right; max-width:60%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${addr || 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        list.innerHTML = html;
+      }
+    });
+  }
+
+  function openTicket(name) {
+    frappe.call({
+      method: 'vin_chakra.technician_api.get_ticket_detail',
+      args: { ticket_name: name },
+      callback: function(r) {
+        if(r.message) {
+          renderTicketDetail(r.message);
+          document.getElementById('ticket-list-view').style.display = 'none';
+          document.getElementById('ticket-detail-view').style.display = 'block';
+          document.getElementById('btn-back').style.display = 'flex';
+          window.scrollTo(0,0);
+        }
+      }
+    });
+  }
+
+  function renderTicketDetail(t) {
+    currentTicket = t.name;
+    const badgeCls = STATUS_COLORS[t.status] || 'badge-open';
+    
+    document.getElementById('dt-name').textContent = t.name;
+    const statEl = document.getElementById('dt-status');
+    statEl.textContent = t.status;
+    statEl.className = 'badge ' + badgeCls;
+    
+    document.getElementById('dt-subject').textContent = t.subject || 'Support Ticket';
+    document.getElementById('dt-customer').textContent = t.custom_customer_name || '-';
+    
+    const phone = t.custom_customer_mobile_number || '';
+    document.getElementById('dt-phone').textContent = phone || '-';
+    document.getElementById('dt-phone-link').href = phone ? 'tel:' + phone.replace(/[^\d+]/g, '') : '#';
+    
+    const addr = [t.custom_address, t.custom_city__district_, t.custom_state].filter(Boolean).join(', ');
+    document.getElementById('dt-address').textContent = addr || '-';
+    
+    document.getElementById('dt-machine').textContent = t.custom_machine_name || '-';
+    document.getElementById('dt-problem').textContent = t.custom_machine_problem || '-';
+    
+    if(t.description) {
+      document.getElementById('dt-desc').innerHTML = t.description;
+      document.getElementById('dt-desc-container').style.display = 'block';
+    } else {
+      document.getElementById('dt-desc-container').style.display = 'none';
+    }
+
+    renderLogs(t.check_log);
+    updateActionState(t);
+  }
+
+  function renderLogs(logs) {
+    const sec = document.getElementById('logs-section');
+    const con = document.getElementById('logs-container');
+    if(!logs || logs.length === 0) {
+      sec.style.display = 'none';
+      return;
+    }
+    sec.style.display = 'block';
+    let html = '';
+    logs.forEach(l => {
+      const isOut = l.check_type === 'Check-out';
+      html += `
+        <div class="log-item">
+          <div class="log-icon ${isOut ? 'log-out' : 'log-in'}">${isOut ? '↑' : '↓'}</div>
+          <div class="log-details">
+            <p><strong>${l.check_type}</strong></p>
+            <div class="log-time">${formatDate(l.timestamp)}</div>
+            ${l.latitude ? `<div class="log-time" style="font-size:0.75rem; margin-top:2px;">📍 ${l.latitude}, ${l.longitude}</div>` : ''}
+          </div>
+        </div>
+      `;
+    });
+    con.innerHTML = html;
+  }
+
+  function updateActionState(t) {
+    const logs = t.check_log || [];
+    // Logs are in ascending order by timestamp as returned by python get_ticket_detail
+    const lastLog = logs.length > 0 ? logs[logs.length - 1] : null;
+    const hasActiveCheckIn = lastLog && lastLog.check_type === 'Check-in';
+
+    const btnIn = document.getElementById('btn-checkin');
+    const boxOut = document.getElementById('checkout-container');
+    const doneMsg = document.getElementById('action-completed');
+    
+    document.getElementById('otp-box').style.display = 'none';
+    document.getElementById('pending-box').style.display = 'none';
+    document.getElementById('action-buttons').style.display = 'flex';
+    document.getElementById('otp-input').value = '';
+    document.getElementById('pending-reason').value = '';
+
+    if (t.status === 'Resolved' || t.status === 'Closed') {
+      btnIn.style.display = 'none';
+      boxOut.style.display = 'none';
+      doneMsg.style.display = 'block';
+    } else if (hasActiveCheckIn || t.status === 'Working') {
+      btnIn.style.display = 'none';
+      boxOut.style.display = 'block';
+      doneMsg.style.display = 'none';
+    } else {
+      btnIn.style.display = 'flex';
+      boxOut.style.display = 'none';
+      doneMsg.style.display = 'none';
+    }
+  }
+
+  document.getElementById('btn-back').addEventListener('click', () => {
+    document.getElementById('ticket-detail-view').style.display = 'none';
+    document.getElementById('ticket-list-view').style.display = 'block';
+    document.getElementById('btn-back').style.display = 'none';
+    currentTicket = null;
+    loadTickets(); // Refresh list to get updated statuses
+  });
+
+  // --- Check In ---
+  async function handleCheckIn() {
+    const btn = document.getElementById('btn-checkin');
+    const spin = document.getElementById('spin-in');
+    const txt = document.getElementById('txt-in');
+    
+    btn.disabled = true;
+    spin.style.display = 'block';
+    txt.textContent = 'Fetching Location...';
+
+    try {
+      const loc = await getLocation();
+      txt.textContent = 'Checking In...';
+      
+      frappe.call({
+        method: 'vin_chakra.technician_api.technician_checkin',
+        args: {
+          ticket_name: currentTicket,
+          latitude: loc.lat,
+          longitude: loc.lng
+        },
+        callback: function(r) {
+          btn.disabled = false;
+          spin.style.display = 'none';
+          txt.textContent = 'Check In to Location';
+          
+          if(r.message && r.message.status === 'success') {
+            showToast('Checked in successfully!');
+            openTicket(currentTicket); // reload details
+          } else {
+            showToast(r.message ? r.message.message : 'Error checking in', true);
+          }
+        },
+        error: function(err) {
+          btn.disabled = false;
+          spin.style.display = 'none';
+          txt.textContent = 'Check In to Location';
+          showToast('Server error during check-in', true);
+        }
+      });
+    } catch(err) {
+      btn.disabled = false;
+      spin.style.display = 'none';
+      txt.textContent = 'Check In to Location';
+      showToast(err.message, true);
+      alert(err.message); // Explicit alert for location issues
+    }
+  }
+
+  // --- Check Out ---
+  function showOtpField() {
+    document.getElementById('action-buttons').style.display = 'none';
+    document.getElementById('pending-box').style.display = 'none';
+    document.getElementById('otp-box').style.display = 'block';
+    document.getElementById('otp-input').focus();
+  }
+
+  function showPendingField() {
+    document.getElementById('action-buttons').style.display = 'none';
+    document.getElementById('otp-box').style.display = 'none';
+    document.getElementById('pending-box').style.display = 'block';
+    document.getElementById('pending-reason').focus();
+  }
+
+  function cancelAction() {
+    document.getElementById('otp-box').style.display = 'none';
+    document.getElementById('pending-box').style.display = 'none';
+    document.getElementById('action-buttons').style.display = 'flex';
+  }
+
+  async function handleCheckOut() {
+    const otpVal = document.getElementById('otp-input').value.trim();
+    if(!otpVal || otpVal.length !== 4) {
+      showToast('Please enter a valid 4-digit OTP', true);
+      return;
+    }
+
+    const btn = document.getElementById('btn-checkout');
+    const spin = document.getElementById('spin-out');
+    const txt = document.getElementById('txt-out');
+    
+    btn.disabled = true;
+    spin.style.display = 'block';
+    txt.textContent = 'Fetching Location...';
+
+    try {
+      const loc = await getLocation();
+      txt.textContent = 'Verifying...';
+      
+      frappe.call({
+        method: 'vin_chakra.technician_api.technician_checkout',
+        args: {
+          ticket_name: currentTicket,
+          otp: otpVal,
+          latitude: loc.lat,
+          longitude: loc.lng
+        },
+        callback: function(r) {
+          btn.disabled = false;
+          spin.style.display = 'none';
+          txt.textContent = 'Verify & Check Out';
+          
+          if(r.message && r.message.status === 'success') {
+            showToast('Checked out successfully!');
+            openTicket(currentTicket); // reload details
+          } else {
+            showToast(r.message ? r.message.message : 'Invalid OTP or error', true);
+            document.getElementById('otp-input').value = '';
+            document.getElementById('otp-input').focus();
+          }
+        },
+        error: function(err) {
+          btn.disabled = false;
+          spin.style.display = 'none';
+          txt.textContent = 'Verify & Check Out';
+          showToast('Server error during check-out', true);
+        }
+      });
+    } catch(err) {
+      btn.disabled = false;
+      spin.style.display = 'none';
+      txt.textContent = 'Verify & Check Out';
+      showToast(err.message, true);
+      alert(err.message);
+    }
+  }
+
+  async function handleMarkPending() {
+    const reasonVal = document.getElementById('pending-reason').value.trim();
+    if(!reasonVal) {
+      showToast('Pending reason is mandatory', true);
+      return;
+    }
+
+    const btn = document.getElementById('btn-pending');
+    const spin = document.getElementById('spin-pending');
+    const txt = document.getElementById('txt-pending');
+    
+    btn.disabled = true;
+    spin.style.display = 'block';
+    txt.textContent = 'Fetching Location...';
+
+    try {
+      const loc = await getLocation();
+      txt.textContent = 'Updating...';
+      
+      frappe.call({
+        method: 'vin_chakra.technician_api.technician_mark_pending',
+        args: {
+          ticket_name: currentTicket,
+          reason: reasonVal,
+          latitude: loc.lat,
+          longitude: loc.lng
+        },
+        callback: function(r) {
+          btn.disabled = false;
+          spin.style.display = 'none';
+          txt.textContent = 'Submit & Leave';
+          
+          if(r.message && r.message.status === 'success') {
+            showToast('Ticket marked as pending!');
+            openTicket(currentTicket); // reload details
+          } else {
+            showToast(r.message ? r.message.message : 'Error updating ticket', true);
+          }
+        },
+        error: function(err) {
+          btn.disabled = false;
+          spin.style.display = 'none';
+          txt.textContent = 'Submit & Leave';
+          showToast('Server error during update', true);
+        }
+      });
+    } catch(err) {
+      btn.disabled = false;
+      spin.style.display = 'none';
+      txt.textContent = 'Submit & Leave';
+      showToast(err.message, true);
+      alert(err.message);
+    }
+  }
+
+  // Init
+  frappe.ready(function() {
+    if (frappe.session.user === 'Guest') {
+      window.location.href = '/login?redirect-to=/technician-portal';
+      return;
+    }
+
+    frappe.call({
+      method: 'frappe.client.get_value',
+      args: {
+        doctype: 'User',
+        filters: { name: frappe.session.user },
+        fieldname: 'full_name'
+      },
+      callback: function(r) {
+        if(r.message && r.message.full_name) {
+          document.getElementById('user-fullname-display').textContent = r.message.full_name;
+        }
+      }
+    });
+    loadTickets();
+  });
+</script>
+{% endblock %}

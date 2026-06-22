@@ -1,0 +1,107 @@
+{
+ "actions": [],
+ "allow_import": 0,
+ "allow_rename": 0,
+ "creation": "2026-06-17 16:15:00.000000",
+ "doctype": "DocType",
+ "issingle": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "api_settings_section",
+  "api_url",
+  "api_key",
+  "sender_id",
+  "route",
+  "pe_id",
+  "templates_section",
+  "ticket_creation_dlt_id",
+  "ticket_creation_template"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "api_settings_section",
+   "fieldtype": "Section Break",
+   "label": "API Settings"
+  },
+  {
+   "default": "https://api.co3.live/api/smsapi",
+   "fieldname": "api_url",
+   "fieldtype": "Data",
+   "label": "API URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sender_id",
+   "fieldtype": "Data",
+   "label": "Sender ID",
+   "reqd": 1
+  },
+  {
+   "default": "2",
+   "fieldname": "route",
+   "fieldtype": "Select",
+   "label": "Route",
+   "options": "1\n2\n3\n4",
+   "reqd": 1
+  },
+  {
+   "fieldname": "pe_id",
+   "fieldtype": "Data",
+   "label": "DLT PE ID (Principal Entity ID)",
+   "description": "Your registered Principal Entity ID on the DLT portal. Required by TRAI for all transactional SMS."
+  },
+  {
+   "fieldname": "templates_section",
+   "fieldtype": "Section Break",
+   "label": "SMS DLT Templates"
+  },
+  {
+   "fieldname": "ticket_creation_dlt_id",
+   "fieldtype": "Data",
+   "label": "Ticket Creation DLT Template ID"
+  },
+  {
+   "default": "Dear Customer, OTP for your service request: {otp}. Share it with the technician after service completion. - Sree Chakra",
+   "fieldname": "ticket_creation_template",
+   "fieldtype": "Small Text",
+   "label": "Ticket Creation Message Template",
+   "description": "Use {ticket_id} and {otp} as placeholders. Must match your registered DLT template exactly."
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-17 16:15:00.000000",
+ "modified_by": "Administrator",
+ "module": "vin_chakra",
+ "name": "CO3 SMS Settings",
+ "naming_rule": "By Name",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "states": []
+}

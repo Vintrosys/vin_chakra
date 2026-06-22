@@ -132,13 +132,24 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"HD Ticket": {
+		"after_insert": "vin_chakra.vin_chakra.custom.hd_ticket.assign_to_admin_and_chief",
+		"validate": "vin_chakra.vin_chakra.custom.hd_ticket.validate_ticket"
+	},
+	"ToDo": {
+		"before_insert": "vin_chakra.vin_chakra.custom.hd_ticket.validate_todo_assignment",
+		"before_save": "vin_chakra.vin_chakra.custom.hd_ticket.validate_todo_assignment",
+		"before_delete": "vin_chakra.vin_chakra.custom.hd_ticket.validate_todo_assignment"
+	}
+}
+
+# Override helpdesk's default HD Ticket permission query.
+# Regular agents (technicians) only see tickets assigned to them.
+# Administrator and Agent Managers see all tickets.
+permission_query_conditions = {
+	"HD Ticket": "vin_chakra.vin_chakra.custom.hd_ticket.get_assignee_restricted_ticket_query"
+}
 
 # Scheduled Tasks
 # ---------------

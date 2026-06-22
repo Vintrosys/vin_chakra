@@ -1,0 +1,94 @@
+{
+ "actions": [],
+ "allow_import": 0,
+ "allow_rename": 0,
+ "creation": "2026-06-17 17:25:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "ticket",
+  "to_mobile",
+  "message",
+  "dlt_template_id",
+  "route",
+  "sender_id",
+  "status",
+  "message_id",
+  "response_body"
+ ],
+ "fields": [
+  {
+   "fieldname": "ticket",
+   "fieldtype": "Link",
+   "label": "Reference Ticket",
+   "options": "HD Ticket"
+  },
+  {
+   "fieldname": "to_mobile",
+   "fieldtype": "Data",
+   "label": "Recipient Mobile",
+   "reqd": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Message",
+   "reqd": 1
+  },
+  {
+   "fieldname": "dlt_template_id",
+   "fieldtype": "Data",
+   "label": "DLT Template ID"
+  },
+  {
+   "fieldname": "route",
+   "fieldtype": "Data",
+   "label": "Route"
+  },
+  {
+   "fieldname": "sender_id",
+   "fieldtype": "Data",
+   "label": "Sender ID"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Sent\nFailed"
+  },
+  {
+   "fieldname": "message_id",
+   "fieldtype": "Data",
+   "label": "Message ID"
+  },
+  {
+   "fieldname": "response_body",
+   "fieldtype": "Small Text",
+   "label": "Gateway Response"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-17 17:25:00.000000",
+ "modified_by": "Administrator",
+ "module": "vin_chakra",
+ "name": "CO3 SMS Log",
+ "naming_rule": "Autoincrement",
+ "autoname": "autoincrement",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "states": []
+}
