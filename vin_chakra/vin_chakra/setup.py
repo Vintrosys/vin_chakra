@@ -18,12 +18,30 @@ def create_pending_status():
 	else:
 		print("Status 'Pending' already exists.")
 
+def create_working_status():
+	if not frappe.db.exists("HD Ticket Status", "Working"):
+		doc = frappe.get_doc({
+			"doctype": "HD Ticket Status",
+			"name": "Working",
+			"status_name": "Working",
+			"label_agent": "Working",
+			"label_customer": "Working",
+			"color": "Orange",
+			"category": "Open",
+			"order": 2
+		})
+		doc.insert(ignore_permissions=True)
+		frappe.db.commit()
+		print("Status 'Working' created successfully.")
+	else:
+		print("Status 'Working' already exists.")
+
 def create_rule():
 	if not frappe.db.exists('Assignment Rule', 'Assign Ticket to Admin and Chief Technician'):
 		doc = frappe.new_doc('Assignment Rule')
 		doc.name = 'Assign Ticket to Admin and Chief Technician'
 		doc.document_type = 'HD Ticket'
-		doc.rule = 'Assign Ticket to Admin and Chief Technician'
+		doc.rule = 'Round Robin'
 		doc.assign_condition = 'True'
 		for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']:
 			doc.append('assignment_days', {'day': day})
@@ -69,7 +87,7 @@ def create_technician_portal_page():
 		print("Page technician-portal already exists")
 
 def create_web_form():
-	if not frappe.db.exists('Web Form', 'raise-ticket'):
+	if not frappe.db.exists('Web Form', 'raise-a-ticket'):
 		doc = frappe.new_doc('Web Form')
 		doc.title = 'Raise a Ticket'
 		doc.route = 'raise-ticket'
@@ -108,8 +126,9 @@ def run_setup():
 
 	try:
 		create_pending_status()
+		create_working_status()
 	except Exception as e:
-		frappe.log_error(message=f"Setup Pending Status Error: {e}", title="Vin Chakra Setup Error")
+		frappe.log_error(message=f"Setup Ticket Status Error: {e}", title="Vin Chakra Setup Error")
 
 	try:
 		create_rule()

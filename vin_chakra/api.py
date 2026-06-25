@@ -64,6 +64,9 @@ def submit_ticket(data: Union[dict, str]) -> dict:
 		doc.custom_service_otp = otp
 
 		doc.insert(ignore_permissions=True)
+		# Suppress Frappe's auto-assignment "Already in ToDo list" msgprint
+		# that leaks to the client via the JSON response's _server_messages field.
+		frappe.local.message_log = []
 		frappe.db.commit()
 
 		# Trigger Customer Notification SMS via api.co3.live
