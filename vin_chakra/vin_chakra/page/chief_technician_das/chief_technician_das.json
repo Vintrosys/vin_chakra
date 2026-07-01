@@ -12,13 +12,7 @@
  "page_name": "chief-technician-das",
  "roles": [
   {
-   "role": "Agent"
-  },
-  {
-   "role": "Agent Manager"
-  },
-  {
-   "role": "TP Agent"
+   "role": "Chief Technician"
   },
   {
    "role": "System Manager"

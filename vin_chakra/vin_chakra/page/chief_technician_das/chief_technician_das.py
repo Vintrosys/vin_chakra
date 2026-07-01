@@ -12,6 +12,9 @@ def get_dashboard_data(
     limit_page_length: int = 10,
     view: str = "tickets"
 ):
+    if not (frappe.has_permission("HD Ticket", "read") and ("Chief Technician" in frappe.get_roles() or "System Manager" in frappe.get_roles())):
+        frappe.throw("You are not permitted to access this dashboard.")
+        
     # Construct base conditions for HD Tickets
     summary_conditions = ["1=1"]
     summary_values = {}

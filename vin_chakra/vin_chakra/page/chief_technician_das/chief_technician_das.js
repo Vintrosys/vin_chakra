@@ -1,4 +1,9 @@
 frappe.pages['chief-technician-das'].on_page_load = function(wrapper) {
+    if (!frappe.user.has_role("Chief Technician") && !frappe.user.has_role("System Manager")) {
+        frappe.msgprint(__("You do not have permission to access this dashboard."));
+        frappe.set_route("app");
+        return;
+    }
     wrapper._dashboard = new ChiefTechnicianDashboard(wrapper);
 };
 
@@ -456,12 +461,12 @@ class ChiefTechnicianDashboard {
             let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
             
             return `
-                <div class="ct-ticket-card" onclick="frappe.set_route('Form', 'HD Ticket', '${t.name}')">
+                <div class="ct-ticket-card" onclick="window.location.href='/helpdesk/tickets/${t.name}'">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
                         <span class="ct-ticket-id">${t.name}</span>
                         <div class="ct-card-badges">${status_badge}${priority_badge}</div>
                     </div>
-                    <h3 class="ct-ticket-subject">${t.subject}</h3>
+                    <h3 class="ct-ticket-subject">${t.custom_customer_name || 'N/A'}</h3>
                     
                     <div class="ct-card-meta">
                         <div><i class="fa fa-user"></i> <span>Customer: <strong>${t.custom_customer_name || 'N/A'}</strong></span></div>
@@ -504,7 +509,7 @@ class ChiefTechnicianDashboard {
             let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
             
             return `
-                <div class="ct-ticket-list-row" onclick="frappe.set_route('Form', 'HD Ticket', '${t.name}')">
+                <div class="ct-ticket-list-row" onclick="window.location.href='/helpdesk/tickets/${t.name}'">
                     <div class="ct-list-subject-col">
                         <span class="ct-ticket-id">${t.name}</span>
                         <h3 class="ct-ticket-subject" style="margin: 0; font-size:14px;">${t.subject}</h3>
@@ -582,7 +587,7 @@ class ChiefTechnicianDashboard {
                 let day_tickets = ticketsByDate[currentDay] || [];
                 let tickets_html = day_tickets.map(t => {
                     return `
-                        <div class="ct-cal-event" onclick="frappe.set_route('Form', 'HD Ticket', '${t.name}')" 
+                        <div class="ct-cal-event" onclick="window.location.href='/helpdesk/tickets/${t.name}'" 
                              style="background: var(--ct-primary-light); color: var(--ct-primary); padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-bottom: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid rgba(99, 102, 241, 0.2); font-weight:600;" 
                              title="${t.subject}">${t.subject}</div>
                     `;
@@ -747,7 +752,7 @@ class ChiefTechnicianDashboard {
                             let popup_html = `
                                 <b>${index + 1}. ${frappe.user.full_name(log.user) || log.user}</b><br>
                                 <strong>Action:</strong> ${log.check_type}<br>
-                                <strong>Ticket:</strong> <a onclick="frappe.set_route('Form', 'HD Ticket', '${log.ticket}')">${log.ticket}</a><br>
+                                <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary);">${log.ticket}</a><br>
                                 <strong>Customer:</strong> ${log.customer || 'N/A'}<br>
                                 <strong>Time:</strong> ${frappe.datetime.global_date_format(log.creation)} ${frappe.datetime.get_time(log.creation)}<br>
                                 <strong>Address:</strong> ${log.location_address || 'N/A'}
@@ -791,7 +796,7 @@ class ChiefTechnicianDashboard {
                         <span class="ct-log-time">${frappe.datetime.global_date_format(log.creation)} ${frappe.datetime.get_time(log.creation)}</span>
                     </div>
                     <div class="ct-log-details">
-                        <strong>Ticket:</strong> <a onclick="frappe.set_route('Form', 'HD Ticket', '${log.ticket}')">${log.ticket}</a> - ${log.subject || 'No Subject'}<br>
+                        <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary);">${log.ticket}</a> - ${log.subject || 'No Subject'}<br>
                         <strong>Cust:</strong> ${log.customer || 'N/A'}<br>
                         <strong>Loc:</strong> ${log.location_address || 'Latitude: ' + log.latitude + ', Longitude: ' + log.longitude}
                     </div>

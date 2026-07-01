@@ -36,6 +36,19 @@ def create_working_status():
 	else:
 		print("Status 'Working' already exists.")
 
+def create_chief_technician_role():
+	if not frappe.db.exists("Role", "Chief Technician"):
+		doc = frappe.get_doc({
+			"doctype": "Role",
+			"role_name": "Chief Technician",
+			"desk_access": 1
+		})
+		doc.insert(ignore_permissions=True)
+		frappe.db.commit()
+		print("Role 'Chief Technician' created successfully.")
+	else:
+		print("Role 'Chief Technician' already exists.")
+
 def create_rule():
 	if not frappe.db.exists('Assignment Rule', 'Assign Ticket to Admin and Chief Technician'):
 		doc = frappe.new_doc('Assignment Rule')
@@ -46,7 +59,6 @@ def create_rule():
 		for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']:
 			doc.append('assignment_days', {'day': day})
 		doc.append('users', {'user': 'Administrator'})
-		doc.append('users', {'user': 'chieftechnician@gmail.com'})
 		doc.description = 'Assign all new HD tickets to Administrator and Chief Technician'
 		doc.insert(ignore_permissions=True)
 		frappe.db.commit()
@@ -127,6 +139,7 @@ def run_setup():
 	try:
 		create_pending_status()
 		create_working_status()
+		create_chief_technician_role()
 	except Exception as e:
 		frappe.log_error(message=f"Setup Ticket Status Error: {e}", title="Vin Chakra Setup Error")
 

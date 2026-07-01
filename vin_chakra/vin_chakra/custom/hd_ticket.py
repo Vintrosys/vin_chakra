@@ -10,11 +10,15 @@ def _is_technician(user=None):
 	if user in ["Administrator", "Guest"]:
 		return False
 	roles = frappe.get_roles(user)
-	return not ({"Agent Manager", "System Manager"} & set(roles))
+	return not ({"Agent Manager", "System Manager", "Chief Technician"} & set(roles))
 
 
 def assign_to_admin_and_chief(doc, method):
-	users_to_assign = ['Administrator', 'chieftechnician@gmail.com']
+	users_to_assign = ['Administrator']
+	chief_technicians = frappe.get_all('Has Role', filters={'role': 'Chief Technician'}, fields=['parent'])
+	users_to_assign.extend([d.parent for d in chief_technicians])
+	users_to_assign = list(set(users_to_assign))
+	
 	for user in users_to_assign:
 		try:
 			add_assign({
@@ -44,7 +48,7 @@ def get_assignee_restricted_ticket_query(user=None):
 		return None
 
 	user_roles = frappe.get_roles(user)
-	if "Agent Manager" in user_roles or "System Manager" in user_roles:
+	if "Agent Manager" in user_roles or "System Manager" in user_roles or "Chief Technician" in user_roles:
 		return None
 
 	# Regular agent / technician: only show their assigned tickets
