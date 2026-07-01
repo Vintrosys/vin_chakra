@@ -556,8 +556,8 @@
       const sections = [
         { label:'Customer Details', num:'01', keys:['custom_customer_name','custom_customer_mobile_number'] },
         { label:'Location',         num:'02', keys:['custom_state','custom_city__district_','custom_address'] },
-        { label:'Machine Details',  num:'03', keys:['custom_date','custom_machine_name','custom_machine_problem','custom_purchased_at_sree_chakra_sewing_systems'] },
-        { label:'Issue Details',    num:'04', keys:['subject','description'] },
+        { label:'Machine Details',  num:'03', keys:['custom_date','custom_machine_problem','custom_purchased_at_sree_chakra_sewing_systems'] },
+        { label:'Issue Details',    num:'04', keys:['subject'] },
       ];
 
       const usedKeys = new Set();
