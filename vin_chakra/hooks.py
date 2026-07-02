@@ -138,16 +138,24 @@ export_python_type_annotations = True
 require_type_annotated_api_methods = True
 
 fixtures = [
-	{
-		"dt": "Custom Field",
-		"filters": [
-			["dt", "in", ["HD Ticket"]]
-		]
-	},
-	{
-		"dt": "Property Setter",
-		"filters": [
-			["doc_type", "in", ["HD Ticket"]]
-		]
-	}
+    {
+        "dt": "Workspace",
+        "filters": [
+            ["name", "=", "Cheif Technician Dashboard"],
+            ["name", "=", "Technician Dashboard"]
+        ]
+    },
+    {
+        "dt": "Workspace Sidebar",
+        "filters": [
+            ["name", "=", "Technician Dashboard"],
+            ["name", "=", "Cheif Technician Dashboard"]
+        ]
+    },
+    {
+        "dt": "Desktop Icon",
+        "filters": [
+            ["name", "=", "Technician Dashboard"]
+        ]
+    }
 ]
