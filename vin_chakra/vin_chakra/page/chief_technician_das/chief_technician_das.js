@@ -132,23 +132,23 @@ class ChiefTechnicianDashboard {
                 
                 <!-- Summary Cards Row -->
                 <div class="ct-summary-row" id="ct-summary-row">
-                    <div class="ct-summary-card" style="border-top-color: #64748b;">
+                    <div class="ct-summary-card" data-status="" style="border-top-color: #64748b; cursor: pointer;">
                         <div class="ct-summary-val" id="ct-summary-total">-</div>
                         <div class="ct-summary-label">Total Filtered</div>
                     </div>
-                    <div class="ct-summary-card" style="border-top-color: #64748b;">
+                    <div class="ct-summary-card" data-status="Open" style="border-top-color: #64748b; cursor: pointer;">
                         <div class="ct-summary-val" id="ct-summary-open">-</div>
                         <div class="ct-summary-label">Open</div>
                     </div>
-                    <div class="ct-summary-card" style="border-top-color: #0369a1;">
+                    <div class="ct-summary-card" data-status="Working" style="border-top-color: #0369a1; cursor: pointer;">
                         <div class="ct-summary-val" id="ct-summary-working">-</div>
                         <div class="ct-summary-label">Working</div>
                     </div>
-                    <div class="ct-summary-card" style="border-top-color: #15803d;">
+                    <div class="ct-summary-card" data-status="Resolved" style="border-top-color: #15803d; cursor: pointer;">
                         <div class="ct-summary-val" id="ct-summary-resolved">-</div>
                         <div class="ct-summary-label">Resolved</div>
                     </div>
-                    <div class="ct-summary-card" style="border-top-color: #d97706;">
+                    <div class="ct-summary-card" data-status="Pending" style="border-top-color: #d97706; cursor: pointer;">
                         <div class="ct-summary-val" id="ct-summary-pending">-</div>
                         <div class="ct-summary-label">Pending</div>
                     </div>
@@ -232,9 +232,19 @@ class ChiefTechnicianDashboard {
         } else if (this.current_tab === "movement") {
             content.html(`
                 <div class="ct-movement-layout">
-                    <div class="ct-map-container" id="ct-movement-map"></div>
+                    <div style="position: relative;">
+                        <div class="ct-map-container" id="ct-movement-map"></div>
+                        <div class="ct-map-legend" id="ct-map-legend">
+                            <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 4px;">Map Legend</div>
+                            <div class="ct-map-legend-item"><div class="ct-map-legend-dot" style="background: #3b82f6;"></div> Check-in</div>
+                            <div class="ct-map-legend-item"><div class="ct-map-legend-dot" style="background: #10b981;"></div> Check-out</div>
+                            <div class="ct-map-legend-item"><div style="width:24px; height:3px; background: #6366f1; border-radius: 2px;"></div> Route Path</div>
+                        </div>
+                    </div>
                     <div class="ct-logs-container">
-                        <div class="ct-analytics-card-title"><i class="fa fa-history"></i> Recent Check Logs</div>
+                        <div class="ct-analytics-card-title"><i class="fa fa-history"></i> Recent Check Logs
+                            <span style="font-size: 11px; font-weight: 500; color: var(--ct-text-muted); margin-left: 8px;">(routes shown chronologically on map)</span>
+                        </div>
                         <div class="ct-logs-list" id="ct-logs-list"></div>
                         <div class="ct-pagination" id="ct-logs-pagination"></div>
                     </div>
@@ -362,6 +372,15 @@ class ChiefTechnicianDashboard {
             } else if (action === "next" && (self.movement_start + self.movement_length) < self.movement_total) {
                 self.movement_start += self.movement_length;
             }
+            self.load_data();
+        });
+        
+        // Summary Cards click filter
+        this.wrapper.on("click", ".ct-summary-card", function() {
+            let status = $(this).data("status");
+            self.filters.status = status;
+            self.wrapper.find("#ct-filter-status").val(status);
+            self.reset_pagination();
             self.load_data();
         });
     }
@@ -731,45 +750,106 @@ class ChiefTechnicianDashboard {
                     self.render_logs_list(data.movement);
                     self.render_logs_pagination();
                     
-                    // Render Map Markers
+                    // Render Map Markers & Beautiful Directional Route
                     if (self.map && self.markers_layer) {
                         self.markers_layer.clearLayers();
                         let bounds = [];
-                        let active_movement = data.movement.filter(log => log.latitude && log.longitude).reverse();
+                        let map_points = (data.map_points || []).filter(log => log.latitude && log.longitude);
                         
-                        active_movement.forEach((log, index) => {
-                            let pin_color = log.check_type == 'Check-in' ? '#3b82f6' : '#10b981';
-                            let icon_html = `<div style="background-color:${pin_color}; color:white; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">${index + 1}</div>`;
-                            
-                            let customIcon = L.divIcon({
-                                className: 'custom-div-icon',
-                                html: icon_html,
-                                iconSize: [24, 24],
-                                iconAnchor: [12, 12]
-                            });
-                            
-                            let marker = L.marker([log.latitude, log.longitude], {icon: customIcon});
-                            let popup_html = `
-                                <b>${index + 1}. ${frappe.user.full_name(log.user) || log.user}</b><br>
-                                <strong>Action:</strong> ${log.check_type}<br>
-                                <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary);">${log.ticket}</a><br>
-                                <strong>Customer:</strong> ${log.customer || 'N/A'}<br>
-                                <strong>Time:</strong> ${frappe.datetime.global_date_format(log.creation)} ${frappe.datetime.get_time(log.creation)}<br>
-                                <strong>Address:</strong> ${log.location_address || 'N/A'}
-                            `;
-                            marker.bindPopup(popup_html);
-                            self.markers_layer.addLayer(marker);
-                            bounds.push([log.latitude, log.longitude]);
+                        // Group movement logs by technician to support multiple routes
+                        let tech_groups = {};
+                        map_points.forEach(log => {
+                            if (!tech_groups[log.user]) {
+                                tech_groups[log.user] = [];
+                            }
+                            tech_groups[log.user].push(log);
                         });
 
-                        // Draw path polyline if filtering by a single technician
-                        if (bounds.length > 1 && self.filters.technician) {
-                            let path_coords = active_movement.map(log => [log.latitude, log.longitude]);
-                            L.polyline(path_coords, {color: '#6366f1', weight: 4, dashArray: '5, 10'}).addTo(self.markers_layer);
-                        }
+                        // Beautiful color palette for technician routes
+                        let route_colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6'];
+                        let color_idx = 0;
 
-                        if(bounds.length > 0) { 
-                            self.map.fitBounds(bounds, {padding: [50, 50]}); 
+                        Object.keys(tech_groups).forEach(tech => {
+                            let tech_logs = tech_groups[tech];
+                            // Sort logs chronologically by creation date/time (connecting the route based on day & time)
+                            tech_logs.sort((a, b) => new Date(a.creation) - new Date(b.creation));
+                            
+                            let tech_color = route_colors[color_idx % route_colors.length];
+                            color_idx++;
+
+                            if (tech_logs.length > 1) {
+                                let path_coords = tech_logs.map(log => [log.latitude, log.longitude]);
+                                // Draw beautiful polyline path
+                                L.polyline(path_coords, {
+                                    color: tech_color,
+                                    weight: 4,
+                                    opacity: 0.85,
+                                    lineJoin: 'round'
+                                }).addTo(self.markers_layer);
+
+                                // Add directional chevrons pointing along the route
+                                for (let i = 0; i < path_coords.length - 1; i++) {
+                                    let p1 = path_coords[i];
+                                    let p2 = path_coords[i+1];
+                                    let mid_lat = (p1[0] + p2[0]) / 2;
+                                    let mid_lng = (p1[1] + p2[1]) / 2;
+                                    
+                                    let dy = p2[0] - p1[0];
+                                    let dx = p2[1] - p1[1];
+                                    let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                                    
+                                    let arrowIcon = L.divIcon({
+                                        className: 'route-arrow-icon',
+                                        html: `<div style="transform: rotate(${angle}deg); color: ${tech_color}; font-size: 12px; display: flex; align-items: center; justify-content: center;"><i class="fa fa-chevron-right"></i></div>`,
+                                        iconSize: [16, 16],
+                                        iconAnchor: [8, 8]
+                                    });
+                                    L.marker([mid_lat, mid_lng], {icon: arrowIcon, interactive: false}).addTo(self.markers_layer);
+                                }
+                            }
+
+                            // Add numbered/custom markers for check points
+                            tech_logs.forEach((log, index) => {
+                                let pin_color = log.check_type == 'Check-in' ? '#3b82f6' : '#10b981';
+                                let time_only = frappe.datetime.get_time(log.creation).substring(0, 5);
+                                let icon_html = `
+                                    <div class="map-route-marker" style="background-color:${pin_color}; color:white; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-weight:800; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-size:11px;" title="${log.check_type} at ${time_only}">
+                                        ${index + 1}
+                                    </div>
+                                `;
+                                
+                                let customIcon = L.divIcon({
+                                    className: 'custom-div-icon',
+                                    html: icon_html,
+                                    iconSize: [26, 26],
+                                    iconAnchor: [13, 13]
+                                });
+                                
+                                let marker = L.marker([log.latitude, log.longitude], {icon: customIcon});
+                                let popup_html = `
+                                    <div style="font-family: 'Inter', sans-serif; padding: 4px; width: 220px;">
+                                        <div style="font-weight: 800; font-size: 13px; margin-bottom: 4px; color: var(--ct-text-main);">
+                                            ${frappe.user.full_name(log.user) || log.user}
+                                        </div>
+                                        <div style="margin-bottom: 6px;">
+                                            <span class="badge" style="background-color: ${pin_color}; color: white; font-size: 9px; padding: 2px 5px; text-transform: uppercase;">${log.check_type} #${index + 1}</span>
+                                            <span style="font-size: 11px; color: var(--ct-text-muted); float: right; font-weight: 600;">${time_only}</span>
+                                        </div>
+                                        <div style="font-size: 12px; line-height: 1.4; border-top: 1px solid #f1f5f9; padding-top: 6px;">
+                                            <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary); font-weight: 700;">${log.ticket}</a><br>
+                                            <strong>Customer:</strong> ${log.customer || 'N/A'}<br>
+                                            <strong>Address:</strong> <span style="color: #475569;">${log.location_address || 'N/A'}</span>
+                                        </div>
+                                    </div>
+                                `;
+                                marker.bindPopup(popup_html);
+                                self.markers_layer.addLayer(marker);
+                                bounds.push([log.latitude, log.longitude]);
+                            });
+                        });
+
+                        if (bounds.length > 0) {
+                            self.map.fitBounds(bounds, {padding: [50, 50]});
                         }
                     }
                 }
@@ -831,6 +911,11 @@ class ChiefTechnicianDashboard {
         let container = this.wrapper.find("#ct-active-filters");
         if (!container.length) return;
         
+        // Sync active class on summary cards
+        let current_status = this.filters.status || "";
+        this.wrapper.find(".ct-summary-card").removeClass("active");
+        this.wrapper.find(`.ct-summary-card[data-status="${current_status}"]`).addClass("active");
+
         let pills_html = "";
         if (this.filters.date_from) pills_html += `<span class="ct-filter-pill">From: ${this.filters.date_from} <i class="fa fa-times ct-filter-remove" data-key="date_from"></i></span>`;
         if (this.filters.date_to) pills_html += `<span class="ct-filter-pill">To: ${this.filters.date_to} <i class="fa fa-times ct-filter-remove" data-key="date_to"></i></span>`;

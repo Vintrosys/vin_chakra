@@ -189,8 +189,19 @@ def get_dashboard_data(
         """, movement_values, as_dict=True)
         
         movement_total = movement_total_row[0].count if movement_total_row else 0
+
+        map_points = frappe.db.sql(f"""
+            SELECT 
+                cl.name, cl.technician as user, cl.check_type, cl.latitude, cl.longitude, 
+                cl.creation, cl.parent as ticket, cl.location_address, t.subject, t.custom_customer_name as customer
+            FROM `tabHD Ticket Check Log` cl
+            LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
+            WHERE {movement_where}
+            ORDER BY cl.creation ASC
+        """, movement_values, as_dict=True)
         
         return {
             "movement": movement,
-            "total_count": movement_total
+            "total_count": movement_total,
+            "map_points": map_points
         }

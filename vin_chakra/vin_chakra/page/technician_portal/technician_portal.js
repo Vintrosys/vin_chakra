@@ -130,23 +130,23 @@ class TechnicianPortal {
                 
                 <!-- Summary Cards Row -->
                 <div class="tp-summary-row">
-                    <div class="tp-summary-card" style="border-top-color: #64748b;">
+                    <div class="tp-summary-card" data-status="" style="border-top-color: #64748b; cursor: pointer;">
                         <div class="tp-summary-val" id="tp-summary-total">-</div>
                         <div class="tp-summary-label">Total Tickets</div>
                     </div>
-                    <div class="tp-summary-card" style="border-top-color: #64748b;">
+                    <div class="tp-summary-card" data-status="Open" style="border-top-color: #64748b; cursor: pointer;">
                         <div class="tp-summary-val" id="tp-summary-open">-</div>
                         <div class="tp-summary-label">Open</div>
                     </div>
-                    <div class="tp-summary-card" style="border-top-color: #0369a1;">
+                    <div class="tp-summary-card" data-status="Working" style="border-top-color: #0369a1; cursor: pointer;">
                         <div class="tp-summary-val" id="tp-summary-working">-</div>
                         <div class="tp-summary-label">Working</div>
                     </div>
-                    <div class="tp-summary-card" style="border-top-color: #d97706;">
+                    <div class="tp-summary-card" data-status="Pending" style="border-top-color: #d97706; cursor: pointer;">
                         <div class="tp-summary-val" id="tp-summary-pending">-</div>
                         <div class="tp-summary-label">Pending</div>
                     </div>
-                    <div class="tp-summary-card" style="border-top-color: #15803d;">
+                    <div class="tp-summary-card" data-status="Resolved" style="border-top-color: #15803d; cursor: pointer;">
                         <div class="tp-summary-val" id="tp-summary-resolved">-</div>
                         <div class="tp-summary-label">Resolved</div>
                     </div>
@@ -264,11 +264,25 @@ class TechnicianPortal {
             self.reset_pagination();
             self.load_data();
         });
+        
+        // Summary Cards click filter
+        this.wrapper.on("click", ".tp-summary-card", function() {
+            let status = $(this).data("status");
+            self.filters.status = status;
+            self.wrapper.find("#tp-filter-status").val(status);
+            self.reset_pagination();
+            self.load_data();
+        });
     }
     
     render_active_filters() {
         let container = this.wrapper.find("#tp-active-filters").empty();
         
+        // Sync active class on summary cards
+        let current_status = this.filters.status || "";
+        this.wrapper.find(".tp-summary-card").removeClass("active");
+        this.wrapper.find(`.tp-summary-card[data-status="${current_status}"]`).addClass("active");
+
         if (this.filters.status) {
             container.append(`
                 <span class="tp-filter-pill">Status: ${this.filters.status} <i class="fa fa-times tp-pill-remove" data-filter="status"></i></span>
