@@ -140,7 +140,14 @@ def create_web_form():
 			doc.web_form_fields = fields_to_keep
 			updated = True
 			
-		has_purchase_year = any(f.fieldname == 'custom_purchase_year' for f in doc.web_form_fields)
+		has_purchase_year = False
+		for f in doc.web_form_fields:
+			if f.fieldname == 'custom_purchase_year':
+				has_purchase_year = True
+				if f.hidden:
+					f.hidden = 0
+					updated = True
+
 		if not has_purchase_year:
 			doc.append('web_form_fields', {
 				'fieldname': 'custom_purchase_year',
@@ -159,7 +166,20 @@ def create_web_form():
 		else:
 			print("Web form already exists")
 
-
+def create_custom_fields():
+	if not frappe.db.exists("Custom Field", "HD Ticket-custom_purchase_year"):
+		doc = frappe.get_doc({
+			"doctype": "Custom Field",
+			"dt": "HD Ticket",
+			"fieldname": "custom_purchase_year",
+			"fieldtype": "Select",
+			"label": "Purchase Year",
+			"options": "2010\n2011\n2012\n2013\n2014\n2015\n2016\n2017\n2018\n2019\n2020\n2021\n2022\n2023\n2024\n2025\n2026",
+			"insert_after": "custom_purchased_at_sree_chakra_sewing_systems"
+		})
+		doc.insert(ignore_permissions=True)
+		frappe.db.commit()
+		print("Custom Field 'custom_purchase_year' created")
 def enforce_field_visibility():
 	"""Ensure Machine Name and Description fields are hidden on HD Ticket."""
 	# Hide custom_machine_name (Custom Field)
@@ -217,6 +237,11 @@ def run_setup():
 		create_web_form()
 	except Exception as e:
 		frappe.log_error(message=f"Setup Web Form Error: {e}", title="Vin Chakra Setup Error")
+
+	try:
+		create_custom_fields()
+	except Exception as e:
+		frappe.log_error(message=f"Setup Custom Fields Error: {e}", title="Vin Chakra Setup Error")
 
 	try:
 		enforce_field_visibility()
