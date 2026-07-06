@@ -157,5 +157,7 @@ fixtures = [
         "filters": [
             ["name", "=", "Technician Dashboard"]
         ]
-    }
+    },
+    "Custom Field",
+    "Property Setter"
 ]
