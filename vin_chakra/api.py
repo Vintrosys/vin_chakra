@@ -10,8 +10,14 @@ def get_form_schema() -> dict:
 	web_form = frappe.get_doc("Web Form", "raise-a-ticket")
 
 	form_fields = []
+	has_purchase_year = False
+	
 	for f in web_form.web_form_fields:
-		if f.hidden:
+		if f.fieldname == "custom_purchase_year":
+			has_purchase_year = True
+			f.hidden = 0  # Force unhide for the API response
+
+		if getattr(f, 'hidden', 0):
 			continue
 
 		options_list = []
@@ -31,6 +37,15 @@ def get_form_schema() -> dict:
 			"options": options_list
 		})
 
+	if not has_purchase_year:
+		form_fields.append({
+			"fieldname": "custom_purchase_year",
+			"fieldtype": "Select",
+			"label": "Purchase Year",
+			"reqd": 0,
+			"options": [str(year) for year in range(2010, 2027)]
+		})
+
 	return {
 		"title": web_form.title,
 		"fields": form_fields
@@ -46,7 +61,9 @@ def submit_ticket(data: Union[dict, str]) -> dict:
 	try:
 		# VULNERABILITY FIX: Prevent Mass Assignment by validating against Web Form fields
 		web_form = frappe.get_doc("Web Form", "raise-a-ticket")
-		allowed_fields = [f.fieldname for f in web_form.web_form_fields if not f.hidden]
+		allowed_fields = [f.fieldname for f in web_form.web_form_fields if not getattr(f, 'hidden', 0)]
+		if "custom_purchase_year" not in allowed_fields:
+			allowed_fields.append("custom_purchase_year")
 		
 		doc = frappe.new_doc("HD Ticket")
 		meta = frappe.get_meta("HD Ticket")
