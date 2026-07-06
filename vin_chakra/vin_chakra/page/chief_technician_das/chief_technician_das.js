@@ -105,7 +105,7 @@ class ChiefTechnicianDashboard {
                         <label>Technician</label>
                         <div id="ct-filter-technician-control"></div>
                     </div>
-                    <div class="ct-filter-item">
+                    <div class="ct-filter-item" id="ct-filter-status-wrap">
                         <label>Status</label>
                         <select id="ct-filter-status">
                             <option value="">All Statuses</option>
@@ -115,7 +115,7 @@ class ChiefTechnicianDashboard {
                             <option value="Resolved">Resolved</option>
                         </select>
                     </div>
-                    <div class="ct-filter-item">
+                    <div class="ct-filter-item" id="ct-filter-priority-wrap">
                         <label>Priority</label>
                         <select id="ct-filter-priority">
                             <option value="">All Priorities</option>
@@ -193,6 +193,11 @@ class ChiefTechnicianDashboard {
             this.markers_layer = null;
         }
 
+        // Status/Priority filters only apply to the ticket list — hide them
+        // on the map tab so it's clear they have no effect there.
+        this.wrapper.find("#ct-filter-status-wrap, #ct-filter-priority-wrap")
+            .toggle(this.current_tab !== "movement");
+
         let content = this.wrapper.find("#ct-view-content");
         if (this.current_tab === "tickets") {
             content.html(`
@@ -238,12 +243,12 @@ class ChiefTechnicianDashboard {
                             <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 4px;">Map Legend</div>
                             <div class="ct-map-legend-item"><div class="ct-map-legend-dot" style="background: #3b82f6;"></div> Check-in</div>
                             <div class="ct-map-legend-item"><div class="ct-map-legend-dot" style="background: #10b981;"></div> Check-out</div>
-                            <div class="ct-map-legend-item"><div style="width:24px; height:3px; background: #6366f1; border-radius: 2px;"></div> Route Path</div>
+                            <div id="ct-map-legend-routes"></div>
                         </div>
                     </div>
                     <div class="ct-logs-container">
                         <div class="ct-analytics-card-title"><i class="fa fa-history"></i> Recent Check Logs
-                            <span style="font-size: 11px; font-weight: 500; color: var(--ct-text-muted); margin-left: 8px;">(routes shown chronologically on map)</span>
+                            <span style="font-size: 11px; font-weight: 500; color: var(--ct-text-muted); margin-left: 8px;">(grouped by location, then chained by time)</span>
                         </div>
                         <div class="ct-logs-list" id="ct-logs-list"></div>
                         <div class="ct-pagination" id="ct-logs-pagination"></div>
@@ -750,111 +755,163 @@ class ChiefTechnicianDashboard {
                     self.render_logs_list(data.movement);
                     self.render_logs_pagination();
                     
-                    // Render Map Markers & Beautiful Directional Route
-                    if (self.map && self.markers_layer) {
-                        self.markers_layer.clearLayers();
-                        let bounds = [];
-                        let map_points = (data.map_points || []).filter(log => log.latitude && log.longitude);
-                        
-                        // Group movement logs by technician to support multiple routes
-                        let tech_groups = {};
-                        map_points.forEach(log => {
-                            if (!tech_groups[log.user]) {
-                                tech_groups[log.user] = [];
-                            }
-                            tech_groups[log.user].push(log);
-                        });
-
-                        // Beautiful color palette for technician routes
-                        let route_colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6'];
-                        let color_idx = 0;
-
-                        Object.keys(tech_groups).forEach(tech => {
-                            let tech_logs = tech_groups[tech];
-                            // Sort logs chronologically by creation date/time (connecting the route based on day & time)
-                            tech_logs.sort((a, b) => new Date(a.creation) - new Date(b.creation));
-                            
-                            let tech_color = route_colors[color_idx % route_colors.length];
-                            color_idx++;
-
-                            if (tech_logs.length > 1) {
-                                let path_coords = tech_logs.map(log => [log.latitude, log.longitude]);
-                                // Draw beautiful polyline path
-                                L.polyline(path_coords, {
-                                    color: tech_color,
-                                    weight: 4,
-                                    opacity: 0.85,
-                                    lineJoin: 'round'
-                                }).addTo(self.markers_layer);
-
-                                // Add directional chevrons pointing along the route
-                                for (let i = 0; i < path_coords.length - 1; i++) {
-                                    let p1 = path_coords[i];
-                                    let p2 = path_coords[i+1];
-                                    let mid_lat = (p1[0] + p2[0]) / 2;
-                                    let mid_lng = (p1[1] + p2[1]) / 2;
-                                    
-                                    let dy = p2[0] - p1[0];
-                                    let dx = p2[1] - p1[1];
-                                    let angle = Math.atan2(dy, dx) * 180 / Math.PI;
-                                    
-                                    let arrowIcon = L.divIcon({
-                                        className: 'route-arrow-icon',
-                                        html: `<div style="transform: rotate(${angle}deg); color: ${tech_color}; font-size: 12px; display: flex; align-items: center; justify-content: center;"><i class="fa fa-chevron-right"></i></div>`,
-                                        iconSize: [16, 16],
-                                        iconAnchor: [8, 8]
-                                    });
-                                    L.marker([mid_lat, mid_lng], {icon: arrowIcon, interactive: false}).addTo(self.markers_layer);
-                                }
-                            }
-
-                            // Add numbered/custom markers for check points
-                            tech_logs.forEach((log, index) => {
-                                let pin_color = log.check_type == 'Check-in' ? '#3b82f6' : '#10b981';
-                                let time_only = frappe.datetime.get_time(log.creation).substring(0, 5);
-                                let icon_html = `
-                                    <div class="map-route-marker" style="background-color:${pin_color}; color:white; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-weight:800; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-size:11px;" title="${log.check_type} at ${time_only}">
-                                        ${index + 1}
-                                    </div>
-                                `;
-                                
-                                let customIcon = L.divIcon({
-                                    className: 'custom-div-icon',
-                                    html: icon_html,
-                                    iconSize: [26, 26],
-                                    iconAnchor: [13, 13]
-                                });
-                                
-                                let marker = L.marker([log.latitude, log.longitude], {icon: customIcon});
-                                let popup_html = `
-                                    <div style="font-family: 'Inter', sans-serif; padding: 4px; width: 220px;">
-                                        <div style="font-weight: 800; font-size: 13px; margin-bottom: 4px; color: var(--ct-text-main);">
-                                            ${frappe.user.full_name(log.user) || log.user}
-                                        </div>
-                                        <div style="margin-bottom: 6px;">
-                                            <span class="badge" style="background-color: ${pin_color}; color: white; font-size: 9px; padding: 2px 5px; text-transform: uppercase;">${log.check_type} #${index + 1}</span>
-                                            <span style="font-size: 11px; color: var(--ct-text-muted); float: right; font-weight: 600;">${time_only}</span>
-                                        </div>
-                                        <div style="font-size: 12px; line-height: 1.4; border-top: 1px solid #f1f5f9; padding-top: 6px;">
-                                            <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary); font-weight: 700;">${log.ticket}</a><br>
-                                            <strong>Customer:</strong> ${log.customer || 'N/A'}<br>
-                                            <strong>Address:</strong> <span style="color: #475569;">${log.location_address || 'N/A'}</span>
-                                        </div>
-                                    </div>
-                                `;
-                                marker.bindPopup(popup_html);
-                                self.markers_layer.addLayer(marker);
-                                bounds.push([log.latitude, log.longitude]);
-                            });
-                        });
-
-                        if (bounds.length > 0) {
-                            self.map.fitBounds(bounds, {padding: [50, 50]});
-                        }
-                    }
+                    // Render Map Markers & Location-Chained Route
+                    self.render_movement_map(data.map_points || []);
                 }
             }
         });
+    }
+
+    /* ─────────────────────────────────────────────────────────────────
+       RENDER MOVEMENT MAP
+       Route logic (per technician):
+       1. Group that technician's logs by TICKET — each ticket is one
+          job/location, so this naturally pairs its Check-in + Check-out
+          together instead of letting raw timestamps interleave them
+          with a *different* location's logs that happened to fall in
+          between.
+       2. Within a location, order its own logs chronologically
+          (Check-in → Check-out).
+       3. Order the locations themselves by each location's earliest
+          timestamp — i.e. "when did the technician first arrive here".
+       4. Flatten: this connects Check-in→Check-out at location A first,
+          then A's last point → location B's Check-in, and so on —
+          exactly the chaining behaviour requested, and it can no longer
+          zig-zag between two locations whose visits overlapped in time.
+    ───────────────────────────────────────────────────────────────── */
+    render_movement_map(map_points) {
+        let self = this;
+        if (!self.map || !self.markers_layer) return;
+
+        self.markers_layer.clearLayers();
+        let bounds = [];
+        let valid_points = map_points.filter(log => log.latitude && log.longitude);
+
+        // Group by technician — each technician gets their own route/color
+        let tech_groups = {};
+        valid_points.forEach(log => {
+            if (!tech_groups[log.user]) tech_groups[log.user] = [];
+            tech_groups[log.user].push(log);
+        });
+
+        let route_colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6'];
+        let color_idx = 0;
+        let legend_html = "";
+
+        Object.keys(tech_groups).forEach(tech => {
+            let tech_logs = tech_groups[tech];
+            let tech_color = route_colors[color_idx % route_colors.length];
+            color_idx++;
+
+            let tech_name = frappe.user.full_name(tech) || tech;
+            legend_html += `
+                <div class="ct-map-legend-item">
+                    <div style="width:16px; height:3px; background:${tech_color}; border-radius:2px;"></div>
+                    ${tech_name}
+                </div>`;
+
+            // Step 1 — group this technician's logs by location (ticket)
+            let location_groups = {};
+            tech_logs.forEach(log => {
+                let key = log.ticket || log.name;
+                if (!location_groups[key]) location_groups[key] = [];
+                location_groups[key].push(log);
+            });
+
+            // Step 2 — within each location, sort chronologically (Check-in → Check-out)
+            // Step 3 — order locations by their own earliest timestamp
+            let location_blocks = Object.keys(location_groups).map(ticket => {
+                let logs_here = location_groups[ticket].slice().sort(
+                    (a, b) => new Date(a.creation) - new Date(b.creation)
+                );
+                return { ticket: ticket, logs: logs_here, start_time: new Date(logs_here[0].creation) };
+            }).sort((a, b) => a.start_time - b.start_time);
+
+            // Step 4 — flatten into one travel-ordered sequence
+            let ordered_logs = [];
+            location_blocks.forEach(block => ordered_logs.push(...block.logs));
+
+            if (ordered_logs.length > 1) {
+                let path_coords = ordered_logs.map(log => [log.latitude, log.longitude]);
+
+                L.polyline(path_coords, {
+                    color: tech_color,
+                    weight: 4,
+                    opacity: 0.85,
+                    lineJoin: 'round'
+                }).addTo(self.markers_layer);
+
+                // Directional chevrons along the chained route.
+                // A hop within the same location (check-in↔check-out) is drawn
+                // solid; a hop moving to the NEXT location is drawn lighter,
+                // so the map visually distinguishes "on-site" from "travel".
+                for (let i = 0; i < path_coords.length - 1; i++) {
+                    let p1 = path_coords[i];
+                    let p2 = path_coords[i + 1];
+                    let mid_lat = (p1[0] + p2[0]) / 2;
+                    let mid_lng = (p1[1] + p2[1]) / 2;
+
+                    let dy = p2[0] - p1[0];
+                    let dx = p2[1] - p1[1];
+                    let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                    let same_location = ordered_logs[i].ticket === ordered_logs[i + 1].ticket;
+
+                    let arrowIcon = L.divIcon({
+                        className: 'route-arrow-icon',
+                        html: `<div style="transform: rotate(${angle}deg); color: ${tech_color}; font-size: 12px; display: flex; align-items: center; justify-content: center; opacity:${same_location ? 1 : 0.55};"><i class="fa fa-chevron-right"></i></div>`,
+                        iconSize: [16, 16],
+                        iconAnchor: [8, 8]
+                    });
+                    L.marker([mid_lat, mid_lng], {icon: arrowIcon, interactive: false}).addTo(self.markers_layer);
+                }
+            }
+
+            // Numbered markers, in the new location-chained travel order
+            ordered_logs.forEach((log, index) => {
+                let pin_color = log.check_type == 'Check-in' ? '#3b82f6' : '#10b981';
+                let time_only = frappe.datetime.get_time(log.creation).substring(0, 5);
+                let icon_html = `
+                    <div class="map-route-marker" style="background-color:${pin_color}; color:white; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-weight:800; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-size:11px;" title="${log.check_type} at ${time_only}">
+                        ${index + 1}
+                    </div>
+                `;
+
+                let customIcon = L.divIcon({
+                    className: 'custom-div-icon',
+                    html: icon_html,
+                    iconSize: [26, 26],
+                    iconAnchor: [13, 13]
+                });
+
+                let marker = L.marker([log.latitude, log.longitude], {icon: customIcon});
+                let popup_html = `
+                    <div style="font-family: 'Inter', sans-serif; padding: 4px; width: 220px;">
+                        <div style="font-weight: 800; font-size: 13px; margin-bottom: 4px; color: var(--ct-text-main);">
+                            ${frappe.user.full_name(log.user) || log.user}
+                        </div>
+                        <div style="margin-bottom: 6px;">
+                            <span class="badge" style="background-color: ${pin_color}; color: white; font-size: 9px; padding: 2px 5px; text-transform: uppercase;">${log.check_type} #${index + 1}</span>
+                            <span style="font-size: 11px; color: var(--ct-text-muted); float: right; font-weight: 600;">${time_only}</span>
+                        </div>
+                        <div style="font-size: 12px; line-height: 1.4; border-top: 1px solid #f1f5f9; padding-top: 6px;">
+                            <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary); font-weight: 700;">${log.ticket}</a><br>
+                            <strong>Customer:</strong> ${log.customer || 'N/A'}<br>
+                            <strong>Address:</strong> <span style="color: #475569;">${log.location_address || 'N/A'}</span>
+                        </div>
+                    </div>
+                `;
+                marker.bindPopup(popup_html);
+                self.markers_layer.addLayer(marker);
+                bounds.push([log.latitude, log.longitude]);
+            });
+        });
+
+        $("#ct-map-legend-routes").html(legend_html);
+
+        if (bounds.length > 0) {
+            self.map.fitBounds(bounds, {padding: [50, 50]});
+        }
     }
     
     render_logs_list(logs) {

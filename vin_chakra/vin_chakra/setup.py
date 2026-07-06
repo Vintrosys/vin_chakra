@@ -120,6 +120,7 @@ def create_web_form():
 			{'fieldname': 'custom_date', 'fieldtype': 'Date', 'label': 'Date', 'reqd': 1},
 			{'fieldname': 'custom_machine_problem', 'fieldtype': 'Link', 'options': 'Machine Problem', 'label': 'Machine Problem', 'reqd': 1, 'allow_read_on_all_link_options': 1},
 			{'fieldname': 'custom_purchased_at_sree_chakra_sewing_systems', 'fieldtype': 'Select', 'options': 'Yes\nNo', 'label': 'Purchased at Sree Chakra Sewing Systems'},
+			{'fieldname': 'custom_purchase_year', 'fieldtype': 'Select', 'label': 'Purchase Year', 'options': '2010\n2011\n2012\n2013\n2014\n2015\n2016\n2017\n2018\n2019\n2020\n2021\n2022\n2023\n2024\n2025\n2026', 'reqd': 0},
 			{'fieldname': 'subject', 'fieldtype': 'Data', 'label': 'Subject', 'reqd': 1}
 		]
 		for f in fields:
@@ -138,6 +139,19 @@ def create_web_form():
 		if len(fields_to_keep) != len(doc.web_form_fields):
 			doc.web_form_fields = fields_to_keep
 			updated = True
+			
+		has_purchase_year = any(f.fieldname == 'custom_purchase_year' for f in doc.web_form_fields)
+		if not has_purchase_year:
+			doc.append('web_form_fields', {
+				'fieldname': 'custom_purchase_year',
+				'fieldtype': 'Select',
+				'label': 'Purchase Year',
+				'options': '2010\n2011\n2012\n2013\n2014\n2015\n2016\n2017\n2018\n2019\n2020\n2021\n2022\n2023\n2024\n2025\n2026',
+				'reqd': 0,
+				'hidden': 0
+			})
+			updated = True
+
 		if updated:
 			doc.save(ignore_permissions=True)
 			frappe.db.commit()

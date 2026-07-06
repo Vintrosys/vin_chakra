@@ -2,6 +2,8 @@
  * TicketWidget – Sree Chakra Sewing Systems
  * Fixed: state/district cascade, Tamil Nadu default,
  *        "Other" free-text fallback, south-India states only.
+ * Redesigned: thread/bobbin-inspired palette, fully fluid
+ *        mobile-first responsive layout (360px → desktop).
  */
 
 (function () {
@@ -64,44 +66,64 @@
     'Other'
   ];
 
-  /* ─── Styles ─────────────────────────────────────────────────────── */
+  /* ─── Styles ─────────────────────────────────────────────────────────
+     Palette – "workshop thread & brass" system, grounded in the
+     subject (a sewing-machine service company): a dark charcoal/enamel
+     header like a machine body, a brass accent like hardware trim,
+     and thread-red / spool-green for error / success states.
+     All layout below is fluid (clamp-based) so it scales smoothly
+     from a 360px phone up to desktop instead of jumping at fixed
+     breakpoints; a few structural breakpoints remain only where the
+     layout must genuinely change shape (grid → single column).
+  ──────────────────────────────────────────────────────────────────── */
   const CSS = `
     :root {
-      --primary:        #4f46e5;
-      --primary-dark:   #3730a3;
-      --primary-light:  rgba(79,70,229,0.10);
-      --accent:         #f59e0b;
-      --green:          #15803d;
-      --green-bg:       #dcfce7;
-      --green-border:   #86efac;
-      --red:            #dc2626;
-      --red-bg:         #fef2f2;
-      --red-border:     #fca5a5;
-      --text-main:      #0f172a;
-      --text-muted:     #475569;
-      --text-light:     #94a3b8;
-      --border:         #e2e8f0;
-      --input-bg:       #f8fafc;
+      --ink:            #1c2420;
+      --charcoal:       #232f29;
+      --charcoal-deep:  #16211c;
+      --brass:          #b8863a;
+      --brass-dark:     #93691f;
+      --brass-light:    rgba(184,134,58,0.12);
+      --thread:         #b23b2e;
+      --thread-bg:      #fbeeec;
+      --thread-border:  #f0c3bc;
+      --spool:          #2f6f52;
+      --spool-bg:       #e9f3ec;
+      --spool-border:   #b9dcc7;
+      --text-main:      #1c2420;
+      --text-muted:     #57645c;
+      --text-light:     #98a49c;
+      --border:         #dde3dc;
+      --input-bg:       #f6f7f3;
       --surface:        #ffffff;
-      --bg:             #f1f5f9;
-      --radius:         20px;
+      --bg:             #edf0ea;
+      --radius:         18px;
       --radius-sm:      12px;
-      --shadow-lg:      0 20px 40px rgba(0,0,0,.10), 0 8px 16px rgba(0,0,0,.06);
+      --shadow-lg:      0 20px 40px rgba(28,36,32,.12), 0 8px 16px rgba(28,36,32,.07);
       --transition:     .2s cubic-bezier(.4,0,.2,1);
+      --sp-1: clamp(12px, 2.6vw, 16px);
+      --sp-2: clamp(16px, 4vw, 28px);
+      --sp-3: clamp(20px, 5.5vw, 44px);
     }
     *, *::before, *::after { box-sizing: border-box; }
 
     #ticket-root {
       min-height: 100vh;
       background: var(--bg);
-      background-image: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(79,70,229,.12) 0%, transparent 70%);
+      background-image: radial-gradient(ellipse 80% 50% at 50% -10%, var(--brass-light) 0%, transparent 70%);
       display: flex;
       align-items: flex-start;
       justify-content: center;
-      padding: 40px 16px 72px;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+      padding: clamp(16px, 5vw, 40px) clamp(10px, 4vw, 16px)
+               max(56px, env(safe-area-inset-bottom)) clamp(10px, 4vw, 16px);
       font-family: 'Inter','Segoe UI',system-ui,sans-serif;
       color: var(--text-main);
       -webkit-font-smoothing: antialiased;
+      text-size-adjust: 100%;
+      -webkit-text-size-adjust: 100%;
     }
 
     /* Card */
@@ -115,15 +137,15 @@
       animation: tk-rise .5s cubic-bezier(.22,.68,0,1.2) both;
     }
     @keyframes tk-rise {
-      from { opacity:0; transform:translateY(28px) scale(.98); }
+      from { opacity:0; transform:translateY(24px) scale(.98); }
       to   { opacity:1; transform:translateY(0)    scale(1); }
     }
 
-    /* Header */
+    /* Header — machine-body charcoal with a brass glow, like enamel + hardware */
     .tk-header {
       position: relative;
-      background: linear-gradient(135deg, var(--primary) 0%, #6d28d9 100%);
-      padding: 44px 44px 38px;
+      background: linear-gradient(135deg, var(--charcoal) 0%, var(--charcoal-deep) 100%);
+      padding: var(--sp-3) var(--sp-3) clamp(18px, 4vw, 32px);
       text-align: center;
       overflow: hidden;
     }
@@ -131,28 +153,29 @@
       content:'';
       position:absolute; inset:0;
       background:
-        radial-gradient(circle at 20% 50%, rgba(255,255,255,.08) 0%, transparent 55%),
-        radial-gradient(circle at 80% 20%, rgba(245,158,11,.14) 0%, transparent 45%);
+        radial-gradient(circle at 18% 40%, rgba(255,255,255,.06) 0%, transparent 55%),
+        radial-gradient(circle at 82% 15%, rgba(184,134,58,.28) 0%, transparent 46%);
       pointer-events:none;
     }
     .tk-header-inner { position:relative; z-index:1; }
     .tk-logo-wrap {
       display:inline-flex; align-items:center; justify-content:center;
-      background:rgba(255,255,255,.18); backdrop-filter:blur(8px);
-      border:1px solid rgba(255,255,255,.25); border-radius:16px;
-      width:64px; height:64px; margin-bottom:18px;
+      background:rgba(184,134,58,.16); backdrop-filter:blur(8px);
+      border:1px solid rgba(184,134,58,.35); border-radius:16px;
+      width:clamp(52px, 12vw, 64px); height:clamp(52px, 12vw, 64px);
+      margin-bottom:16px;
     }
-    .tk-logo-wrap svg { width:32px; height:32px; fill:#fff; }
+    .tk-logo-wrap svg { width:50%; height:50%; color:var(--brass); }
     .tk-badge {
       display:inline-flex; align-items:center; gap:6px;
-      background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.2);
+      background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.16);
       border-radius:99px; padding:4px 14px;
-      font-size:12px; font-weight:600; color:rgba(255,255,255,.9);
+      font-size:11.5px; font-weight:600; color:rgba(255,255,255,.82);
       letter-spacing:.04em; text-transform:uppercase; margin-bottom:14px;
     }
     .tk-badge-dot {
-      width:6px; height:6px; background:#4ade80;
-      border-radius:50%; box-shadow:0 0 6px #4ade80;
+      width:6px; height:6px; background:#5fbf8f;
+      border-radius:50%; box-shadow:0 0 6px #5fbf8f;
       animation:tk-pulse 2s ease infinite;
     }
     @keyframes tk-pulse {
@@ -160,52 +183,54 @@
       50%{opacity:.6;transform:scale(.85)}
     }
     .tk-header h1 {
-      color:#fff; font-size:28px; font-weight:800;
-      letter-spacing:-.6px; line-height:1.15; margin-bottom:8px;
+      color:#fff; font-size:clamp(19px, 5vw, 28px); font-weight:800;
+      letter-spacing:-.5px; line-height:1.2; margin-bottom:6px;
+      word-wrap: break-word;
     }
-    .tk-header p { color:rgba(255,255,255,.7); font-size:14.5px; font-weight:500; }
+    .tk-header p { color:rgba(255,255,255,.62); font-size:clamp(12.5px, 3vw, 14.5px); font-weight:500; }
 
-    /* Step bar */
+    /* Step bar — dashed "thread" line between bobbin markers */
     .tk-steps {
       display:flex; align-items:center; justify-content:center;
-      padding:0 44px;
-      background:rgba(0,0,0,.12);
+      padding:0 clamp(6px, 4vw, 44px);
+      background:rgba(0,0,0,.16);
       position:relative; z-index:1;
     }
     .tk-step {
       display:flex; flex-direction:column; align-items:center;
-      gap:6px; padding:14px 0; flex:1;
+      gap:5px; padding:clamp(10px,3vw,14px) 0; flex:1; min-width:0;
     }
     .tk-step-dot {
-      width:28px; height:28px; border-radius:50%;
-      background:rgba(255,255,255,.2); border:2px solid rgba(255,255,255,.35);
+      width:clamp(22px, 6vw, 28px); height:clamp(22px, 6vw, 28px); border-radius:50%;
+      background:rgba(255,255,255,.14); border:2px solid rgba(255,255,255,.28);
       display:flex; align-items:center; justify-content:center;
-      font-size:11px; font-weight:700; color:rgba(255,255,255,.7);
-      transition:var(--transition);
+      font-size:11px; font-weight:700; color:rgba(255,255,255,.65);
+      transition:var(--transition); flex-shrink:0;
     }
     .tk-step.active .tk-step-dot {
-      background:#fff; border-color:#fff; color:var(--primary);
-      box-shadow:0 0 0 4px rgba(255,255,255,.25);
+      background:var(--brass); border-color:var(--brass); color:#1c2420;
+      box-shadow:0 0 0 4px rgba(184,134,58,.28);
     }
-    .tk-step.done .tk-step-dot { background:#4ade80; border-color:#4ade80; color:#fff; }
+    .tk-step.done .tk-step-dot { background:#5fbf8f; border-color:#5fbf8f; color:#0f2b1c; }
     .tk-step-label {
-      font-size:10px; font-weight:600; color:rgba(255,255,255,.55);
+      font-size:9.5px; font-weight:600; color:rgba(255,255,255,.5);
       text-transform:uppercase; letter-spacing:.05em; white-space:nowrap;
     }
     .tk-step.active .tk-step-label { color:rgba(255,255,255,.9); }
     .tk-step-line {
-      flex:1; height:1px; background:rgba(255,255,255,.2);
-      margin-bottom:22px; align-self:flex-start; margin-top:28px;
+      flex:1; height:0; border-top:2px dashed rgba(255,255,255,.25);
+      margin-bottom:20px; align-self:flex-start; margin-top:clamp(20px,6vw,28px);
+      min-width:8px;
     }
 
     /* Body */
-    .tk-body { padding:40px 44px; }
+    .tk-body { padding:var(--sp-3); }
 
     /* Alerts */
     .tk-alert {
       display:none; align-items:flex-start; gap:12px;
-      padding:16px 18px; border-radius:var(--radius-sm);
-      margin-bottom:28px; font-size:14.5px; font-weight:500;
+      padding:14px clamp(12px,3vw,18px); border-radius:var(--radius-sm);
+      margin-bottom:var(--sp-2); font-size:clamp(13.5px,3vw,14.5px); font-weight:500;
       line-height:1.5; border:1px solid transparent;
       animation:tk-pop .28s cubic-bezier(.22,.68,0,1.2) both;
     }
@@ -213,58 +238,57 @@
       from{opacity:0;transform:scale(.96) translateY(-4px)}
       to{opacity:1;transform:scale(1) translateY(0)}
     }
-    .tk-alert.success { background:var(--green-bg); color:var(--green); border-color:var(--green-border); display:flex; }
-    .tk-alert.error   { background:var(--red-bg);   color:var(--red);   border-color:var(--red-border);   display:flex; }
+    .tk-alert.success { background:var(--spool-bg); color:var(--spool); border-color:var(--spool-border); display:flex; }
+    .tk-alert.error   { background:var(--thread-bg); color:var(--thread); border-color:var(--thread-border); display:flex; }
     .tk-alert svg { flex-shrink:0; width:20px; height:20px; margin-top:1px; }
 
     /* Info banner */
     .tk-info-banner {
       display:flex; align-items:center; gap:12px;
-      padding:14px 18px; border-radius:var(--radius-sm);
-      margin-bottom:32px; font-size:14px; font-weight:500;
-      background:var(--primary-light); color:var(--primary-dark);
-      border:1px solid rgba(79,70,229,.18);
+      padding:13px clamp(12px,3vw,18px); border-radius:var(--radius-sm);
+      margin-bottom:var(--sp-2); font-size:clamp(13px,3vw,14px); font-weight:500;
+      background:var(--brass-light); color:var(--brass-dark);
+      border:1px solid rgba(184,134,58,.22);
     }
     .tk-info-banner svg { flex-shrink:0; width:18px; height:18px; }
 
-    /* Section header */
+    /* Section header — stitched dashed rule, since sections are a real sequence */
     .tk-section-head {
       grid-column:1/-1;
       display:flex; align-items:center; gap:12px;
-      margin:8px 0 20px;
+      margin:6px 0 18px;
     }
     .tk-section-num {
-      width:28px; height:28px; border-radius:8px;
-      background:var(--primary-light); color:var(--primary);
-      font-size:12px; font-weight:800;
+      width:26px; height:26px; border-radius:8px;
+      background:var(--brass-light); color:var(--brass-dark);
+      font-size:11.5px; font-weight:800;
       display:flex; align-items:center; justify-content:center; flex-shrink:0;
     }
     .tk-section-title {
-      font-size:13px; font-weight:700; color:var(--primary-dark);
+      font-size:12.5px; font-weight:700; color:var(--charcoal);
       letter-spacing:.06em; text-transform:uppercase;
     }
     .tk-section-line {
-      flex:1; height:1px;
-      background:linear-gradient(to right, var(--border), transparent);
+      flex:1; height:0; border-top:2px dashed var(--border);
     }
 
     /* Grid */
-    .tk-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 28px; }
+    .tk-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 var(--sp-2); }
 
     /* Fields */
-    .tk-field { margin-bottom:20px; }
+    .tk-field { margin-bottom:18px; min-width:0; }
     .tk-field.full { grid-column:1/-1; }
 
     .tk-label {
       display:flex; align-items:center; gap:6px;
-      font-size:13px; font-weight:600; color:var(--text-muted);
+      font-size:12.5px; font-weight:600; color:var(--text-muted);
       margin-bottom:7px; letter-spacing:.03em;
     }
     .tk-label-icon { width:14px; height:14px; opacity:.6; flex-shrink:0; }
-    .req { color:var(--red); margin-left:1px; }
+    .req { color:var(--thread); margin-left:1px; }
 
     /* Input prefix icon wrapper */
-    .tk-input-wrap { position:relative; }
+    .tk-input-wrap { position:relative; min-width:0; }
     .tk-input-prefix {
       position:absolute; left:14px; top:50%; transform:translateY(-50%);
       display:flex; align-items:center; pointer-events:none;
@@ -272,37 +296,37 @@
     .tk-input-prefix svg { width:16px; height:16px; color:var(--text-light); }
     .tk-input-wrap .tk-control { padding-left:40px; }
 
-    /* Controls */
+    /* Controls — 16px font on the input itself avoids iOS auto-zoom on focus */
     .tk-control {
-      display:block; width:100%; padding:12px 16px;
+      display:block; width:100%; min-height:48px; padding:12px 16px;
       border:1.5px solid var(--border); border-radius:var(--radius-sm);
-      background:var(--input-bg); font-size:14.5px;
+      background:var(--input-bg); font-size:16px;
       font-family:inherit; color:var(--text-main);
       transition:border-color var(--transition),box-shadow var(--transition),background var(--transition);
       outline:none; appearance:none; -webkit-appearance:none; line-height:1.5;
     }
     .tk-control::placeholder { color:var(--text-light); }
-    .tk-control:hover:not(:disabled) { border-color:#c7d2fe; background:#fff; }
+    .tk-control:hover:not(:disabled) { border-color:#d8c39a; background:#fff; }
     .tk-control:focus {
-      border-color:var(--primary); background:var(--surface);
-      box-shadow:0 0 0 4px var(--primary-light);
+      border-color:var(--brass); background:var(--surface);
+      box-shadow:0 0 0 4px var(--brass-light);
     }
     textarea.tk-control { resize:vertical; min-height:110px; line-height:1.6; }
-    .tk-control:disabled { background:#f1f5f9; color:var(--text-light); cursor:not-allowed; }
+    .tk-control:disabled { background:#eef0eb; color:var(--text-light); cursor:not-allowed; }
 
     select.tk-control {
-      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b8863a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
       background-repeat:no-repeat; background-position:right 14px center;
       padding-right:42px; cursor:pointer;
     }
     select.tk-control:disabled {
-      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2398a49c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
     }
 
     /* Validation */
     .tk-control.tk-invalid {
-      border-color:var(--red) !important;
-      box-shadow:0 0 0 3px rgba(220,38,38,.12) !important;
+      border-color:var(--thread) !important;
+      box-shadow:0 0 0 3px rgba(178,59,46,.13) !important;
       animation:tk-shake .3s ease;
     }
     @keyframes tk-shake {
@@ -312,15 +336,12 @@
     }
     .tk-field-error {
       display:none; align-items:center; gap:5px;
-      color:var(--red); font-size:12px; font-weight:500; margin-top:6px;
+      color:var(--thread); font-size:12px; font-weight:500; margin-top:6px;
     }
     .tk-field-error svg { width:12px; height:12px; flex-shrink:0; }
 
     /* "Other" free-text row */
-    .tk-other-row {
-      margin-top:8px;
-      display:none;
-    }
+    .tk-other-row { margin-top:8px; display:none; }
     .tk-other-row.visible { display:block; }
     .tk-other-row .tk-control { background:#fff; }
 
@@ -330,76 +351,77 @@
       display:block; text-align:right;
       font-size:11px; color:var(--text-light); margin-top:5px;
     }
-    .tk-char-count.warn { color:var(--accent); }
+    .tk-char-count.warn { color:var(--brass-dark); }
 
-    /* Submit */
-    .tk-submit-wrap { margin-top:16px; }
+    /* Submit — brass-on-charcoal, matches header hardware */
+    .tk-submit-wrap { margin-top:14px; }
     .tk-submit {
       display:flex; align-items:center; justify-content:center; gap:10px;
-      width:100%; padding:15px 24px; border:none;
+      width:100%; min-height:52px; padding:14px 24px; border:none;
       border-radius:var(--radius-sm);
-      background:linear-gradient(135deg, var(--primary) 0%, #6d28d9 100%);
+      background:linear-gradient(135deg, var(--charcoal) 0%, var(--charcoal-deep) 100%);
       color:#fff; font-size:15.5px; font-weight:700; font-family:inherit;
       cursor:pointer;
       transition:opacity var(--transition),transform var(--transition),box-shadow var(--transition);
-      box-shadow:0 4px 14px rgba(79,70,229,.35);
+      box-shadow:0 4px 14px rgba(28,36,32,.35);
       letter-spacing:.01em; position:relative; overflow:hidden;
+      -webkit-tap-highlight-color: transparent;
     }
     .tk-submit:hover:not(:disabled) {
       transform:translateY(-2px);
-      box-shadow:0 8px 22px rgba(79,70,229,.45);
+      box-shadow:0 8px 22px rgba(28,36,32,.4);
     }
     .tk-submit:active:not(:disabled) {
       transform:translateY(0);
-      box-shadow:0 3px 10px rgba(79,70,229,.3);
+      box-shadow:0 3px 10px rgba(28,36,32,.3);
     }
     .tk-submit:disabled { opacity:.65; cursor:not-allowed; transform:none; }
     .tk-spinner {
       width:18px; height:18px;
-      border:2.5px solid rgba(255,255,255,.35); border-top-color:#fff;
+      border:2.5px solid rgba(255,255,255,.35); border-top-color:var(--brass);
       border-radius:50%; animation:tk-spin .6s linear infinite; display:none;
     }
     @keyframes tk-spin { to{transform:rotate(360deg)} }
 
     /* Skeleton */
-    .tk-skeleton-wrap { padding:40px 44px; }
+    .tk-skeleton-wrap { padding:var(--sp-3); }
     .tk-skel {
-      background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);
+      background:linear-gradient(90deg,#eef0eb 25%,#e2e6dd 50%,#eef0eb 75%);
       background-size:200% 100%; border-radius:8px;
       animation:tk-shimmer 1.5s ease infinite;
     }
     @keyframes tk-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-    .tk-skel-title { height:26px; width:52%; margin:0 auto 36px; border-radius:8px; }
-    .tk-skel-grid  { display:grid; grid-template-columns:1fr 1fr; gap:0 28px; }
-    .tk-skel-field { margin-bottom:20px; }
+    .tk-skel-title { height:24px; width:min(280px,52%); margin:0 auto 32px; border-radius:8px; }
+    .tk-skel-grid  { display:grid; grid-template-columns:1fr 1fr; gap:0 var(--sp-2); }
+    .tk-skel-field { margin-bottom:18px; }
     .tk-skel-label { height:13px; width:38%; margin-bottom:9px; border-radius:6px; }
-    .tk-skel-input { height:46px; border-radius:10px; }
+    .tk-skel-input { height:48px; border-radius:10px; }
     .tk-skel-full  { grid-column:1/-1; }
-    .tk-skel-btn   { height:52px; border-radius:12px; margin-top:16px; }
+    .tk-skel-btn   { height:52px; border-radius:12px; margin-top:14px; }
 
     /* Footer */
     .tk-footer {
-      text-align:center; font-size:12.5px; color:var(--text-light);
-      padding:0 44px 32px;
+      text-align:center; font-size:12px; color:var(--text-light);
+      padding:0 var(--sp-3) clamp(20px,5vw,32px);
       display:flex; align-items:center; justify-content:center; gap:6px;
+      flex-wrap:wrap;
     }
     .tk-footer svg { width:13px; height:13px; flex-shrink:0; }
 
-    /* Mobile */
-    @media (max-width:640px) {
-      #ticket-root      { padding:0 0 48px; }
-      .tk-card          { border-radius:0; box-shadow:none; }
-      .tk-header        { padding:32px 20px 28px; }
-      .tk-header h1     { font-size:22px; }
-      .tk-steps         { padding:0 20px; }
+    /* ── Structural breakpoints (shape changes, not just scale) ── */
+    @media (max-width:700px) {
+      .tk-grid, .tk-skel-grid { grid-template-columns:1fr; gap:0; }
+      .tk-field.full   { grid-column:1; }
+      .tk-section-head { grid-column:1; }
+    }
+    @media (max-width:520px) {
+      #ticket-root      { padding:0 0 max(56px, env(safe-area-inset-bottom)); }
+      .tk-card          { border-radius:0; box-shadow:none; border-left:none; border-right:none; }
       .tk-step-label    { display:none; }
-      .tk-body          { padding:28px 20px; }
-      .tk-skeleton-wrap { padding:28px 20px; }
-      .tk-footer        { padding:0 20px 28px; }
-      .tk-grid,
-      .tk-skel-grid     { grid-template-columns:1fr; }
-      .tk-field.full    { grid-column:1; }
-      .tk-section-head  { grid-column:1; }
+      .tk-steps         { padding:0 14px; }
+    }
+    @media (max-width:360px) {
+      .tk-badge { display:none; }
     }
     @media (prefers-reduced-motion:reduce) {
       *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; }
@@ -408,7 +430,8 @@
 
   /* ─── SVG icons ──────────────────────────────────────────────────── */
   const ICONS = {
-    ticket:   `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 12a2 2 0 0 0 0-4V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v3a2 2 0 0 0 0 4v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3Z"/></svg>`,
+    /* thread spool / bobbin — the widget's signature mark */
+    ticket:   `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="3.4" rx="1" fill="currentColor" stroke="none"/><rect x="5" y="17.6" width="14" height="3.4" rx="1" fill="currentColor" stroke="none"/><path d="M8 6.4c0 2.6 8 2.6 8 0M8 11.6c0 2.6 8 2.6 8 0M8 12.4c0 2.6 8 2.6 8 0M8 17.6c0-2.6 8-2.6 8 0"/></svg>`,
     ok:       `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
     err:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     info:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
@@ -478,7 +501,7 @@
       const fields = Array.from({ length: 8 }, (_, i) =>
         `<div class="tk-skel-field${i >= 6 ? ' tk-skel-full' : ''}">
            <div class="tk-skel tk-skel-label"></div>
-           <div class="tk-skel tk-skel-input" style="height:${i >= 6 ? '106px' : '46px'}"></div>
+           <div class="tk-skel tk-skel-input" style="height:${i >= 6 ? '106px' : '48px'}"></div>
          </div>`
       ).join('');
       this.root.innerHTML = `
