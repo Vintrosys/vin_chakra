@@ -40,6 +40,7 @@ class TechnicianPortal {
         this.render_skeleton();
         this.bind_events();
         this.fetch_user_fullname();
+        this.fetch_day_attendance_status();
         this.load_data();
     }
     
@@ -64,6 +65,79 @@ class TechnicianPortal {
             }
         });
     }
+    fetch_day_attendance_status() {
+        let self = this;
+        frappe.call({
+            method: "vin_chakra.technician_api.get_day_attendance_status",
+            callback: function(r) {
+                if (r.message && r.message.status === "success") {
+                    let btn = self.wrapper.find("#tp-day-attendance-btn");
+                    btn.show();
+                    if (r.message.state === "IN") {
+                        btn.html('<i class="fa fa-sign-out"></i> Day Check-out');
+                        btn.css({ "background": "#fee2e2", "color": "#b91c1c" });
+                        btn.data("action", "OUT");
+                    } else {
+                        btn.html('<i class="fa fa-sign-in"></i> Day Check-in');
+                        btn.css({ "background": "#dcfce7", "color": "#15803d" });
+                        btn.data("action", "IN");
+                    }
+                    btn.prop("disabled", false);
+                }
+            }
+        });
+    }
+
+    handle_day_attendance_click() {
+        let self = this;
+        let btn = self.wrapper.find("#tp-day-attendance-btn");
+        let action = btn.data("action");
+        
+        if (!action) return;
+
+        btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Processing...');
+
+        // Fetch location
+        if (!navigator.geolocation) {
+            frappe.msgprint("Geolocation is not supported by this browser.");
+            self.fetch_day_attendance_status();
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                frappe.call({
+                    method: "vin_chakra.technician_api.mark_day_attendance",
+                    args: {
+                        log_type: action,
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude
+                    },
+                    callback: function(res) {
+                        if (res.message && res.message.status === "success") {
+                            frappe.show_alert({message: res.message.message, indicator: "green"});
+                        } else {
+                            frappe.msgprint(res.message ? res.message.message : "Error marking attendance.");
+                        }
+                        self.fetch_day_attendance_status();
+                    },
+                    error: function() {
+                        self.fetch_day_attendance_status();
+                    }
+                });
+            },
+            (err) => {
+                btn.prop("disabled", false);
+                self.fetch_day_attendance_status();
+                let msg = "Failed to fetch GPS coordinates.";
+                if (err.code === 1) msg = "Location access denied. Please enable GPS and allow location permissions.";
+                else if (err.code === 2) msg = "Location provider unavailable. Ensure GPS is on.";
+                else if (err.code === 3) msg = "GPS fetch timeout occurred.";
+                frappe.msgprint(msg);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }
     
     render_skeleton() {
         this.page.main.addClass("tp-portal");
@@ -76,8 +150,11 @@ class TechnicianPortal {
                         <h2>Technician Service Portal</h2>
                         <p>Welcome back, <strong id="tp-welcome-user">${this.current_user_fullname}</strong></p>
                     </div>
-                    <div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
                         <span class="badge" style="background: rgba(255,255,255,0.2); color:white; font-size:11px; font-weight:700; padding:6px 12px; border-radius:30px;"><i class="fa fa-circle text-success" style="margin-right:6px;"></i>Active Status</span>
+                        <button id="tp-day-attendance-btn" class="btn btn-sm" style="background: white; color: var(--tp-primary); font-weight: bold; border-radius: 20px; padding: 4px 12px; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: none;">
+                            <i class="fa fa-sign-in"></i> Day Check-in
+                        </button>
                     </div>
                 </div>
                 
@@ -180,6 +257,11 @@ class TechnicianPortal {
     
     bind_events() {
         let self = this;
+        
+        // Day Attendance
+        this.wrapper.on("click", "#tp-day-attendance-btn", function() {
+            self.handle_day_attendance_click();
+        });
         
         // Toggle Filters
         this.wrapper.on("click", "#tp-btn-filter-toggle", function() {

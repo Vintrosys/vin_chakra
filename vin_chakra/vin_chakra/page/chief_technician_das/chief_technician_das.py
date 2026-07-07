@@ -205,3 +205,44 @@ def get_dashboard_data(
             "total_count": movement_total,
             "map_points": map_points
         }
+        
+    # 4. ATTENDANCE VIEW
+    elif view == "attendance":
+        attendance_conditions = ["1=1"]
+        attendance_values = {}
+        
+        if date_from:
+            attendance_conditions.append("DATE(ec.time) >= %(date_from)s")
+            attendance_values["date_from"] = date_from
+        if date_to:
+            attendance_conditions.append("DATE(ec.time) <= %(date_to)s")
+            attendance_values["date_to"] = date_to
+        if technician:
+            attendance_conditions.append("e.user_id = %(technician)s")
+            attendance_values["technician"] = technician
+            
+        attendance_where = " AND ".join(attendance_conditions)
+        
+        attendance = frappe.db.sql(f"""
+            SELECT 
+                ec.name, ec.employee, ec.employee_name, ec.time, ec.log_type, ec.latitude, ec.longitude, ec.device_id, e.user_id
+            FROM `tabEmployee Checkin` ec
+            LEFT JOIN `tabEmployee` e ON ec.employee = e.name
+            WHERE {attendance_where}
+            ORDER BY ec.time DESC
+            LIMIT {int(limit_start)}, {int(limit_page_length)}
+        """, attendance_values, as_dict=True)
+        
+        attendance_total_row = frappe.db.sql(f"""
+            SELECT COUNT(ec.name) as count
+            FROM `tabEmployee Checkin` ec
+            LEFT JOIN `tabEmployee` e ON ec.employee = e.name
+            WHERE {attendance_where}
+        """, attendance_values, as_dict=True)
+        
+        attendance_total = attendance_total_row[0].count if attendance_total_row else 0
+        
+        return {
+            "attendance": attendance,
+            "total_count": attendance_total
+        }

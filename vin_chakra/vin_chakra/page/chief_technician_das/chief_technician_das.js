@@ -45,6 +45,11 @@ class ChiefTechnicianDashboard {
         this.movement_length = 10;
         this.movement_total = 0;
         
+        // Paginated attendance log state
+        this.attendance_start = 0;
+        this.attendance_length = 10;
+        this.attendance_total = 0;
+        
         this.calendar_date = new Date();
         this.map = null;
         this.markers_layer = null;
@@ -69,6 +74,7 @@ class ChiefTechnicianDashboard {
     reset_pagination() {
         this.tickets_start = 0;
         this.movement_start = 0;
+        this.attendance_start = 0;
     }
     
     render_skeleton() {
@@ -82,6 +88,7 @@ class ChiefTechnicianDashboard {
                         <button class="ct-tab-btn active" data-tab="tickets"><i class="fa fa-ticket"></i> Ticket Board</button>
                         <button class="ct-tab-btn" data-tab="analytics"><i class="fa fa-pie-chart"></i> Analytics & Leaderboard</button>
                         <button class="ct-tab-btn" data-tab="movement"><i class="fa fa-map-marker"></i> Technician Map</button>
+                        <button class="ct-tab-btn" data-tab="attendance"><i class="fa fa-clock-o"></i> Attendance</button>
                     </div>
                     
                     <div style="display: flex; gap: 10px; align-items: center;">
@@ -180,6 +187,21 @@ class ChiefTechnicianDashboard {
             parent: this.wrapper.find("#ct-filter-technician-control"),
             render_input: true
         });
+        
+        // Remove standard Frappe margins/padding and style the input to match custom inputs
+        setTimeout(() => {
+            this.tech_control.$wrapper.find('.form-group').css({'margin': '0'});
+            this.tech_control.$wrapper.find('.clearfix').hide(); // Hide the empty Frappe label
+            this.tech_control.$input.css({
+                'background': '#fff', 
+                'border': '1px solid #e2e8f0', 
+                'border-radius': '6px', 
+                'height': '36px', 
+                'padding': '0 12px',
+                'box-shadow': 'none'
+            });
+            this.tech_control.$wrapper.css({'background': 'transparent'});
+        }, 100);
     }
     
     render_view_structure() {
@@ -194,9 +216,9 @@ class ChiefTechnicianDashboard {
         }
 
         // Status/Priority filters only apply to the ticket list — hide them
-        // on the map tab so it's clear they have no effect there.
+        // on the map tab and attendance tab so it's clear they have no effect there.
         this.wrapper.find("#ct-filter-status-wrap, #ct-filter-priority-wrap")
-            .toggle(this.current_tab !== "movement");
+            .toggle(this.current_tab !== "movement" && this.current_tab !== "attendance");
 
         let content = this.wrapper.find("#ct-view-content");
         if (this.current_tab === "tickets") {
@@ -256,6 +278,14 @@ class ChiefTechnicianDashboard {
                 </div>
             `);
             this.init_map();
+        } else if (this.current_tab === "attendance") {
+            content.html(`
+                <div class="ct-attendance-layout" style="background: white; border: 1px solid var(--ct-border); border-radius: var(--ct-radius); padding: 20px; box-shadow: var(--ct-shadow-sm);">
+                    <div class="ct-analytics-card-title" style="margin-bottom: 16px;"><i class="fa fa-clock-o"></i> Technician Day Attendance Logs</div>
+                    <div id="ct-attendance-list-container"></div>
+                    <div class="ct-pagination" id="ct-attendance-pagination" style="margin-top: 20px;"></div>
+                </div>
+            `);
         }
     }
     
@@ -380,6 +410,18 @@ class ChiefTechnicianDashboard {
             self.load_data();
         });
         
+        // Pagination clicks - Attendance logs
+        this.wrapper.on("click", "#ct-attendance-pagination .ct-page-btn", function() {
+            let action = $(this).data("action");
+            if (action === "prev" && self.attendance_start > 0) {
+                self.attendance_start -= self.attendance_length;
+            } else if (action === "next" && (self.attendance_start + self.attendance_length) < self.attendance_total) {
+                self.attendance_start += self.attendance_length;
+            }
+            self.load_data();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+        
         // Summary Cards click filter
         this.wrapper.on("click", ".ct-summary-card", function() {
             let status = $(this).data("status");
@@ -400,6 +442,8 @@ class ChiefTechnicianDashboard {
             this.load_analytics_data();
         } else if (this.current_tab === "movement") {
             this.load_movement_data();
+        } else if (this.current_tab === "attendance") {
+            this.load_attendance_data();
         }
     }
     
@@ -1034,6 +1078,133 @@ class ChiefTechnicianDashboard {
             }
         });
         d.show();
+    }
+    
+    load_attendance_data() {
+        let self = this;
+        frappe.call({
+            method: "vin_chakra.vin_chakra.page.chief_technician_das.chief_technician_das.get_dashboard_data",
+            args: {
+                date_from: this.filters.date_from,
+                date_to: this.filters.date_to,
+                technician: this.filters.technician,
+                limit_start: this.attendance_start,
+                limit_page_length: this.attendance_length,
+                view: "attendance"
+            },
+            callback: function(r) {
+                self.wrapper.find("#ct-loader").hide();
+                if (r.message) {
+                    let data = r.message;
+                    self.attendance_total = data.total_count;
+                    self.render_attendance_list(data.attendance);
+                    self.render_attendance_pagination();
+                }
+            }
+        });
+    }
+
+    render_attendance_list(logs) {
+        let container = $("#ct-attendance-list-container");
+        if (!logs || logs.length === 0) {
+            container.html(`
+                <div class="ct-empty-state">
+                    <i class="fa fa-clock-o"></i>
+                    <h3>No attendance records found</h3>
+                    <p>Try adjusting your filters.</p>
+                </div>
+            `);
+            return;
+        }
+
+        let html = `<table class="table table-bordered table-hover" style="font-size: 13px; margin: 0;">
+            <thead>
+                <tr style="background-color: #f8fafc;">
+                    <th>Employee Name</th>
+                    <th>Log Type</th>
+                    <th>Time</th>
+                    <th>Location (GPS)</th>
+                    <th>Device ID</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+        logs.forEach(log => {
+            let log_type_badge = log.log_type === "IN" 
+                ? `<span class="badge" style="background: #dcfce7; color: #15803d;">IN</span>`
+                : `<span class="badge" style="background: #fee2e2; color: #b91c1c;">OUT</span>`;
+            
+            let time_str = log.time ? frappe.datetime.global_date_format(log.time) + " " + log.time.split(" ")[1].substring(0, 5) : "-";
+            
+            let location_str = (log.latitude && log.longitude) 
+                ? `<a href="javascript:void(0)" onclick="frappe.pages['chief-technician-das']._dashboard.open_map_popup(${log.latitude}, ${log.longitude})" style="color: var(--ct-primary);"><i class="fa fa-map-marker"></i> ${log.latitude.toFixed(5)}, ${log.longitude.toFixed(5)}</a>`
+                : "-";
+
+            html += `
+                <tr>
+                    <td style="font-weight: 500;">${log.employee_name || log.employee}</td>
+                    <td>${log_type_badge}</td>
+                    <td>${time_str}</td>
+                    <td>${location_str}</td>
+                    <td style="color: #64748b;">${log.device_id || "-"}</td>
+                </tr>
+            `;
+        });
+        
+        html += `</tbody></table>`;
+        container.html(html);
+    }
+
+    render_attendance_pagination() {
+        let container = $("#ct-attendance-pagination");
+        if (this.attendance_total <= this.attendance_length) {
+            container.empty();
+            return;
+        }
+        
+        let current_page = Math.floor(this.attendance_start / this.attendance_length) + 1;
+        let total_pages = Math.ceil(this.attendance_total / this.attendance_length);
+        
+        container.html(`
+            <button class="ct-page-btn" data-action="prev" ${this.attendance_start === 0 ? "disabled" : ""}>
+                <i class="fa fa-chevron-left"></i> Previous
+            </button>
+            <div class="ct-page-info">Page ${current_page} of ${total_pages}</div>
+            <button class="ct-page-btn" data-action="next" ${(this.attendance_start + this.attendance_length) >= this.attendance_total ? "disabled" : ""}>
+                Next <i class="fa fa-chevron-right"></i>
+            </button>
+        `);
+    }
+
+    open_map_popup(lat, lng) {
+        let d = new frappe.ui.Dialog({
+            title: "Check-in Location",
+            fields: [
+                {
+                    fieldtype: "HTML",
+                    fieldname: "map_html"
+                }
+            ]
+        });
+        
+        d.get_field("map_html").$wrapper.html('<div id="ct-popup-map" style="height: 400px; width: 100%; border-radius: 8px;"></div>');
+        d.show();
+        
+        setTimeout(() => {
+            frappe.require([
+                'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
+                'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+            ], function() {
+                let map = L.map("ct-popup-map").setView([lat, lng], 15);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors'
+                }).addTo(map);
+                L.marker([lat, lng]).addTo(map);
+                
+                // Fix map size after dialog finishes opening
+                setTimeout(() => map.invalidateSize(), 200);
+            });
+        }, 300);
     }
 }
 frappe.pages['chief-technician-das']._dashboard = null;

@@ -299,3 +299,69 @@ def technician_mark_pending(ticket_name: str, reason: str, latitude: float, long
 		"message": "Ticket marked as Pending.",
 		"timestamp": str(now),
 	}
+
+@frappe.whitelist()
+def get_day_attendance_status() -> dict:
+	"""Get current check-in status for the day for the logged-in technician."""
+	user = frappe.session.user
+	if user == "Guest":
+		return {"status": "error", "message": "Authentication required."}
+	
+	employees = frappe.get_all("Employee", filters={"user_id": user, "status": "Active"}, pluck="name")
+	if not employees:
+		return {"status": "error", "message": "No active Employee found for current user."}
+	
+	employee_id = employees[0]
+	
+	# Get the latest check-in for today
+	today = frappe.utils.today()
+	latest_log = frappe.get_all(
+		"Employee Checkin",
+		filters={"employee": employee_id, "time": ["like", f"{today}%"]},
+		fields=["log_type"],
+		order_by="time desc",
+		limit=1
+	)
+	
+	if latest_log and latest_log[0].log_type == "IN":
+		return {"status": "success", "state": "IN"}
+	
+	return {"status": "success", "state": "OUT"}
+
+@frappe.whitelist()
+def mark_day_attendance(log_type: str, latitude: float, longitude: float) -> dict:
+	"""Mark Day Attendance (IN or OUT) for the technician."""
+	user = frappe.session.user
+	if user == "Guest":
+		return {"status": "error", "message": "Authentication required."}
+		
+	if log_type not in ["IN", "OUT"]:
+		return {"status": "error", "message": "Invalid log type."}
+	
+	employees = frappe.get_all("Employee", filters={"user_id": user, "status": "Active"}, pluck="name")
+	if not employees:
+		return {"status": "error", "message": "No active Employee found for current user."}
+	
+	employee_id = employees[0]
+	
+	try:
+		checkin = frappe.get_doc({
+			"doctype": "Employee Checkin",
+			"employee": employee_id,
+			"time": frappe.utils.now_datetime(),
+			"log_type": log_type,
+			"latitude": float(latitude),
+			"longitude": float(longitude),
+			"device_id": "Technician Portal"
+		})
+		checkin.insert(ignore_permissions=True)
+		frappe.db.commit()
+		
+		return {
+			"status": "success", 
+			"message": f"Successfully checked {log_type.lower()}.",
+			"state": log_type
+		}
+	except Exception as e:
+		frappe.log_error("Day Attendance Checkin Failed", str(e))
+		return {"status": "error", "message": str(e)}
