@@ -158,6 +158,18 @@ fixtures = [
             ["name", "=", "Technician Dashboard"]
         ]
     },
+    {
+        "dt": "HD Ticket Status",
+        "filters": [
+            ["name", "=", "Self-Completed"]
+        ]
+    },
+    {
+        "dt": "HD Ticket Template",
+        "filters": [
+            ["name", "=", "Default"]
+        ]
+    },
     "Custom Field",
     "Property Setter"
 ]

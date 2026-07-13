@@ -1,0 +1,15 @@
+[
+ {
+  "category": "Paused",
+  "color": "Black",
+  "different_view": 1,
+  "docstatus": 0,
+  "doctype": "HD Ticket Status",
+  "enabled": 1,
+  "label_agent": "Self-Completed",
+  "label_customer": "Self-Completed",
+  "modified": "2026-07-11 19:10:51.759142",
+  "name": "Self-Completed",
+  "order": 2
+ }
+]

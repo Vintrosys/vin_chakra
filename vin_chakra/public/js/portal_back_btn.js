@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!document.getElementById('ct-back-dashboard-btn')) {
                 let btn = document.createElement('button');
                 btn.id = 'ct-back-dashboard-btn';
+                btn.type = 'button';
                 btn.innerHTML = '<i class="fa fa-arrow-left"></i> Back';
                 
                 btn.style.padding = '5px 10px';
@@ -25,12 +26,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 btn.onmouseenter = () => { btn.style.backgroundColor = '#e2e8f0'; };
                 btn.onmouseleave = () => { btn.style.backgroundColor = '#f1f5f9'; };
                 
-                btn.onclick = () => {
+                btn.onclick = (e) => {
+                    e.preventDefault();
                     let referrer = document.referrer;
                     if (referrer && referrer.includes('/app/')) {
                         window.location.href = referrer;
+                    } else if (window.history.length > 1) {
+                        window.history.back();
                     } else {
-                        window.location.href = '/app/chief-technician-das';
+                        window.location.href = '/app';
                     }
                 };
                 
