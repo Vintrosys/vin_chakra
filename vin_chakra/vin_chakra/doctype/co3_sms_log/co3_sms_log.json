@@ -20,14 +20,16 @@
   {
    "fieldname": "ticket",
    "fieldtype": "Link",
-   "label": "Reference Ticket",
-   "options": "HD Ticket"
+   "label": "HD Ticket Number",
+   "options": "HD Ticket",
+   "in_list_view": 1
   },
   {
    "fieldname": "to_mobile",
    "fieldtype": "Data",
    "label": "Recipient Mobile",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "message",
@@ -54,7 +56,8 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Sent\nFailed"
+   "options": "Sent\nFailed",
+   "in_list_view": 1
   },
   {
    "fieldname": "message_id",

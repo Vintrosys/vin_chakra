@@ -135,7 +135,7 @@ class TechnicianPortal {
                 else if (err.code === 3) msg = "GPS fetch timeout occurred.";
                 frappe.msgprint(msg);
             },
-            { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 }
+            { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
         );
     }
     
@@ -734,7 +734,7 @@ class TechnicianPortal {
                             else if (err.code === 3) msg = "GPS fetch timeout occurred.";
                             reject(new Error(msg));
                         },
-                        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                        { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
                     );
                 }
             });
@@ -797,8 +797,20 @@ class TechnicianPortal {
                     
                     <!-- Check-out OTP input panel -->
                     <div class="tp-otp-wrap" id="tp-otp-box">
+                        <p style="font-size:12px; margin:0 0 6px 0; color:var(--tp-text-muted); font-weight:600;">Mode of Payment:</p>
+                        <select id="tp-mop-select" class="tp-otp-input" style="font-size:13px; text-align:left; letter-spacing:normal; width:100%; margin-bottom:10px; padding:8px; border:1px solid var(--tp-border); border-radius:4px; outline:none; background:white;">
+                            <option value="">Select Mode of Payment...</option>
+                            ${(ticket.mop_options || ["Cash", "UPI", "Bank Transfer"]).map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+                        </select>
+                        
+                        <p style="font-size:12px; margin:0 0 6px 0; color:var(--tp-text-muted); font-weight:600;">GST Bill Required:</p>
+                        <select id="tp-gst-select" class="tp-otp-input" style="font-size:13px; text-align:left; letter-spacing:normal; width:100%; margin-bottom:10px; padding:8px; border:1px solid var(--tp-border); border-radius:4px; outline:none; background:white;">
+                            <option value="">Select Option...</option>
+                            ${(ticket.gst_options || ["Yes", "No"]).map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+                        </select>
+
                         <p style="font-size:12px; margin:0 0 6px 0; color:var(--tp-text-muted); font-weight:600;">Enter the 4-digit OTP from customer:</p>
-                        <input type="text" id="tp-otp-input" class="tp-otp-input" maxlength="4" placeholder="••••" autocomplete="off" pattern="\\d*">
+                        <input type="text" id="tp-otp-input" class="tp-otp-input" maxlength="4" placeholder="••••" autocomplete="off" pattern="\\d*" style="margin-bottom:10px;">
                         <div style="display:flex; gap:8px;">
                             <button class="tp-btn tp-btn-primary" id="tp-btn-submit-checkout">Verify & Check Out</button>
                             <button class="tp-btn" style="background:#e2e8f0; color:#475569;" id="tp-btn-cancel-checkout">Cancel</button>
@@ -806,9 +818,16 @@ class TechnicianPortal {
                     </div>
                     
                     <!-- Mark Pending Reason panel -->
-                    <div class="tp-otp-wrap" id="tp-pending-box">
-                        <p style="font-size:12px; margin:0 0 6px 0; color:var(--tp-text-muted); font-weight:600;">Enter reason for leaving pending:</p>
-                        <textarea id="tp-pending-reason" class="tp-otp-input" style="font-size:13px; text-align:left; letter-spacing:normal; min-height:60px; resize:vertical;" placeholder="E.g., Spare parts unavailable..."></textarea>
+                    <div class="tp-otp-wrap" id="tp-pending-box" style="display:none;">
+                        <p style="font-size:12px; margin:0 0 6px 0; color:var(--tp-text-muted); font-weight:600;">Select reason for leaving pending:</p>
+                        <select id="tp-pending-reason-select" class="tp-otp-input" style="font-size:13px; text-align:left; letter-spacing:normal; width:100%; margin-bottom:10px; padding:8px; border:1px solid var(--tp-border); border-radius:4px; outline:none; background:white;">
+                            <option value="">Select a reason...</option>
+                            ${(ticket.pending_reason_options || ["Test", "Others"]).map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+                        </select>
+                        <div id="tp-custom-reason-box" style="display:none; margin-bottom:10px;">
+                            <p style="font-size:12px; margin:0 0 6px 0; color:var(--tp-text-muted); font-weight:600;">Specify reason:</p>
+                            <textarea id="tp-custom-reason" class="tp-otp-input" style="font-size:13px; text-align:left; letter-spacing:normal; min-height:60px; resize:vertical; width:100%;" placeholder="Please specify the reason..."></textarea>
+                        </div>
                         <div style="display:flex; gap:8px;">
                             <button class="tp-btn tp-btn-warning" id="tp-btn-submit-pending">Submit & Leave</button>
                             <button class="tp-btn" style="background:#e2e8f0; color:#475569;" id="tp-btn-cancel-pending">Cancel</button>
@@ -876,7 +895,7 @@ class TechnicianPortal {
             dialog.$wrapper.find("#tp-btn-show-pending").on("click", function() {
                 dialog.$wrapper.find("#tp-action-button-row").hide();
                 dialog.$wrapper.find("#tp-pending-box").show();
-                dialog.$wrapper.find("#tp-pending-reason").focus();
+                dialog.$wrapper.find("#tp-pending-reason-select").focus();
             });
             
             dialog.$wrapper.find("#tp-btn-cancel-pending").on("click", function() {
@@ -884,9 +903,29 @@ class TechnicianPortal {
                 dialog.$wrapper.find("#tp-action-button-row").show();
             });
             
+            // Handle reason select change
+            dialog.$wrapper.find("#tp-pending-reason-select").on("change", function() {
+                if ($(this).val() === "Others") {
+                    dialog.$wrapper.find("#tp-custom-reason-box").show();
+                } else {
+                    dialog.$wrapper.find("#tp-custom-reason-box").hide();
+                }
+            });
+            
             // Submit Check-out with OTP and GPS location
             dialog.$wrapper.find("#tp-btn-submit-checkout").on("click", function() {
+                let mopVal = dialog.$wrapper.find("#tp-mop-select").val();
+                let gstVal = dialog.$wrapper.find("#tp-gst-select").val();
                 let otpVal = dialog.$wrapper.find("#tp-otp-input").val().trim();
+                
+                if (!mopVal) {
+                    frappe.show_alert({message: __("Please select Mode of Payment"), indicator: "red"});
+                    return;
+                }
+                if (!gstVal) {
+                    frappe.show_alert({message: __("Please select if GST Bill is required"), indicator: "red"});
+                    return;
+                }
                 if (!otpVal || otpVal.length !== 4) {
                     frappe.show_alert({message: __("Please enter a valid 4-digit OTP"), indicator: "red"});
                     return;
@@ -903,6 +942,8 @@ class TechnicianPortal {
                         args: {
                             ticket_name: ticket.name,
                             otp: otpVal,
+                            mode_of_payment: mopVal,
+                            gst_bill_required: gstVal,
                             latitude: coords.lat,
                             longitude: coords.lng
                         },
@@ -927,9 +968,16 @@ class TechnicianPortal {
             
             // Submit Pending
             dialog.$wrapper.find("#tp-btn-submit-pending").on("click", function() {
-                let reasonVal = dialog.$wrapper.find("#tp-pending-reason").val().trim();
+                let reasonVal = dialog.$wrapper.find("#tp-pending-reason-select").val();
+                let customReasonVal = dialog.$wrapper.find("#tp-custom-reason").val().trim();
+                
                 if (!reasonVal) {
-                    frappe.show_alert({message: __("Please enter the pending reason"), indicator: "red"});
+                    frappe.show_alert({message: __("Please select a pending reason"), indicator: "red"});
+                    return;
+                }
+                
+                if (reasonVal === "Others" && !customReasonVal) {
+                    frappe.show_alert({message: __("Please specify the custom reason"), indicator: "red"});
                     return;
                 }
                 
@@ -944,6 +992,7 @@ class TechnicianPortal {
                         args: {
                             ticket_name: ticket.name,
                             reason: reasonVal,
+                            custom_reason: customReasonVal,
                             latitude: coords.lat,
                             longitude: coords.lng
                         },

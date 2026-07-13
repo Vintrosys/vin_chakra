@@ -21,7 +21,7 @@ app_license = "mit"
 # app_include_js = "/assets/vin_chakra/js/vin_chakra.js"
 
 # web_include_css = "/assets/vin_chakra/css/vin_chakra.css"
-# web_include_js = "/assets/vin_chakra/js/vin_chakra.js"
+web_include_js = "/assets/vin_chakra/js/portal_back_btn.js"
 
 # website_theme_scss = "vin_chakra/public/scss/website"
 

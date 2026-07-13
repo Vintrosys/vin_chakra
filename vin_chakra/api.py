@@ -42,7 +42,7 @@ def get_form_schema() -> dict:
 			"fieldname": "custom_purchase_year",
 			"fieldtype": "Select",
 			"label": "Purchase Year",
-			"reqd": 0,
+			"reqd": 1,
 			"options": [str(year) for year in range(2010, 2027)]
 		})
 

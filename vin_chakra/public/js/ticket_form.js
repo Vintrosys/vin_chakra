@@ -480,9 +480,6 @@
       this._stateSelect    = null;
       this._districtSelect = null;
       this._districtOtherRow = null;
-      /* Refs for purchase-year conditional field */
-      this._purchaseYearGroup = null;
-      this._purchaseYearCtrl  = null;
       this._injectStyles();
       this._renderSkeleton();
       this._bootstrap();
@@ -607,11 +604,6 @@
             grid.appendChild(this._buildStateField(f));
           } else if (key === 'custom_city__district_') {
             grid.appendChild(this._buildDistrictField(f));
-          } else if (key === 'custom_purchased_at_sree_chakra_sewing_systems') {
-            grid.appendChild(this._buildPurchasedAtField(f));
-          } else if (key === 'custom_purchase_year') {
-            const pyField = fieldMap['custom_purchase_year'];
-            if (pyField) grid.appendChild(this._buildPurchaseYearField(pyField));
           } else {
             grid.appendChild(this._buildField(f));
           }
@@ -848,76 +840,7 @@
       sel.value = '';    /* force user to pick */
     }
 
-    /* ─────────────────────────────────────────────────────────────────
-       PURCHASED-AT FIELD
-       Renders the "Purchased at Sree Chakra" select. When user picks
-       "Yes", the Purchase Year field is shown and made mandatory.
-    ───────────────────────────────────────────────────────────────── */
-    _buildPurchasedAtField(f) {
-      const group = this._buildField(f);
-      const ctrl  = group.querySelector('select.tk-control, input.tk-control');
-      if (!ctrl) return group;
 
-      /* Store ref so _buildPurchaseYearField can be called later */
-      this._purchasedAtCtrl = ctrl;
-
-      ctrl.addEventListener('change', () => {
-        this._togglePurchaseYear(ctrl.value === 'Yes');
-      });
-      return group;
-    }
-
-    /* ─────────────────────────────────────────────────────────────────
-       PURCHASE YEAR FIELD
-       Built hidden; shown + made mandatory when "purchased at" = Yes.
-    ───────────────────────────────────────────────────────────────── */
-    _buildPurchaseYearField(f) {
-      const group = el('div', 'tk-field');
-
-      /* Initially hidden */
-      group.style.display = 'none';
-
-      const lbl = el('label', 'tk-label');
-      lbl.innerHTML = `
-        <span class="tk-label-icon">${ICONS.calendar}</span>
-        ${f.label}<span class="req" id="py-req-star">*</span>`;
-      group.appendChild(lbl);
-
-      const ctrl = el('select', 'tk-control');
-      ctrl.name = f.fieldname;
-      ctrl.innerHTML = `<option value="" disabled selected>Select Year</option>`;
-
-      (f.options || []).forEach(o => {
-        const opt = document.createElement('option');
-        opt.value = o; opt.textContent = o;
-        ctrl.appendChild(opt);
-      });
-
-      group.appendChild(ctrl);
-
-      const errMsg = el('div', 'tk-field-error');
-      errMsg.innerHTML = `${ICONS.errSmall}<span>Purchase Year is required</span>`;
-      group.appendChild(errMsg);
-
-      ctrl.addEventListener('change', () => this._clearError(ctrl, group));
-
-      /* Store refs */
-      this._purchaseYearGroup = group;
-      this._purchaseYearCtrl  = ctrl;
-
-      return group;
-    }
-
-    /* Toggle purchase year visibility + required */
-    _togglePurchaseYear(show) {
-      if (!this._purchaseYearGroup || !this._purchaseYearCtrl) return;
-      this._purchaseYearGroup.style.display = show ? '' : 'none';
-      this._purchaseYearCtrl.required = show;
-      if (!show) {
-        this._purchaseYearCtrl.value = '';
-        this._clearError(this._purchaseYearCtrl, this._purchaseYearGroup);
-      }
-    }
 
     /* ── Generic field builder ── */
 
@@ -1109,8 +1032,6 @@
             /* Restore state/district defaults */
             if (this._stateSelect) this._stateSelect.value = 'Tamil Nadu';
             this._populateDistricts('Tamil Nadu');
-            /* Hide purchase year (purchased-at resets to blank) */
-            this._togglePurchaseYear(false);
             this._alertEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           } else {
             this._showAlert('error', r.message?.message || 'Something went wrong. Please try again.');

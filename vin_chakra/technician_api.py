@@ -75,6 +75,16 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		order_by="timestamp asc",
 	)
 
+	meta = frappe.get_meta("HD Ticket")
+	pending_reason_field = meta.get_field("custom_pending_reason")
+	pending_reason_options = pending_reason_field.options.split("\n") if pending_reason_field and pending_reason_field.options else ["Test", "Others"]
+
+	mop_field = meta.get_field("custom_mode_of_payment")
+	mop_options = mop_field.options.split("\n") if mop_field and mop_field.options else ["Cash", "UPI", "Bank Transfer"]
+
+	gst_field = meta.get_field("custom_gst_bill_required")
+	gst_options = gst_field.options.split("\n") if gst_field and gst_field.options else ["Yes", "No"]
+
 	return {
 		"name": ticket.name,
 		"subject": ticket.subject,
@@ -91,6 +101,9 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		"custom_date": str(ticket.custom_date) if ticket.custom_date else "",
 		"custom_service_otp": ticket.custom_service_otp,
 		"check_log": check_log,
+		"pending_reason_options": pending_reason_options,
+		"mop_options": mop_options,
+		"gst_options": gst_options,
 	}
 
 
@@ -168,7 +181,7 @@ def technician_checkin(ticket_name: str, latitude: float, longitude: float, loca
 
 
 @frappe.whitelist()
-def technician_checkout(ticket_name: str, otp: str, latitude: float, longitude: float, location_address: str = "") -> dict:
+def technician_checkout(ticket_name: str, otp: str, latitude: float, longitude: float, location_address: str = "", mode_of_payment: str = "", gst_bill_required: str = "") -> dict:
 	"""
 	Validate OTP and record check-out for a ticket:
 	- Validates the OTP against custom_service_otp
@@ -219,8 +232,12 @@ def technician_checkout(ticket_name: str, otp: str, latitude: float, longitude: 
 		"location_address": location_address,
 	})
 
-	# Update ticket status to Resolved
+	# Update ticket status to Resolved and save custom fields
 	ticket.status = "Resolved"
+	if mode_of_payment:
+		ticket.custom_mode_of_payment = mode_of_payment
+	if gst_bill_required:
+		ticket.custom_gst_bill_required = gst_bill_required
 	ticket.flags.from_technician_api = True
 	ticket.save(ignore_permissions=True)
 	frappe.db.commit()
@@ -232,12 +249,13 @@ def technician_checkout(ticket_name: str, otp: str, latitude: float, longitude: 
 	}
 
 @frappe.whitelist()
-def technician_mark_pending(ticket_name: str, reason: str, latitude: float, longitude: float, location_address: str = "") -> dict:
+def technician_mark_pending(ticket_name: str, reason: str, latitude: float, longitude: float, location_address: str = "", custom_reason: str = "") -> dict:
 	"""
 	Mark a ticket as Pending:
 	- Appends a 'Check-out' row to the child table (since they are leaving)
 	- Adds a comment to the ticket with the pending reason
 	- Updates ticket status → 'Pending'
+	- Sets custom_pending_reason and custom_reason
 	"""
 	user = frappe.session.user
 	if user == "Guest":
@@ -278,18 +296,25 @@ def technician_mark_pending(ticket_name: str, reason: str, latitude: float, long
 		"location_address": location_address,
 	})
 
-	# Update ticket status to Pending
+	# Update ticket status to Pending and save reasons
 	ticket.status = "Pending"
+	ticket.custom_pending_reason = reason
+	if reason == "Others" and custom_reason:
+		ticket.custom_reason = custom_reason
+	else:
+		ticket.custom_reason = ""
+		
 	ticket.flags.from_technician_api = True
 	ticket.save(ignore_permissions=True)
 
 	# Add a comment for the pending reason
+	comment_reason = f"{reason} - {custom_reason}" if reason == "Others" and custom_reason else reason
 	frappe.get_doc({
 		"doctype": "Comment",
 		"comment_type": "Comment",
 		"reference_doctype": "HD Ticket",
 		"reference_name": ticket_name,
-		"content": f"**Marked as Pending**<br>Reason: {reason}",
+		"content": f"**Marked as Pending**<br>Reason: {comment_reason}",
 	}).insert(ignore_permissions=True)
 
 	frappe.db.commit()
