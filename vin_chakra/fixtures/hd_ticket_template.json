@@ -116,9 +116,16 @@
     "placeholder": null,
     "required": 1,
     "url_method": null
+   },
+   {
+    "fieldname": "custom_reason",
+    "hide_from_customer": 0,
+    "placeholder": null,
+    "required": 1,
+    "url_method": null
    }
   ],
-  "modified": "2026-07-13 22:13:40.721875",
+  "modified": "2026-07-15 13:42:59.210182",
   "name": "Default",
   "template_name": "Default"
  }

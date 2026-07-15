@@ -28,28 +28,45 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 btn.onclick = (e) => {
                     e.preventDefault();
+                    e.stopPropagation();
+                    
                     let referrer = document.referrer;
+                    // If we came directly from a desk route, go back to that exact route
                     if (referrer && referrer.includes('/app/')) {
-                        window.location.href = referrer;
-                    } else if (window.history.length > 1) {
-                        window.history.back();
-                    } else {
-                        window.location.href = '/app';
+                        window.location.assign(referrer);
+                        return;
                     }
+                    
+                    // If there's history on the same domain, try to go back gracefully
+                    if (window.history.length > 1 && referrer && referrer.includes(window.location.host)) {
+                        window.history.back();
+                        return;
+                    }
+                    
+                    // Fallback to /app which automatically redirects to the user's correct dashboard
+                    window.location.assign('/app');
                 };
                 
-                let headerRight = document.querySelector('header .flex.gap-2.items-center') || document.querySelector('.flex.gap-2.items-center');
-                if (headerRight) {
+                let headerLeft = document.querySelector('header .flex-1') || document.querySelector('header .min-w-0');
+                if (headerLeft) {
                     btn.style.position = 'static';
                     btn.style.boxShadow = 'none';
-                    headerRight.insertBefore(btn, headerRight.firstChild);
+                    // Insert before the breadcrumbs
+                    headerLeft.insertBefore(btn, headerLeft.firstChild);
                 } else {
-                    btn.style.position = 'fixed';
-                    btn.style.top = '16px';
-                    btn.style.right = '280px';
-                    btn.style.zIndex = '9999';
-                    btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
-                    document.body.appendChild(btn);
+                    let headerRight = document.querySelector('header .shrink-0');
+                    if (headerRight) {
+                        btn.style.position = 'static';
+                        btn.style.boxShadow = 'none';
+                        headerRight.insertBefore(btn, headerRight.firstChild);
+                    } else {
+                        btn.style.position = 'fixed';
+                        btn.style.top = '16px';
+                        btn.style.right = '280px';
+                        btn.style.zIndex = '9999';
+                        btn.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+                        document.body.appendChild(btn);
+                    }
                 }
             }
         } else {

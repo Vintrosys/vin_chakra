@@ -20,7 +20,7 @@
  "list_columns": [],
  "login_required": 0,
  "max_attachment_size": 0,
- "modified": "2026-07-13 12:02:45.952523",
+ "modified": "2026-07-15 13:21:08.623165",
  "modified_by": "Administrator",
  "module": "vin_chakra",
  "name": "raise-a-ticket",
@@ -164,6 +164,20 @@
    "precision": "",
    "read_only": 0,
    "reqd": 0,
+   "show_in_filter": 0
+  },
+  {
+   "allow_read_on_all_link_options": 0,
+   "fieldname": "custom_machine_name",
+   "fieldtype": "Link",
+   "hidden": 0,
+   "label": "Machine Name",
+   "max_length": 0,
+   "max_value": 0,
+   "options": "Service Machine",
+   "precision": "",
+   "read_only": 0,
+   "reqd": 1,
    "show_in_filter": 0
   }
  ]

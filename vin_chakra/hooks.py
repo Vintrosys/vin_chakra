@@ -78,7 +78,8 @@ after_migrate = "vin_chakra.vin_chakra.setup.run_setup"
 
 doc_events = {
 	"HD Ticket": {
-		"after_insert": "vin_chakra.vin_chakra.custom.hd_ticket.assign_to_admin_and_chief",
+		"before_validate": "vin_chakra.vin_chakra.custom.hd_ticket.fix_phone_numbers",
+		"after_insert": "vin_chakra.vin_chakra.custom.hd_ticket.assign_to_chief_technician",
 		"validate": "vin_chakra.vin_chakra.custom.hd_ticket.validate_ticket"
 	},
 	"ToDo": {

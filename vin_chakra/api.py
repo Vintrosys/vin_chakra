@@ -25,7 +25,7 @@ def get_form_schema() -> dict:
 			options_list = [opt.strip() for opt in f.options.split("\n") if opt.strip()]
 		elif f.fieldtype == "Link" and f.options:
 			try:
-				options_list = frappe.get_all(f.options, pluck="name")
+				options_list = frappe.get_all(f.options, pluck="name", ignore_permissions=True)
 			except Exception:
 				options_list = []
 

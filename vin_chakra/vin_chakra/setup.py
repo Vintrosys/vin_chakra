@@ -49,22 +49,7 @@ def create_chief_technician_role():
 	else:
 		print("Role 'Chief Technician' already exists.")
 
-def create_rule():
-	if not frappe.db.exists('Assignment Rule', 'Assign Ticket to Admin and Chief Technician'):
-		doc = frappe.new_doc('Assignment Rule')
-		doc.name = 'Assign Ticket to Admin and Chief Technician'
-		doc.document_type = 'HD Ticket'
-		doc.rule = 'Round Robin'
-		doc.assign_condition = 'True'
-		for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']:
-			doc.append('assignment_days', {'day': day})
-		doc.append('users', {'user': 'Administrator'})
-		doc.description = 'Assign all new HD tickets to Administrator and Chief Technician'
-		doc.insert(ignore_permissions=True)
-		frappe.db.commit()
-		print("Assignment Rule created")
-	else:
-		print("Assignment Rule already exists")
+
 
 def create_dashboard_page():
 	page_name = "chief-technician-das"
@@ -135,7 +120,7 @@ def create_web_form():
 			if f.fieldname == 'custom_machine_problem' and not f.allow_read_on_all_link_options:
 				f.allow_read_on_all_link_options = 1
 				updated = True
-		fields_to_keep = [f for f in doc.web_form_fields if f.fieldname not in ('custom_machine_name', 'description')]
+		fields_to_keep = [f for f in doc.web_form_fields if f.fieldname not in ('description',)]
 		if len(fields_to_keep) != len(doc.web_form_fields):
 			doc.web_form_fields = fields_to_keep
 			updated = True
@@ -181,11 +166,11 @@ def create_custom_fields():
 		frappe.db.commit()
 		print("Custom Field 'custom_purchase_year' created")
 def enforce_field_visibility():
-	"""Ensure Machine Name and Description fields are hidden on HD Ticket."""
-	# Hide custom_machine_name (Custom Field)
+	"""Ensure Machine Name and Description fields are correctly configured on HD Ticket."""
+	# Ensure custom_machine_name is visible
 	if frappe.db.exists("Custom Field", "HD Ticket-custom_machine_name"):
 		frappe.db.set_value("Custom Field", "HD Ticket-custom_machine_name", {
-			"hidden": 1,
+			"hidden": 0,
 			"reqd": 0
 		})
 
@@ -222,10 +207,7 @@ def run_setup():
 	except Exception as e:
 		frappe.log_error(message=f"Setup Ticket Status Error: {e}", title="Vin Chakra Setup Error")
 
-	try:
-		create_rule()
-	except Exception as e:
-		frappe.log_error(message=f"Setup Assignment Rule Error: {e}", title="Vin Chakra Setup Error")
+
 
 	try:
 		create_dashboard_page()

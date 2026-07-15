@@ -13,12 +13,29 @@ def _is_technician(user=None):
 	return not ({"Agent Manager", "System Manager", "Chief Technician"} & set(roles))
 
 
-def assign_to_admin_and_chief(doc, method):
-	users_to_assign = ['Administrator']
-	chief_technicians = frappe.get_all('Has Role', filters={'role': 'Chief Technician'}, fields=['parent'])
-	users_to_assign.extend([d.parent for d in chief_technicians])
+def fix_phone_numbers(doc, method=None):
+	"""Ensure phone fields have a country code before Frappe strict validation runs."""
+	phone_fields = [df.fieldname for df in doc.meta.fields if df.fieldtype == "Phone"]
+	for field in phone_fields:
+		val = doc.get(field)
+		if val:
+			val = val.strip()
+			if val == "+":
+				doc.set(field, "")
+			elif not val.startswith("+"):
+				doc.set(field, f"+91-{val}")
+
+
+def assign_to_chief_technician(doc, method):
+	chief_technicians = frappe.get_all('Has Role', filters={'role': 'Chief Technician', 'parenttype': 'User'}, fields=['parent'])
+	
+	users_to_assign = []
+	for d in chief_technicians:
+		if frappe.db.get_value('User', d.parent, 'enabled'):
+			users_to_assign.append(d.parent)
 	users_to_assign = list(set(users_to_assign))
 	
+	frappe.flags.in_auto_assignment = True
 	for user in users_to_assign:
 		try:
 			add_assign({
@@ -29,6 +46,7 @@ def assign_to_admin_and_chief(doc, method):
 			})
 		except Exception as e:
 			frappe.log_error(message=frappe.get_traceback(), title=f"Failed to assign ticket {doc.name} to {user}")
+	frappe.flags.in_auto_assignment = False
 
 
 def get_assignee_restricted_ticket_query(user=None):
@@ -120,6 +138,9 @@ def validate_todo_assignment(todo, method=None):
 	"""
 	Event hook for ToDo to restrict technicians from assigning or unassigning tickets.
 	"""
+	if frappe.flags.in_auto_assignment:
+		return
+
 	if todo.reference_type == "HD Ticket":
 		if _is_technician(frappe.session.user):
 			frappe.throw(_("Technicians are not allowed to assign or unassign tickets."))
