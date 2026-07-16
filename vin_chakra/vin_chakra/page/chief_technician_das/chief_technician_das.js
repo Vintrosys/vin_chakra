@@ -55,6 +55,16 @@ class ChiefTechnicianDashboard {
         this.markers_layer = null;
         this.tech_control = null;
         
+        // Map specific state
+        this.map_filters = {
+            date: frappe.datetime.get_today(),
+            technician: "",
+            customer: "",
+            status: "Resolved"
+        };
+        this.map_tech_control = null;
+        this.map_customer_control = null;
+        
         this.init();
     }
     
@@ -92,6 +102,18 @@ class ChiefTechnicianDashboard {
                     </div>
                     
                     <div style="display: flex; gap: 10px; align-items: center;">
+                        <!-- Quick Date Filters (Three dot button) -->
+                        <div class="ct-time-filter-dropdown" id="ct-time-filter-dropdown" style="display: none; position: relative;">
+                            <button class="ct-filter-btn" id="ct-btn-time-filter" style="padding: 4px 8px; border-radius: 4px;" title="Quick Date Filter">
+                                <i class="fa fa-ellipsis-v"></i>
+                            </button>
+                            <div class="ct-time-filter-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 100; min-width: 120px; overflow: hidden; margin-top: 5px;">
+                                <div class="ct-time-filter-option" data-val="today" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 13px; font-weight: 500;">Today</div>
+                                <div class="ct-time-filter-option" data-val="week" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 13px; font-weight: 500;">This Week</div>
+                                <div class="ct-time-filter-option" data-val="month" style="padding: 8px 12px; cursor: pointer; font-size: 13px; font-weight: 500;">This Month</div>
+                            </div>
+                        </div>
+
                         <button class="ct-filter-btn" id="ct-btn-filter-toggle">
                             <i class="fa fa-filter"></i> Filters
                         </button>
@@ -220,6 +242,14 @@ class ChiefTechnicianDashboard {
         this.wrapper.find("#ct-filter-status-wrap, #ct-filter-priority-wrap")
             .toggle(this.current_tab !== "movement" && this.current_tab !== "attendance");
 
+        // The quick time filter dropdown should only show for analytics and attendance
+        this.wrapper.find("#ct-time-filter-dropdown")
+            .toggle(this.current_tab === "analytics" || this.current_tab === "attendance");
+            
+        // Hide global summary row on the movement tab as it has its own summary
+        this.wrapper.find("#ct-summary-row")
+            .toggle(this.current_tab !== "movement");
+
         let content = this.wrapper.find("#ct-view-content");
         if (this.current_tab === "tickets") {
             content.html(`
@@ -258,25 +288,55 @@ class ChiefTechnicianDashboard {
             `);
         } else if (this.current_tab === "movement") {
             content.html(`
-                <div class="ct-movement-layout">
-                    <div style="position: relative;">
-                        <div class="ct-map-container" id="ct-movement-map"></div>
-                        <div class="ct-map-legend" id="ct-map-legend">
-                            <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 4px;">Map Legend</div>
-                            <div class="ct-map-legend-item"><div class="ct-map-legend-dot" style="background: #3b82f6;"></div> Check-in</div>
-                            <div class="ct-map-legend-item"><div class="ct-map-legend-dot" style="background: #10b981;"></div> Check-out</div>
+                <div class="ct-movement-filters" style="background: white; border: 1px solid var(--ct-border); border-radius: var(--ct-radius); padding: 15px; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; box-shadow: var(--ct-shadow-sm); align-items: center;">
+                    <div class="ct-filter-item" style="margin: 0; min-width: 150px;">
+                        <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Date (Mandatory)</label>
+                        <input type="date" id="ct-map-filter-date" value="${this.map_filters.date}" style="width: 100%; height: 36px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 10px; font-size: 13px;">
+                    </div>
+                    <div class="ct-filter-item" style="margin: 0; min-width: 200px;">
+                        <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Technician (Optional)</label>
+                        <div id="ct-map-technician-control"></div>
+                    </div>
+                    <div class="ct-filter-item" style="margin: 0; min-width: 200px;">
+                        <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Customer (Optional)</label>
+                        <div id="ct-map-customer-control"></div>
+                    </div>
+                    <div class="ct-filter-item" style="margin: 0; min-width: 150px;">
+                        <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Ticket Status</label>
+                        <select id="ct-map-filter-status" style="width: 100%; height: 36px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 10px; font-size: 13px; background: white;">
+                            <option value="">All Statuses</option>
+                            <option value="Open" ${this.map_filters.status === 'Open' ? 'selected' : ''}>Open</option>
+                            <option value="Working" ${this.map_filters.status === 'Working' ? 'selected' : ''}>Working</option>
+                            <option value="Pending" ${this.map_filters.status === 'Pending' ? 'selected' : ''}>Pending</option>
+                            <option value="Resolved" ${this.map_filters.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
+                        </select>
+                    </div>
+                    <div class="ct-filter-item" style="margin: 0; display: flex; align-items: flex-end; height: 55px;">
+                        <button class="btn btn-primary btn-sm" id="ct-map-filter-apply" style="height: 36px; padding: 0 16px; font-weight: 600;">Apply Map Filters</button>
+                    </div>
+                </div>
+
+                <!-- Summary Row for Technician Map -->
+                <div class="ct-map-summary-row" id="ct-map-summary-row" style="display: none; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                    <!-- Will be populated dynamically -->
+                </div>
+
+                <div class="ct-movement-layout" style="display: block;">
+                    <div style="position: relative; margin-bottom: 20px;">
+                        <div class="ct-map-container" id="ct-movement-map" style="height: 380px; border-radius: var(--ct-radius); border: 1px solid var(--ct-border); box-shadow: var(--ct-shadow-sm);"></div>
+                        <div class="ct-map-legend" id="ct-map-legend" style="position: absolute; bottom: 20px; right: 20px; z-index: 400; background: white; padding: 10px; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; max-height: 200px; overflow-y: auto;">
+                            <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 4px; font-weight: 700;">Map Legend</div>
                             <div id="ct-map-legend-routes"></div>
                         </div>
                     </div>
-                    <div class="ct-logs-container">
-                        <div class="ct-analytics-card-title"><i class="fa fa-history"></i> Recent Check Logs
-                            <span style="font-size: 11px; font-weight: 500; color: var(--ct-text-muted); margin-left: 8px;">(grouped by location, then chained by time)</span>
-                        </div>
-                        <div class="ct-logs-list" id="ct-logs-list"></div>
-                        <div class="ct-pagination" id="ct-logs-pagination"></div>
+                    
+                    <div class="ct-map-timeline-container" id="ct-map-timeline-container" style="display: none; background: white; border: 1px solid var(--ct-border); border-radius: var(--ct-radius); padding: 20px; box-shadow: var(--ct-shadow-sm);">
+                        <div class="ct-analytics-card-title" style="margin-bottom: 16px;"><i class="fa fa-clock-o"></i> Technician Journey Timeline</div>
+                        <div class="ct-timeline-list" id="ct-timeline-list" style="display: flex; overflow-x: auto; padding: 10px 0; gap: 20px; align-items: center; min-height: 80px;"></div>
                     </div>
                 </div>
             `);
+            this.render_map_filter_controls();
             this.init_map();
         } else if (this.current_tab === "attendance") {
             content.html(`
@@ -289,6 +349,50 @@ class ChiefTechnicianDashboard {
         }
     }
     
+    render_map_filter_controls() {
+        let self = this;
+        this.map_tech_control = frappe.ui.form.make_control({
+            df: {
+                fieldtype: "Link",
+                options: "User",
+                placeholder: "Select Technician",
+                default: self.map_filters.technician
+            },
+            parent: this.wrapper.find("#ct-map-technician-control"),
+            render_input: true
+        });
+        
+        this.map_customer_control = frappe.ui.form.make_control({
+            df: {
+                fieldtype: "Link",
+                options: "Customer",
+                placeholder: "Select Customer",
+                default: self.map_filters.customer
+            },
+            parent: this.wrapper.find("#ct-map-customer-control"),
+            render_input: true
+        });
+        
+        setTimeout(() => {
+            [this.map_tech_control, this.map_customer_control].forEach(ctrl => {
+                if(ctrl) {
+                    ctrl.$wrapper.find('.form-group').css({'margin': '0'});
+                    ctrl.$wrapper.find('.clearfix').hide();
+                    ctrl.$input.css({
+                        'background': '#fff', 
+                        'border': '1px solid #e2e8f0', 
+                        'border-radius': '6px', 
+                        'height': '36px', 
+                        'padding': '0 12px',
+                        'box-shadow': 'none',
+                        'font-size': '13px'
+                    });
+                    ctrl.$wrapper.css({'background': 'transparent'});
+                }
+            });
+        }, 100);
+    }
+    
     init_map() {
         let self = this;
         setTimeout(() => {
@@ -298,7 +402,7 @@ class ChiefTechnicianDashboard {
                     'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
                 ], function() {
                     let map_el = $("#ct-movement-map")[0];
-                    self.map = L.map(map_el).setView([20.5937, 78.9629], 5);
+                    self.map = L.map(map_el, { scrollWheelZoom: false }).setView([20.5937, 78.9629], 5);
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         attribution: '© OpenStreetMap contributors'
                     }).addTo(self.map);
@@ -377,6 +481,51 @@ class ChiefTechnicianDashboard {
             self.wrapper.find("#ct-filters-panel").slideToggle(200);
         });
         
+        // Time filter dropdown toggle
+        this.wrapper.on("click", "#ct-btn-time-filter", function(e) {
+            e.stopPropagation();
+            self.wrapper.find(".ct-time-filter-menu").toggle();
+        });
+        
+        $(document).on("click", function(e) {
+            if (!$(e.target).closest(".ct-time-filter-dropdown").length) {
+                self.wrapper.find(".ct-time-filter-menu").hide();
+            }
+        });
+        
+        // Time filter option click
+        this.wrapper.on("click", ".ct-time-filter-option", function() {
+            let val = $(this).data("val");
+            let today = frappe.datetime.get_today();
+            self.wrapper.find(".ct-time-filter-menu").hide();
+            
+            if (val === "today") {
+                self.filters.date_from = today;
+                self.filters.date_to = today;
+            } else if (val === "week") {
+                self.filters.date_from = frappe.datetime.add_days(today, -7);
+                self.filters.date_to = today;
+            } else if (val === "month") {
+                self.filters.date_from = frappe.datetime.month_start();
+                self.filters.date_to = frappe.datetime.month_end();
+            }
+            
+            // Sync with date inputs
+            self.wrapper.find("#ct-filter-date-from").val(self.filters.date_from);
+            self.wrapper.find("#ct-filter-date-to").val(self.filters.date_to);
+            
+            self.reset_pagination();
+            self.load_data();
+        });
+        
+        // Hover effects for the time filter options
+        this.wrapper.on("mouseenter", ".ct-time-filter-option", function() {
+            $(this).css("background-color", "#f8fafc");
+        });
+        this.wrapper.on("mouseleave", ".ct-time-filter-option", function() {
+            $(this).css("background-color", "white");
+        });
+        
         // Calendar navigation
         this.wrapper.on("click", ".ct-cal-prev", function() {
             self.calendar_date.setMonth(self.calendar_date.getMonth() - 1);
@@ -429,6 +578,22 @@ class ChiefTechnicianDashboard {
             self.wrapper.find("#ct-filter-status").val(status);
             self.reset_pagination();
             self.load_data();
+        });
+        
+        // Apply Map Filters
+        this.wrapper.on("click", "#ct-map-filter-apply", function() {
+            self.map_filters.date = self.wrapper.find("#ct-map-filter-date").val();
+            self.map_filters.technician = self.map_tech_control.get_value();
+            self.map_filters.customer = self.map_customer_control.get_value();
+            self.map_filters.status = self.wrapper.find("#ct-map-filter-status").val();
+            
+            if(!self.map_filters.date) {
+                frappe.msgprint("Date is mandatory for the Technician Map.");
+                return;
+            }
+            
+            self.wrapper.find("#ct-loader").show();
+            self.load_movement_data();
         });
     }
     
@@ -779,233 +944,300 @@ class ChiefTechnicianDashboard {
     load_movement_data() {
         let self = this;
         frappe.call({
-            method: "vin_chakra.vin_chakra.page.chief_technician_das.chief_technician_das.get_dashboard_data",
+            method: "vin_chakra.vin_chakra.page.chief_technician_das.chief_technician_das.get_technician_map_data",
             args: {
-                date_from: this.filters.date_from,
-                date_to: this.filters.date_to,
-                technician: this.filters.technician,
-                search_query: this.search_query,
-                limit_start: this.movement_start,
-                limit_page_length: this.movement_length,
-                view: "movement"
+                date: this.map_filters.date,
+                technician: this.map_filters.technician,
+                customer: this.map_filters.customer,
+                ticket_status: this.map_filters.status
             },
             callback: function(r) {
                 self.wrapper.find("#ct-loader").hide();
                 if (r.message) {
                     let data = r.message;
-                    self.movement_total = data.total_count;
                     
-                    // Render Logs List
-                    self.render_logs_list(data.movement);
-                    self.render_logs_pagination();
-                    
-                    // Render Map Markers & Location-Chained Route
-                    self.render_movement_map(data.map_points || []);
+                    if (data.mode === "all_technicians") {
+                        self.render_all_tech_map(data.markers);
+                        self.wrapper.find("#ct-map-summary-row").hide();
+                        self.wrapper.find("#ct-map-timeline-container").hide();
+                    } else {
+                        self.render_tech_route_map(data.visits);
+                        self.render_map_summary(data.summary);
+                        self.render_map_timeline(data.visits);
+                        self.wrapper.find("#ct-map-summary-row").css("display", "grid");
+                        self.wrapper.find("#ct-map-timeline-container").show();
+                    }
                 }
             }
         });
     }
 
-    /* ─────────────────────────────────────────────────────────────────
-       RENDER MOVEMENT MAP
-       Route logic (per technician):
-       1. Group that technician's logs by TICKET — each ticket is one
-          job/location, so this naturally pairs its Check-in + Check-out
-          together instead of letting raw timestamps interleave them
-          with a *different* location's logs that happened to fall in
-          between.
-       2. Within a location, order its own logs chronologically
-          (Check-in → Check-out).
-       3. Order the locations themselves by each location's earliest
-          timestamp — i.e. "when did the technician first arrive here".
-       4. Flatten: this connects Check-in→Check-out at location A first,
-          then A's last point → location B's Check-in, and so on —
-          exactly the chaining behaviour requested, and it can no longer
-          zig-zag between two locations whose visits overlapped in time.
-    ───────────────────────────────────────────────────────────────── */
-    render_movement_map(map_points) {
+    render_all_tech_map(markers) {
         let self = this;
         if (!self.map || !self.markers_layer) return;
 
         self.markers_layer.clearLayers();
         let bounds = [];
-        let valid_points = map_points.filter(log => log.latitude && log.longitude);
-
-        // Group by technician — each technician gets their own route/color
-        let tech_groups = {};
-        valid_points.forEach(log => {
-            if (!tech_groups[log.user]) tech_groups[log.user] = [];
-            tech_groups[log.user].push(log);
-        });
-
-        let route_colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6'];
-        let color_idx = 0;
         let legend_html = "";
-
-        Object.keys(tech_groups).forEach(tech => {
-            let tech_logs = tech_groups[tech];
-            let tech_color = route_colors[color_idx % route_colors.length];
-            color_idx++;
-
-            let tech_name = frappe.user.full_name(tech) || tech;
+        
+        let route_colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6'];
+        
+        markers.forEach((log, index) => {
+            let tech_color = route_colors[index % route_colors.length];
+            let tech_name = frappe.user.full_name(log.user) || log.user;
+            
             legend_html += `
                 <div class="ct-map-legend-item">
-                    <div style="width:16px; height:3px; background:${tech_color}; border-radius:2px;"></div>
+                    <div style="width:16px; height:16px; border-radius:50%; background:${tech_color}; display:inline-block; vertical-align:middle; margin-right:6px;"></div>
                     ${tech_name}
                 </div>`;
-
-            // Step 1 — group this technician's logs by location (ticket)
-            let location_groups = {};
-            tech_logs.forEach(log => {
-                let key = log.ticket || log.name;
-                if (!location_groups[key]) location_groups[key] = [];
-                location_groups[key].push(log);
+                
+            let icon_html = `
+                <div class="map-route-marker" style="background-color:${tech_color}; color:white; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-weight:800; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-size:11px;" title="${tech_name}">
+                    <i class="fa fa-user"></i>
+                </div>
+            `;
+            let customIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: icon_html,
+                iconSize: [26, 26],
+                iconAnchor: [13, 13]
             });
-
-            // Step 2 — within each location, sort chronologically (Check-in → Check-out)
-            // Step 3 — order locations by their own earliest timestamp
-            let location_blocks = Object.keys(location_groups).map(ticket => {
-                let logs_here = location_groups[ticket].slice().sort(
-                    (a, b) => new Date(a.creation) - new Date(b.creation)
-                );
-                return { ticket: ticket, logs: logs_here, start_time: new Date(logs_here[0].creation) };
-            }).sort((a, b) => a.start_time - b.start_time);
-
-            // Step 4 — flatten into one travel-ordered sequence
-            let ordered_logs = [];
-            location_blocks.forEach(block => ordered_logs.push(...block.logs));
-
-            if (ordered_logs.length > 1) {
-                let path_coords = ordered_logs.map(log => [log.latitude, log.longitude]);
-
-                L.polyline(path_coords, {
-                    color: tech_color,
-                    weight: 4,
-                    opacity: 0.85,
-                    lineJoin: 'round'
-                }).addTo(self.markers_layer);
-
-                // Directional chevrons along the chained route.
-                // A hop within the same location (check-in↔check-out) is drawn
-                // solid; a hop moving to the NEXT location is drawn lighter,
-                // so the map visually distinguishes "on-site" from "travel".
-                for (let i = 0; i < path_coords.length - 1; i++) {
-                    let p1 = path_coords[i];
-                    let p2 = path_coords[i + 1];
-                    let mid_lat = (p1[0] + p2[0]) / 2;
-                    let mid_lng = (p1[1] + p2[1]) / 2;
-
-                    let dy = p2[0] - p1[0];
-                    let dx = p2[1] - p1[1];
-                    let angle = Math.atan2(dy, dx) * 180 / Math.PI;
-
-                    let same_location = ordered_logs[i].ticket === ordered_logs[i + 1].ticket;
-
-                    let arrowIcon = L.divIcon({
-                        className: 'route-arrow-icon',
-                        html: `<div style="transform: rotate(${angle}deg); color: ${tech_color}; font-size: 12px; display: flex; align-items: center; justify-content: center; opacity:${same_location ? 1 : 0.55};"><i class="fa fa-chevron-right"></i></div>`,
-                        iconSize: [16, 16],
-                        iconAnchor: [8, 8]
-                    });
-                    L.marker([mid_lat, mid_lng], {icon: arrowIcon, interactive: false}).addTo(self.markers_layer);
-                }
-            }
-
-            // Numbered markers, in the new location-chained travel order
-            ordered_logs.forEach((log, index) => {
-                let pin_color = log.check_type == 'Check-in' ? '#3b82f6' : '#10b981';
-                let time_only = frappe.datetime.get_time(log.creation).substring(0, 5);
-                let icon_html = `
-                    <div class="map-route-marker" style="background-color:${pin_color}; color:white; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-weight:800; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-size:11px;" title="${log.check_type} at ${time_only}">
-                        ${index + 1}
-                    </div>
-                `;
-
-                let customIcon = L.divIcon({
-                    className: 'custom-div-icon',
-                    html: icon_html,
-                    iconSize: [26, 26],
-                    iconAnchor: [13, 13]
-                });
-
-                let marker = L.marker([log.latitude, log.longitude], {icon: customIcon});
-                let popup_html = `
-                    <div style="font-family: 'Inter', sans-serif; padding: 4px; width: 220px;">
-                        <div style="font-weight: 800; font-size: 13px; margin-bottom: 4px; color: var(--ct-text-main);">
-                            ${frappe.user.full_name(log.user) || log.user}
-                        </div>
-                        <div style="margin-bottom: 6px;">
-                            <span class="badge" style="background-color: ${pin_color}; color: white; font-size: 9px; padding: 2px 5px; text-transform: uppercase;">${log.check_type} #${index + 1}</span>
-                            <span style="font-size: 11px; color: var(--ct-text-muted); float: right; font-weight: 600;">${time_only}</span>
-                        </div>
-                        <div style="font-size: 12px; line-height: 1.4; border-top: 1px solid #f1f5f9; padding-top: 6px;">
-                            <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary); font-weight: 700;">${log.ticket}</a><br>
-                            <strong>Customer:</strong> ${log.customer || 'N/A'}<br>
-                            <strong>Address:</strong> <span style="color: #475569;">${log.location_address || 'N/A'}</span>
-                        </div>
-                    </div>
-                `;
-                marker.bindPopup(popup_html);
-                self.markers_layer.addLayer(marker);
-                bounds.push([log.latitude, log.longitude]);
-            });
-        });
-
-        $("#ct-map-legend-routes").html(legend_html);
-
-        if (bounds.length > 0) {
-            self.map.fitBounds(bounds, {padding: [50, 50]});
-        }
-    }
-    
-    render_logs_list(logs) {
-        let container = $("#ct-logs-list");
-        if (!logs || logs.length === 0) {
-            container.html(`<div class="ct-empty-state"><p>No movement logs found.</p></div>`);
-            return;
-        }
-        
-        let html = logs.map(log => {
-            let badge_color = log.check_type === 'Check-in' ? 'badge-check-in' : 'badge-check-out';
-            let action_badge = `<span class="badge-custom ${badge_color}" style="padding: 2px 6px; border-radius: 9999px; font-size: 11px; font-weight: 600; display: inline-block;">${log.check_type}</span>`;
-            let full_name = frappe.user.full_name(log.user) || log.user;
             
-            return `
-                <div class="ct-log-row">
-                    <div class="ct-log-header">
-                        <span class="ct-log-tech">${full_name} ${action_badge}</span>
-                        <span class="ct-log-time">${frappe.datetime.global_date_format(log.creation)} ${frappe.datetime.get_time(log.creation)}</span>
+            let marker = L.marker([log.latitude, log.longitude], {icon: customIcon});
+            let time_only = frappe.datetime.get_time(log.creation).substring(0, 5);
+            let popup_html = `
+                <div style="font-family: 'Inter', sans-serif; padding: 4px; width: 220px;">
+                    <div style="font-weight: 800; font-size: 13px; margin-bottom: 4px; color: var(--ct-text-main);">
+                        ${tech_name}
                     </div>
-                    <div class="ct-log-details">
-                        <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary);">${log.ticket}</a> - ${log.subject || 'No Subject'}<br>
-                        <strong>Cust:</strong> ${log.customer || 'N/A'}<br>
-                        <strong>Loc:</strong> ${log.location_address || 'Latitude: ' + log.latitude + ', Longitude: ' + log.longitude}
+                    <div style="font-size: 11px; color: var(--ct-text-muted); margin-bottom: 6px; font-weight: 600;">Latest Location at ${time_only}</div>
+                    <div style="font-size: 12px; line-height: 1.4; border-top: 1px solid #f1f5f9; padding-top: 6px;">
+                        <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary); font-weight: 700;">${log.ticket}</a><br>
+                        <strong>Customer:</strong> ${log.customer || 'N/A'}<br>
+                        <strong>Status:</strong> ${log.status || 'N/A'}<br>
+                        <strong>Address:</strong> <span style="color: #475569;">${log.location_address || 'N/A'}</span>
                     </div>
                 </div>
             `;
-        }).join("");
-        container.html(html);
+            marker.bindPopup(popup_html);
+            self.markers_layer.addLayer(marker);
+            bounds.push([log.latitude, log.longitude]);
+        });
+        
+        $("#ct-map-legend-routes").html(legend_html);
+        if (bounds.length > 0) {
+            self.map.fitBounds(bounds, {padding: [50, 50]});
+        } else {
+            self.map.setView([20.5937, 78.9629], 5);
+        }
     }
     
-    render_logs_pagination() {
-        let container = $("#ct-logs-pagination");
-        if (this.movement_total <= this.movement_length) {
-            container.empty();
+    render_tech_route_map(visits) {
+        let self = this;
+        if (!self.map || !self.markers_layer) return;
+
+        self.markers_layer.clearLayers();
+        let bounds = [];
+        let tech_color = '#3b82f6';
+        let tech_name = this.map_filters.technician ? frappe.user.full_name(this.map_filters.technician) : "";
+        
+        let legend_html = `
+            <div class="ct-map-legend-item">
+                <div style="width:16px; height:3px; background:${tech_color}; border-radius:2px; display:inline-block; vertical-align:middle; margin-right:6px;"></div>
+                ${tech_name} Journey
+            </div>
+            <div class="ct-map-legend-item">
+                <span class="badge" style="background:#10b981; color:white; font-size:9px; padding:2px 4px; margin-right:6px;">START</span> First Ticket
+            </div>
+            <div class="ct-map-legend-item">
+                <span class="badge" style="background:#ef4444; color:white; font-size:9px; padding:2px 4px; margin-right:6px;">END</span> Last Ticket
+            </div>`;
+        $("#ct-map-legend-routes").html(legend_html);
+        
+        if (visits.length > 1) {
+            let path_coords = visits.map(v => [v.latitude, v.longitude]);
+            L.polyline(path_coords, {
+                color: tech_color,
+                weight: 4,
+                opacity: 0.85,
+                lineJoin: 'round'
+            }).addTo(self.markers_layer);
+            
+            for (let i = 0; i < path_coords.length - 1; i++) {
+                let p1 = path_coords[i];
+                let p2 = path_coords[i + 1];
+                let mid_lat = (p1[0] + p2[0]) / 2;
+                let mid_lng = (p1[1] + p2[1]) / 2;
+                let dy = p2[0] - p1[0];
+                let dx = p2[1] - p1[1];
+                let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+                let arrowIcon = L.divIcon({
+                    className: 'route-arrow-icon',
+                    html: `<div style="transform: rotate(${angle}deg); color: ${tech_color}; font-size: 14px; display: flex; align-items: center; justify-content: center; opacity:1;"><i class="fa fa-chevron-right"></i></div>`,
+                    iconSize: [16, 16],
+                    iconAnchor: [8, 8]
+                });
+                L.marker([mid_lat, mid_lng], {icon: arrowIcon, interactive: false}).addTo(self.markers_layer);
+            }
+        }
+        
+        self.map_markers = {};
+        
+        visits.forEach((v, index) => {
+            let badge = "";
+            let pin_color = '#64748b';
+            if (index === 0) { badge = "START"; pin_color = '#10b981'; }
+            else if (index === visits.length - 1) { badge = "END"; pin_color = '#ef4444'; }
+            
+            let icon_html = `
+                <div class="map-route-marker" style="background-color:${pin_color}; color:white; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-weight:800; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-size:12px; position: relative;">
+                    ${index + 1}
+                    ${badge ? `<div style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: ${pin_color}; color: white; font-size: 8px; padding: 2px 4px; border-radius: 4px; font-weight: 700;">${badge}</div>` : ""}
+                </div>
+            `;
+            let customIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: icon_html,
+                iconSize: [26, 26],
+                iconAnchor: [13, 13]
+            });
+            
+            let marker = L.marker([v.latitude, v.longitude], {icon: customIcon});
+            
+            let format_time = (t) => t ? frappe.datetime.get_time(t).substring(0, 5) : "N/A";
+            let duration_str = "N/A";
+            if (v.time_spent_seconds !== null) {
+                let hrs = Math.floor(v.time_spent_seconds / 3600);
+                let mins = Math.floor((v.time_spent_seconds % 3600) / 60);
+                duration_str = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+            }
+            
+            let popup_html = `
+                <div style="font-family: 'Inter', sans-serif; padding: 4px; width: 220px;" class="ct-marker-popup" data-ticket="${v.ticket}">
+                    <div style="font-weight: 800; font-size: 14px; margin-bottom: 4px; color: var(--ct-text-main);">
+                        Ticket #${index + 1}
+                    </div>
+                    <div style="font-size: 12px; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 6px;">
+                        <strong>Ticket ID:</strong> <a onclick="window.location.href='/helpdesk/tickets/${v.ticket}'" style="cursor:pointer; color:var(--ct-primary); font-weight: 700;">${v.ticket}</a><br>
+                        <strong>Customer:</strong> ${v.customer || 'N/A'}<br>
+                        <strong>Status:</strong> ${v.status}<br>
+                        <strong>In:</strong> ${format_time(v.check_in)} | <strong>Out:</strong> ${format_time(v.check_out)}<br>
+                        <strong>Time Spent:</strong> ${duration_str}<br>
+                        <strong>Location:</strong> <span style="color: #475569; font-size:11px;">${v.address || `${v.latitude.toFixed(4)}, ${v.longitude.toFixed(4)}`}</span>
+                    </div>
+                </div>
+            `;
+            
+            marker.bindPopup(popup_html);
+            
+            marker.on('popupopen', function() {
+                $(".ct-timeline-item").removeClass("active").css("border-color", "transparent").css("background", "white");
+                let t_el = $(`#timeline-item-${v.ticket}`);
+                if(t_el.length) {
+                    t_el.addClass("active").css("border-color", "var(--ct-primary)").css("background", "#f8fafc");
+                    t_el[0].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }
+            });
+            
+            self.markers_layer.addLayer(marker);
+            self.map_markers[v.ticket] = marker;
+            bounds.push([v.latitude, v.longitude]);
+        });
+        
+        if (bounds.length > 0) {
+            self.map.fitBounds(bounds, {padding: [50, 50]});
+        } else {
+            self.map.setView([20.5937, 78.9629], 5);
+        }
+    }
+    
+    render_map_summary(summary) {
+        let container = this.wrapper.find("#ct-map-summary-row");
+        if (!summary.total_tickets) {
+            container.hide();
             return;
         }
         
-        let current_page = Math.floor(this.movement_start / this.movement_length) + 1;
-        let total_pages = Math.ceil(this.movement_total / this.movement_length);
+        let format_time = (t) => t ? frappe.datetime.get_time(t).substring(0, 5) : "-";
         
-        container.html(`
-            <button class="ct-page-btn" data-action="prev" ${this.movement_start === 0 ? "disabled" : ""}>
-                Prev
-            </button>
-            <div class="ct-page-info">${current_page} / ${total_pages}</div>
-            <button class="ct-page-btn" data-action="next" ${(this.movement_start + this.movement_length) >= this.movement_total ? "disabled" : ""}>
-                Next
-            </button>
-        `);
+        let format_dur = (sec) => {
+            if (!sec) return "-";
+            let h = Math.floor(sec / 3600);
+            let m = Math.floor((sec % 3600) / 60);
+            return h > 0 ? `${h}h ${m}m` : `${m}m`;
+        };
+        
+        let html = `
+            <div class="ct-summary-card" style="border-top-color: #6366f1; cursor: default;">
+                <div class="ct-summary-val">${summary.total_tickets}</div>
+                <div class="ct-summary-label">Total Visits</div>
+            </div>
+            <div class="ct-summary-card" style="border-top-color: #10b981; cursor: default;">
+                <div class="ct-summary-val">${format_time(summary.first_check_in)}</div>
+                <div class="ct-summary-label">First Check-in</div>
+            </div>
+            <div class="ct-summary-card" style="border-top-color: #ef4444; cursor: default;">
+                <div class="ct-summary-val">${format_time(summary.last_check_out)}</div>
+                <div class="ct-summary-label">Last Check-out</div>
+            </div>
+            <div class="ct-summary-card" style="border-top-color: #f59e0b; cursor: default;">
+                <div class="ct-summary-val">${format_dur(summary.total_duration_seconds)}</div>
+                <div class="ct-summary-label">Total Working Duration</div>
+            </div>
+            <div class="ct-summary-card" style="border-top-color: #8b5cf6; cursor: default;">
+                <div class="ct-summary-val">${format_dur(summary.avg_time_seconds)}</div>
+                <div class="ct-summary-label">Avg Time/Ticket</div>
+            </div>
+        `;
+        container.html(html);
+    }
+    
+    render_map_timeline(visits) {
+        let container = this.wrapper.find("#ct-timeline-list");
+        if (!visits || visits.length === 0) {
+            container.html(`<div style="color: var(--ct-text-muted); font-size: 13px;">No tickets found for this technician on the selected date.</div>`);
+            return;
+        }
+        
+        let format_time = (t) => t ? frappe.datetime.get_time(t).substring(0, 5) : "--:--";
+        let self = this;
+        
+        let html = "";
+        visits.forEach((v, index) => {
+            let dur_str = "";
+            if (v.time_spent_seconds) {
+                let m = Math.floor(v.time_spent_seconds / 60);
+                dur_str = `<div style="font-size:10px; color:var(--ct-text-muted); margin-top:4px;"><i class="fa fa-clock-o"></i> ${m} min spent</div>`;
+            }
+            
+            html += `
+                <div class="ct-timeline-item" id="timeline-item-${v.ticket}" data-ticket="${v.ticket}" style="min-width: 200px; border: 1px solid transparent; border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.2s; position: relative;">
+                    <div style="position: absolute; top: 12px; right: 12px; font-weight: 800; color: #cbd5e1; font-size: 20px;">#${index + 1}</div>
+                    <div style="font-size: 14px; font-weight: 700; color: var(--ct-text-main); margin-bottom: 4px; padding-right: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${v.ticket}">${v.ticket}</div>
+                    <div style="font-size: 12px; color: var(--ct-text-muted); margin-bottom: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${v.customer || 'No Customer'}"><i class="fa fa-user"></i> ${v.customer || 'No Customer'}</div>
+                    
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:#f1f5f9; padding: 6px 8px; border-radius:4px; font-size:11px; font-weight:600;">
+                        <span><span style="color:#3b82f6;">IN</span> ${format_time(v.check_in)}</span>
+                        <span><span style="color:#10b981;">OUT</span> ${format_time(v.check_out)}</span>
+                    </div>
+                    ${dur_str}
+                </div>
+                ${index < visits.length - 1 ? `<div style="color: #cbd5e1; flex-shrink: 0;"><i class="fa fa-arrow-right"></i></div>` : ""}
+            `;
+        });
+        
+        container.html(html);
+        
+        container.off("click", ".ct-timeline-item").on("click", ".ct-timeline-item", function() {
+            let t_id = $(this).data("ticket");
+            if (self.map_markers && self.map_markers[t_id]) {
+                self.map_markers[t_id].openPopup();
+                let latlng = self.map_markers[t_id].getLatLng();
+                self.map.panTo(latlng);
+            }
+        });
     }
     
     render_active_filters() {

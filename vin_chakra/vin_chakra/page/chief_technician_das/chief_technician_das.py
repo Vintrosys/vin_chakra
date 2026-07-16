@@ -155,10 +155,10 @@ def get_dashboard_data(
         movement_values = {}
         
         if date_from:
-            movement_conditions.append("DATE(cl.creation) >= %(date_from)s")
+            movement_conditions.append("DATE(cl.timestamp) >= %(date_from)s")
             movement_values["date_from"] = date_from
         if date_to:
-            movement_conditions.append("DATE(cl.creation) <= %(date_to)s")
+            movement_conditions.append("DATE(cl.timestamp) <= %(date_to)s")
             movement_values["date_to"] = date_to
         if technician:
             movement_conditions.append("cl.technician = %(technician)s")
@@ -173,11 +173,11 @@ def get_dashboard_data(
         movement = frappe.db.sql(f"""
             SELECT 
                 cl.name, cl.technician as user, cl.check_type, cl.latitude, cl.longitude, 
-                cl.creation, cl.parent as ticket, cl.location_address, t.subject, t.custom_customer_name as customer
+                cl.timestamp as creation, cl.parent as ticket, cl.location_address, t.subject, t.custom_customer_name as customer
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {movement_where}
-            ORDER BY cl.creation DESC
+            ORDER BY cl.timestamp DESC
             LIMIT {int(limit_start)}, {int(limit_page_length)}
         """, movement_values, as_dict=True)
         
@@ -193,11 +193,11 @@ def get_dashboard_data(
         map_points = frappe.db.sql(f"""
             SELECT 
                 cl.name, cl.technician as user, cl.check_type, cl.latitude, cl.longitude, 
-                cl.creation, cl.parent as ticket, cl.location_address, t.subject, t.custom_customer_name as customer
+                cl.timestamp as creation, cl.parent as ticket, cl.location_address, t.subject, t.custom_customer_name as customer
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {movement_where}
-            ORDER BY cl.creation ASC
+            ORDER BY cl.timestamp ASC
         """, movement_values, as_dict=True)
         
         return {
@@ -245,4 +245,152 @@ def get_dashboard_data(
         return {
             "attendance": attendance,
             "total_count": attendance_total
+        }
+
+@frappe.whitelist()
+def get_technician_map_data(date, technician=None, customer=None, ticket_status=None):
+    if not (frappe.has_permission("HD Ticket", "read") and ("Chief Technician" in frappe.get_roles() or "System Manager" in frappe.get_roles())):
+        frappe.throw("You are not permitted to access this dashboard.")
+        
+    date_str = date or frappe.utils.today()
+    
+    # 1. Without technician: Latest check log for each technician on the date
+    if not technician:
+        conditions = ["DATE(cl.timestamp) = %(date)s", "cl.latitude IS NOT NULL", "cl.longitude IS NOT NULL"]
+        values = {"date": date_str}
+        
+        if customer:
+            conditions.append("t.custom_customer_name = %(customer)s")
+            values["customer"] = customer
+        if ticket_status:
+            conditions.append("t.status = %(ticket_status)s")
+            values["ticket_status"] = ticket_status
+            
+        where_clause = " AND ".join(conditions)
+        
+        query = f"""
+            SELECT 
+                cl.technician as user,
+                MAX(cl.timestamp) as last_time
+            FROM `tabHD Ticket Check Log` cl
+            LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
+            WHERE {where_clause}
+            GROUP BY cl.technician
+        """
+        latest_times = frappe.db.sql(query, values, as_dict=True)
+        
+        results = []
+        for row in latest_times:
+            log_detail = frappe.db.sql(f"""
+                SELECT 
+                    cl.name, cl.technician as user, cl.latitude, cl.longitude, cl.timestamp as creation, 
+                    cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name as customer
+                FROM `tabHD Ticket Check Log` cl
+                LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
+                WHERE cl.technician = %(user)s AND cl.timestamp = %(last_time)s
+                LIMIT 1
+            """, {"user": row.user, "last_time": row.last_time}, as_dict=True)
+            if log_detail:
+                results.append(log_detail[0])
+                
+        return {
+            "mode": "all_technicians",
+            "markers": results
+        }
+        
+    # 2. With technician: All completed tickets for technician
+    else:
+        conditions = ["DATE(cl.timestamp) = %(date)s", "cl.technician = %(technician)s"]
+        values = {"date": date_str, "technician": technician}
+        
+        if customer:
+            conditions.append("t.custom_customer_name = %(customer)s")
+            values["customer"] = customer
+        
+        if ticket_status:
+            conditions.append("t.status = %(ticket_status)s")
+            values["ticket_status"] = ticket_status
+        else:
+            conditions.append("t.status = 'Resolved'")
+            
+        where_clause = " AND ".join(conditions)
+        
+        logs = frappe.db.sql(f"""
+            SELECT 
+                cl.name, cl.check_type, cl.latitude, cl.longitude, cl.timestamp, 
+                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name as customer
+            FROM `tabHD Ticket Check Log` cl
+            LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
+            WHERE {where_clause}
+            ORDER BY cl.timestamp ASC
+        """, values, as_dict=True)
+        
+        tickets_map = {}
+        for log in logs:
+            t_id = log.ticket
+            if t_id not in tickets_map:
+                tickets_map[t_id] = {
+                    "ticket": t_id,
+                    "customer": log.customer,
+                    "status": log.status,
+                    "check_in": None,
+                    "check_out": None,
+                    "latitude": None,
+                    "longitude": None,
+                    "address": None
+                }
+            
+            if log.check_type == "Check-in" and not tickets_map[t_id]["check_in"]:
+                tickets_map[t_id]["check_in"] = log.timestamp
+                tickets_map[t_id]["latitude"] = log.latitude
+                tickets_map[t_id]["longitude"] = log.longitude
+                tickets_map[t_id]["address"] = log.location_address
+            elif log.check_type == "Check-out":
+                tickets_map[t_id]["check_out"] = log.timestamp
+                if not tickets_map[t_id]["latitude"]:
+                    tickets_map[t_id]["latitude"] = log.latitude
+                    tickets_map[t_id]["longitude"] = log.longitude
+                    tickets_map[t_id]["address"] = log.location_address
+                    
+        visits = []
+        for t_id, data in tickets_map.items():
+            duration = None
+            if data["check_in"] and data["check_out"]:
+                diff = data["check_out"] - data["check_in"]
+                duration = diff.total_seconds()
+            
+            data["time_spent_seconds"] = duration
+            visits.append(data)
+            
+        def get_sort_key(v):
+            if v["check_in"]: return v["check_in"]
+            if v["check_out"]: return v["check_out"]
+            from datetime import datetime
+            return datetime.max
+            
+        visits.sort(key=get_sort_key)
+        
+        valid_visits = [v for v in visits if v["latitude"] and v["longitude"]]
+        
+        total_tickets = len(valid_visits)
+        first_check_in = valid_visits[0]["check_in"] if total_tickets > 0 else None
+        last_check_out = valid_visits[-1]["check_out"] if total_tickets > 0 and valid_visits[-1]["check_out"] else None
+        
+        total_duration = sum([v["time_spent_seconds"] for v in valid_visits if v["time_spent_seconds"] is not None])
+        avg_time = (total_duration / total_tickets) if total_tickets > 0 else 0
+        
+        summary = {
+            "technician": technician,
+            "date": date_str,
+            "total_tickets": total_tickets,
+            "first_check_in": first_check_in,
+            "last_check_out": last_check_out,
+            "total_duration_seconds": total_duration,
+            "avg_time_seconds": avg_time
+        }
+        
+        return {
+            "mode": "technician_route",
+            "visits": valid_visits,
+            "summary": summary
         }
