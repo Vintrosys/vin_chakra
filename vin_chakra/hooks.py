@@ -21,7 +21,10 @@ app_license = "mit"
 # app_include_js = "/assets/vin_chakra/js/vin_chakra.js"
 
 # web_include_css = "/assets/vin_chakra/css/vin_chakra.css"
-web_include_js = "/assets/vin_chakra/js/portal_back_btn.js"
+web_include_js = [
+	"/assets/vin_chakra/js/portal_back_btn.js",
+	"/assets/vin_chakra/js/ticket_info_modal.js"
+]
 
 # website_theme_scss = "vin_chakra/public/scss/website"
 
@@ -121,7 +124,7 @@ permission_query_conditions = {
 
 # ----------------
 # before_request = ["vin_chakra.utils.before_request"]
-# after_request = ["vin_chakra.utils.after_request"]
+after_request = ["vin_chakra.vin_chakra.custom_helpdesk.inject_helpdesk_scripts"]
 
 # ----------
 # before_job = ["vin_chakra.utils.before_job"]

@@ -114,3 +114,123 @@ def submit_ticket(data: Union[dict, str]) -> dict:
 	except Exception as e:
 		frappe.log_error(frappe.get_traceback(), "Ticket Submission Failed")
 		return {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def get_ticket_info(ticket_name: str) -> dict:
+	"""Return ticket document values, meta fields, and options for popup modal editing."""
+	if not ticket_name:
+		frappe.throw("Ticket ID is required")
+
+	if not frappe.has_permission("HD Ticket", "read", doc=ticket_name):
+		frappe.throw("No permission to view this ticket", frappe.PermissionError)
+
+	doc = frappe.get_doc("HD Ticket", ticket_name)
+	meta = frappe.get_meta("HD Ticket")
+
+	# Fetch template fields configured in HD Ticket Template (defaulting to 'Default')
+	template_name = doc.get("template") or "Default"
+	template_fields = frappe.get_all(
+		"HD Ticket Template Field",
+		filters={"parent": template_name},
+		pluck="fieldname",
+		order_by="idx"
+	)
+
+	if not template_fields and template_name != "Default":
+		template_fields = frappe.get_all(
+			"HD Ticket Template Field",
+			filters={"parent": "Default"},
+			pluck="fieldname",
+			order_by="idx"
+		)
+
+	core_fieldnames = ["subject", "status", "priority", "ticket_type", "agent_group", "raised_by", "customer"]
+
+	ignored_fieldtypes = ["Section Break", "Column Break", "Tab Break", "HTML", "Button", "Fold"]
+	ignored_fieldnames = ["amended_from", "docstatus", "name", "owner", "creation", "modified", "modified_by"]
+
+	meta_fields_dict = {df.fieldname: df for df in meta.fields}
+
+	ordered_fieldnames = []
+	for fn in core_fieldnames:
+		if fn in meta_fields_dict and fn not in ordered_fieldnames:
+			ordered_fieldnames.append(fn)
+
+	for fn in template_fields:
+		if fn in meta_fields_dict and fn not in ordered_fieldnames:
+			ordered_fieldnames.append(fn)
+
+	fields_meta = []
+	options_map = {}
+
+	for fn in ordered_fieldnames:
+		df = meta_fields_dict[fn]
+		if df.fieldtype in ignored_fieldtypes or df.fieldname in ignored_fieldnames:
+			continue
+
+		field_info = {
+			"fieldname": df.fieldname,
+			"label": df.label or df.fieldname,
+			"fieldtype": df.fieldtype,
+			"options": df.options,
+			"reqd": df.reqd,
+			"read_only": df.read_only,
+			"hidden": df.hidden
+		}
+		fields_meta.append(field_info)
+
+		if df.fieldtype == "Select" and df.options:
+			opts = [o.strip() for o in df.options.split("\n") if o.strip()]
+			options_map[df.fieldname] = opts
+		elif df.fieldtype == "Link" and df.options:
+			try:
+				link_opts = frappe.get_all(df.options, pluck="name", limit_page_length=500, ignore_permissions=True)
+				options_map[df.fieldname] = link_opts
+			except Exception:
+				options_map[df.fieldname] = []
+
+	return {
+		"status": "success",
+		"ticket_name": ticket_name,
+		"doc": doc.as_dict(),
+		"fields": fields_meta,
+		"options": options_map,
+		"core_fields": core_fieldnames,
+		"template_fields": template_fields
+	}
+
+
+
+@frappe.whitelist()
+def update_ticket_info(ticket_name: str, values: Union[dict, str]) -> dict:
+	"""Update HD Ticket fields from the popup modal."""
+	if not ticket_name:
+		frappe.throw("Ticket ID is required")
+
+	if isinstance(values, str):
+		values = json.loads(values)
+
+	if not frappe.has_permission("HD Ticket", "write", doc=ticket_name):
+		frappe.throw("No permission to edit this ticket", frappe.PermissionError)
+
+	doc = frappe.get_doc("HD Ticket", ticket_name)
+	meta = frappe.get_meta("HD Ticket")
+	valid_fieldnames = {df.fieldname for df in meta.fields if not df.read_only and df.fieldtype not in ["Section Break", "Column Break", "Tab Break"]}
+
+	updated_count = 0
+	for k, v in values.items():
+		if k in valid_fieldnames:
+			doc.set(k, v)
+			updated_count += 1
+
+	if updated_count > 0:
+		doc.save(ignore_permissions=True)
+		frappe.db.commit()
+
+	return {
+		"status": "success",
+		"message": f"Updated {updated_count} fields successfully",
+		"ticket": doc.as_dict()
+	}
+
