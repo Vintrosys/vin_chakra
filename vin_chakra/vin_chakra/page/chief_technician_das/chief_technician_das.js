@@ -246,9 +246,19 @@ class ChiefTechnicianDashboard {
         this.wrapper.find("#ct-time-filter-dropdown")
             .toggle(this.current_tab === "analytics" || this.current_tab === "attendance");
             
-        // Hide global summary row on the movement tab as it has its own summary
-        this.wrapper.find("#ct-summary-row")
+        // Hide the global filter button in the technician map
+        this.wrapper.find("#ct-btn-filter-toggle")
             .toggle(this.current_tab !== "movement");
+            
+        // Hide the filters panel if it is open when navigating to movement tab
+        if (this.current_tab === "movement") {
+            this.wrapper.find("#ct-filters-panel").hide();
+            this.wrapper.find("#ct-btn-filter-toggle").removeClass("active");
+        }
+            
+        // Hide global summary row (box filters) on the movement and attendance tabs
+        this.wrapper.find("#ct-summary-row")
+            .toggle(this.current_tab !== "movement" && this.current_tab !== "attendance");
 
         let content = this.wrapper.find("#ct-view-content");
         if (this.current_tab === "tickets") {
