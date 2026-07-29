@@ -86,6 +86,9 @@ doc_events = {
 		"before_insert": "vin_chakra.vin_chakra.custom.hd_ticket.validate_todo_assignment",
 		"before_save": "vin_chakra.vin_chakra.custom.hd_ticket.validate_todo_assignment",
 		"before_delete": "vin_chakra.vin_chakra.custom.hd_ticket.validate_todo_assignment"
+	},
+	"Quotation": {
+		"validate": "vin_chakra.utils.quotation.validate_quotation"
 	}
 }
 
@@ -137,6 +140,10 @@ permission_query_conditions = {
 export_python_type_annotations = True
 
 require_type_annotated_api_methods = True
+
+doctype_js = {
+    "Quotation" : "public/js/quotation.js"
+}
 
 fixtures = [
     {
