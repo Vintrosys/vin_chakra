@@ -1,18 +1,35 @@
 // Inject responsive CSS for the custom grid buttons
 $(`<style>
-	/* Hide inline history button on smaller screens to save space */
-	@media (max-width: 1100px) {
-		.btn-prev-quote {
-			display: none !important;
-		}
-	}
-	/* Ensure the actions container doesn't squash icons */
-	.responsive-row-actions {
+	/* Give the actions container enough room for both icons (history + pencil) */
+	.row-actions.responsive-row-actions {
 		display: flex !important;
+		visibility: visible !important;
 		align-items: center !important;
 		justify-content: flex-end !important;
-		gap: 8px !important;
-		min-width: 50px !important;
+		gap: 6px !important;
+		min-width: 55px !important;
+		width: auto !important;
+		overflow: visible !important;
+	}
+	/* Keep the history icon compact — NO display rule here so display:none on the element is respected */
+	.btn-prev-quote {
+		align-items: center;
+		justify-content: center;
+		padding: 2px 4px !important;
+		line-height: 1;
+	}
+	.btn-prev-quote i {
+		font-size: 13px !important;
+	}
+	/* Highlight grid row when previous quotation history exists */
+	.grid-row-has-history,
+	.grid-row-has-history .grid-static-col,
+	.grid-row-has-history .col,
+	.grid-row-has-history .data-row {
+		background-color: #fff8e1 !important; /* Gentle amber background */
+	}
+	.grid-row-has-history {
+		border-left: 4px solid #ff9800 !important;
 	}
 </style>`).appendTo('head');
 
@@ -22,11 +39,8 @@ frappe.ui.form.on('Quotation', {
 		setTimeout(() => {
 			(frm.doc.items || []).forEach(row => {
 				if (row.item_code) {
-					if (!row.__prev_quotes_fetched) {
-						fetch_historical_data(frm, row.name);
-					} else {
-						inject_history_button_with_retry(frm, row.name, 0);
-					}
+					// Always re-fetch so button visibility is always based on live data
+					fetch_historical_data(frm, row.name);
 				}
 			});
 		}, 400);
@@ -80,15 +94,17 @@ frappe.ui.form.on('Quotation Item', {
 
 		let $wrapper = grid_row.grid_form.wrapper;
 		let $header = $wrapper.find('.grid-form-heading');
-		
-		// Create button if it doesn't exist
-		if (!$header.find('.btn-form-prev-quote').length) {
-			let row = frappe.get_doc(cdt, cdn);
-			let history_exists = row.__prev_quotes && row.__prev_quotes.length > 0;
-			let btn_color = history_exists ? 'orange' : '#6c757d';
 
+		// Remove existing button if any to re-render cleanly
+		$header.find('.btn-form-prev-quote').remove();
+
+		let row = frappe.get_doc(cdt, cdn);
+		let history_exists = row.__prev_quotes && row.__prev_quotes.length > 0;
+
+		// Only display the button if there are previous quotations
+		if (history_exists) {
 			let $btn = $(`<button class="btn btn-xs btn-default btn-form-prev-quote" style="margin-left: 10px;">
-				<i class="fa fa-history" style="color: ${btn_color};"></i> Previous Quotations
+				<i class="fa fa-history" style="color: orange;"></i> Previous Quotations
 			</button>`);
 
 			$btn.on('click', function () {
@@ -144,6 +160,9 @@ function fetch_historical_data(frm, cdn) {
 			row.__min_rate = r.message.minimum_bargaining_rate || 0;
 			row.__prev_quotes_fetched = true;
 
+			// Highlight the specific item row if history exists
+			highlight_grid_row(frm, cdn, row.__prev_quotes.length > 0);
+
 			// Fill the custom_minimum_bargaining_rate column in the grid if it exists
 			if (frappe.meta.has_field('Quotation Item', 'custom_minimum_bargaining_rate')) {
 				frappe.model.set_value(row.doctype, row.name, 'custom_minimum_bargaining_rate', row.__min_rate);
@@ -155,7 +174,19 @@ function fetch_historical_data(frm, cdn) {
 	});
 }
 
-// ─── Button Injection ─────────────────────────────────────────────────────────
+// ─── Button Injection & Row Styling ───────────────────────────────────────────
+
+function highlight_grid_row(frm, cdn, has_history) {
+	let grid_row = get_grid_row(frm, cdn);
+	if (!grid_row || !grid_row.row) return;
+
+	let $row_el = $(grid_row.row);
+	if (has_history) {
+		$row_el.addClass('grid-row-has-history');
+	} else {
+		$row_el.removeClass('grid-row-has-history');
+	}
+}
 
 function inject_history_button_with_retry(frm, cdn, attempts) {
 	let success = inject_history_button(frm, cdn);
@@ -193,22 +224,18 @@ function inject_history_button(frm, cdn) {
 
 	if (!$actions.length) return false;
 
-	// Make the actions area visible and use flexbox to align buttons nicely
+	// Add the CSS class — all layout/visibility is handled by the stylesheet above
 	$actions.addClass('responsive-row-actions');
-	$actions.css({
-		'visibility': 'visible',
-		'padding-right': '5px'
-	});
 
 	// Create button only once
 	let $btn = $actions.find('.btn-prev-quote');
 	if (!$btn.length) {
 		$btn = $(`<a class="btn-prev-quote" 
-			style="cursor:pointer; text-decoration:none; padding: 4px;" 
+			style="cursor:pointer; text-decoration:none; display:none;" 
 			title="Previous Quotations">
-			<i class="fa fa-history" style="font-size:15px;"></i>
+			<i class="fa fa-history"></i>
 		</a>`);
-		
+
 		// Insert it right before the edit pencil if it exists, otherwise prepend
 		let $pencil = $actions.find('.btn-open-row');
 		if ($pencil.length) {
@@ -242,7 +269,14 @@ function inject_history_button(frm, cdn) {
 						current_row.__prev_quotes = r.message.previous_quotations || [];
 						current_row.__min_rate = r.message.minimum_bargaining_rate || 0;
 						current_row.__prev_quotes_fetched = true;
-						show_previous_quotations_dialog(frm, current_row);
+
+						if (current_row.__prev_quotes.length > 0) {
+							// History found — show dialog
+							show_previous_quotations_dialog(frm, current_row);
+						} else {
+							// No history — hide the button so it won't show again
+							$btn.hide();
+						}
 					}
 				}
 			});
@@ -285,9 +319,9 @@ function show_previous_quotations_dialog(frm, row) {
 	`;
 
 	if (!row.__prev_quotes || row.__prev_quotes.length === 0) {
-		html += `<tr><td colspan="5" class="text-center text-muted" style="padding:12px;">
-			No previous quotations found for this Customer and Item.
-		</td></tr>`;
+		// This should not happen — button is hidden when no history exists.
+		// But as a safety net, just close without showing anything.
+		return;
 	} else {
 		row.__prev_quotes.forEach(q => {
 			let color = q.docstatus === 0 ? 'orange' : 'blue';
