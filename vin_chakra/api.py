@@ -76,39 +76,11 @@ def submit_ticket(data: Union[dict, str]) -> dict:
 					value = "+91-" + value
 				doc.set(key, value)
 
-		# Generate a random 4-digit Service OTP
-		otp = str(random.randint(1000, 9999))
-		doc.custom_service_otp = otp
-
 		doc.insert(ignore_permissions=True)
 		# Suppress Frappe's auto-assignment "Already in ToDo list" msgprint
 		# that leaks to the client via the JSON response's _server_messages field.
 		frappe.local.message_log = []
 		frappe.db.commit()
-
-		# Trigger Customer Notification SMS via api.co3.live
-		if doc.custom_customer_mobile_number:
-			try:
-				from vin_chakra.vin_chakra.co3_sms import send_sms
-				settings = frappe.get_single("CO3 SMS Settings")
-				if settings.enabled:
-					dlt_template_id = settings.ticket_creation_dlt_id
-					# Fallback matches the DLT-registered OTP template exactly
-					raw_template = settings.ticket_creation_template or \
-						"Dear Customer, OTP for your service request: {otp}. Share it with the technician after service completion. - Sree Chakra"
-					# Handle DLT template format {#var#}
-					if "{#var#}" in raw_template:
-						# First {#var#} is OTP, second is validity
-						message = raw_template.replace("{#var#}", otp, 1)
-						if "{#var#}" in message:
-							message = message.replace("{#var#}", "24 hours", 1)
-					else:
-						# Fallback for named placeholders
-						message = raw_template.replace("{otp}", otp).replace("{ticket_id}", doc.name)
-					
-					send_sms(doc.custom_customer_mobile_number, message, dlt_template_id, ticket=doc.name)
-			except Exception as ex:
-				frappe.log_error(f"Error sending ticket creation SMS: {str(ex)}", "CO3 SMS Send Failure")
 
 		return {"status": "success", "ticket_name": doc.name}
 	except Exception as e:
