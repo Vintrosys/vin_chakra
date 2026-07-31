@@ -1020,12 +1020,8 @@
           txt.textContent = 'Submit Ticket';
 
           if (r.message?.status === 'success') {
-            const masked = phoneNumber
-              ? phoneNumber.slice(0, 2) + '****' + phoneNumber.slice(-4)
-              : 'your registered number';
             this._showAlert('success',
-              `Ticket <strong>${r.message.ticket_name}</strong> raised successfully! ` +
-              `OTP sent to <strong>${masked}</strong>.`);
+              `Ticket <strong>${r.message.ticket_name}</strong> raised successfully! Our support team will contact you shortly.`);
             this._form.reset();
             /* Restore date default */
             this._form.querySelectorAll('input[type="date"]')

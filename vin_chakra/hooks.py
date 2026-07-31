@@ -170,6 +170,9 @@ fixtures = [
         ]
     },
     {
+        "dt": "Module Def"
+    },
+    {
         "dt": "HD Ticket Status",
         "filters": [
             ["name", "=", "Self-Completed"]

@@ -1,3 +1,5 @@
+from typing import Dict, List, Optional, Union
+
 import frappe
 from frappe import _
 from frappe.utils import now_datetime
@@ -51,6 +53,58 @@ def get_my_tickets() -> list:
 	return tickets
 
 
+def _verify_day_attendance(user):
+	"""Verify if user has checked in for the day (log_type == 'IN')."""
+	if user == "Administrator":
+		return True
+	employees = frappe.get_all("Employee", filters={"user_id": user, "status": "Active"}, pluck="name")
+	if not employees:
+		return False
+	
+	employee_id = employees[0]
+	latest_log = frappe.get_all(
+		"Employee Checkin",
+		filters={"employee": employee_id, "device_id": "Technician Portal"},
+		fields=["log_type"],
+		order_by="time desc",
+		limit=1
+	)
+	if not latest_log:
+		latest_log = frappe.get_all(
+			"Employee Checkin",
+			filters={"employee": employee_id},
+			fields=["log_type"],
+			order_by="time desc",
+			limit=1
+		)
+	return bool(latest_log and latest_log[0].log_type == "IN")
+
+
+def _send_otp_sms(ticket, target_mobile_number):
+	"""Send service OTP SMS via CO3 SMS integration."""
+	if not target_mobile_number:
+		return False
+	try:
+		from vin_chakra.vin_chakra.co3_sms import send_sms
+		settings = frappe.get_single("CO3 SMS Settings")
+		if settings.enabled:
+			dlt_template_id = settings.ticket_creation_dlt_id
+			raw_template = settings.ticket_creation_template or \
+				"Dear Customer, OTP for your service request: {otp}. Share it with the technician after service completion. - Sree Chakra"
+			otp = ticket.custom_service_otp
+			if "{#var#}" in raw_template:
+				message = raw_template.replace("{#var#}", otp, 1)
+				if "{#var#}" in message:
+					message = message.replace("{#var#}", "24 hours", 1)
+			else:
+				message = raw_template.replace("{otp}", otp).replace("{ticket_id}", ticket.name)
+			
+			return send_sms(target_mobile_number, message, dlt_template_id, ticket=ticket.name)
+	except Exception as ex:
+		frappe.log_error(f"Error sending ticket OTP SMS: {str(ex)}", "CO3 SMS Send Failure")
+	return False
+
+
 @frappe.whitelist()
 def get_ticket_detail(ticket_name: str) -> dict:
 	"""Return full ticket detail for the technician, including check log."""
@@ -93,6 +147,7 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		"priority": ticket.priority,
 		"custom_customer_name": ticket.custom_customer_name,
 		"custom_customer_mobile_number": ticket.custom_customer_mobile_number,
+		"custom__secondary_phone_number": ticket.get("custom__secondary_phone_number") or ticket.get("custom_secondary_phone_number") or "",
 		"custom_address": ticket.custom_address,
 		"custom_city__district_": ticket.custom_city__district_,
 		"custom_state": ticket.custom_state,
@@ -108,15 +163,66 @@ def get_ticket_detail(ticket_name: str) -> dict:
 
 
 @frappe.whitelist()
-def technician_checkin(ticket_name: str, latitude: float, longitude: float, location_address: str = "") -> dict:
+def check_active_ticket(current_ticket_name: str = None) -> dict:
+	"""Check if the technician already has an active working ticket."""
+	user = frappe.session.user
+	if user == "Guest":
+		frappe.throw(_("Authentication required."), frappe.PermissionError)
+
+	if current_ticket_name:
+		active_ticket = frappe.db.sql(
+			"""
+			SELECT name FROM `tabHD Ticket`
+			WHERE status = 'Working'
+			  AND JSON_SEARCH(`_assign`, 'one', %s) IS NOT NULL
+			  AND name != %s
+			LIMIT 1
+			""",
+			(user, current_ticket_name)
+		)
+	else:
+		active_ticket = frappe.db.sql(
+			"""
+			SELECT name FROM `tabHD Ticket`
+			WHERE status = 'Working'
+			  AND JSON_SEARCH(`_assign`, 'one', %s) IS NOT NULL
+			LIMIT 1
+			""",
+			(user,)
+		)
+
+	if active_ticket:
+		ticket_name = active_ticket[0][0]
+		return {
+			"has_active": True,
+			"ticket_name": ticket_name,
+			"message": f"Please close your existing ticket ({ticket_name}) before checking into a new one."
+		}
+
+	return {"has_active": False}
+
+
+@frappe.whitelist()
+def technician_checkin(ticket_name: str, latitude: float, longitude: float, location_address: str = "", otp_phone_type: str = "primary", secondary_phone: str = "", skip_otp: Union[bool, int, str] = False) -> dict:
 	"""
 	Record check-in for a ticket:
+	- Verifies day attendance is marked
+	- Updates custom__secondary_phone_number if provided
+	- Generates a fresh Service OTP (unless skip_otp is True or ticket status is Pending)
+	- Sends OTP SMS to chosen phone number (if not skipping OTP)
 	- Appends a 'Check-in' row to the child table
 	- Updates ticket status → 'Working'
 	"""
 	user = frappe.session.user
 	if user == "Guest":
 		frappe.throw(_("Authentication required."), frappe.PermissionError)
+
+	# 1. Day Attendance Verification
+	if not _verify_day_attendance(user):
+		return {
+			"status": "error",
+			"message": _("You must check in your day attendance first before checking into a ticket.")
+		}
 
 	ticket = frappe.get_doc("HD Ticket", ticket_name)
 
@@ -145,7 +251,7 @@ def technician_checkin(ticket_name: str, latitude: float, longitude: float, loca
 			"message": f"Please close your existing ticket ({active_ticket[0][0]}) before checking into a new one."
 		}
 
-	# Prevent double check-in (if already checked in and not checked out)
+	# Prevent double check-in
 	existing_logs = frappe.get_all(
 		"HD Ticket Check Log",
 		filters={"parent": ticket_name, "parenttype": "HD Ticket"},
@@ -154,6 +260,44 @@ def technician_checkin(ticket_name: str, latitude: float, longitude: float, loca
 	)
 	if existing_logs and existing_logs[0].check_type == "Check-in":
 		return {"status": "error", "message": "Already checked in. Please check out first."}
+
+	# Parse skip_otp option
+	if isinstance(skip_otp, str):
+		skip_otp = frappe.parse_json(skip_otp)
+	should_skip_otp = bool(skip_otp) or (ticket.status == "Pending")
+
+	# Update secondary phone if provided
+	if secondary_phone:
+		sec_phone_clean = secondary_phone.strip()
+		if sec_phone_clean and not sec_phone_clean.startswith("+"):
+			sec_phone_clean = "+91-" + sec_phone_clean
+		ticket.custom__secondary_phone_number = sec_phone_clean
+		if hasattr(ticket, "custom_secondary_phone_number"):
+			ticket.custom_secondary_phone_number = sec_phone_clean
+
+	sms_sent = False
+	sms_msg = ""
+	target_phone = None
+
+	if not should_skip_otp:
+		# Determine target phone for OTP
+		if str(otp_phone_type).lower() == "secondary":
+			target_phone = ticket.get("custom__secondary_phone_number") or ticket.get("custom_secondary_phone_number") or secondary_phone
+			if target_phone:
+				target_phone = target_phone.strip()
+				if not target_phone.startswith("+"):
+					target_phone = "+91-" + target_phone
+			if not target_phone:
+				return {"status": "error", "message": _("Secondary phone number is empty. Please enter a secondary phone number.")}
+		else:
+			target_phone = ticket.custom_customer_mobile_number
+			if not target_phone:
+				return {"status": "error", "message": _("Customer mobile number is empty.")}
+
+		# Generate a random 4-digit Service OTP
+		import random
+		otp = str(random.randint(1000, 9999))
+		ticket.custom_service_otp = otp
 
 	now = now_datetime()
 
@@ -173,11 +317,69 @@ def technician_checkin(ticket_name: str, latitude: float, longitude: float, loca
 	ticket.save(ignore_permissions=True)
 	frappe.db.commit()
 
+	if not should_skip_otp and target_phone:
+		# Trigger OTP SMS
+		sms_sent = _send_otp_sms(ticket, target_phone)
+		sms_msg = f" OTP sent to {target_phone}." if sms_sent else " (Note: SMS delivery failed or disabled)."
+
 	return {
 		"status": "success",
-		"message": "Checked in successfully. Ticket status set to Working.",
+		"message": f"Checked in successfully. Ticket status set to Working.{sms_msg}",
 		"timestamp": str(now),
+		"otp_sent": sms_sent
 	}
+
+
+@frappe.whitelist()
+def resend_otp(ticket_name: str, otp_phone_type: str = "primary", secondary_phone: str = "") -> dict:
+	"""Resend OTP SMS for an active ticket."""
+	user = frappe.session.user
+	if user == "Guest":
+		frappe.throw(_("Authentication required."), frappe.PermissionError)
+
+	ticket = frappe.get_doc("HD Ticket", ticket_name)
+
+	import json
+	assigned = json.loads(ticket._assign or "[]")
+	if user != "Administrator" and user not in assigned:
+		roles = frappe.get_roles(user)
+		if not ({"Agent Manager", "System Manager"} & set(roles)):
+			frappe.throw(_("You are not assigned to this ticket."), frappe.PermissionError)
+
+	if secondary_phone:
+		sec_phone_clean = secondary_phone.strip()
+		if sec_phone_clean and not sec_phone_clean.startswith("+"):
+			sec_phone_clean = "+91-" + sec_phone_clean
+		ticket.custom__secondary_phone_number = sec_phone_clean
+		if hasattr(ticket, "custom_secondary_phone_number"):
+			ticket.custom_secondary_phone_number = sec_phone_clean
+
+	if not ticket.custom_service_otp:
+		import random
+		ticket.custom_service_otp = str(random.randint(1000, 9999))
+
+	ticket.flags.from_technician_api = True
+	ticket.save(ignore_permissions=True)
+	frappe.db.commit()
+
+	if str(otp_phone_type).lower() == "secondary":
+		target_phone = ticket.get("custom__secondary_phone_number") or ticket.get("custom_secondary_phone_number") or secondary_phone
+		if target_phone:
+			target_phone = target_phone.strip()
+			if not target_phone.startswith("+"):
+				target_phone = "+91-" + target_phone
+		if not target_phone:
+			return {"status": "error", "message": _("Secondary phone number is empty.")}
+	else:
+		target_phone = ticket.custom_customer_mobile_number
+		if not target_phone:
+			return {"status": "error", "message": _("Customer mobile number is empty.")}
+
+	sms_sent = _send_otp_sms(ticket, target_phone)
+	if sms_sent:
+		return {"status": "success", "message": f"OTP successfully resent to {target_phone}."}
+	else:
+		return {"status": "error", "message": "Failed to send OTP SMS. Please check SMS settings or mobile number."}
 
 
 @frappe.whitelist()
@@ -338,15 +540,22 @@ def get_day_attendance_status() -> dict:
 	
 	employee_id = employees[0]
 	
-	# Get the latest check-in for today
-	today = frappe.utils.today()
+	# Get the latest check-in log from Technician Portal
 	latest_log = frappe.get_all(
 		"Employee Checkin",
-		filters={"employee": employee_id, "time": ["like", f"{today}%"]},
+		filters={"employee": employee_id, "device_id": "Technician Portal"},
 		fields=["log_type"],
 		order_by="time desc",
 		limit=1
 	)
+	if not latest_log:
+		latest_log = frappe.get_all(
+			"Employee Checkin",
+			filters={"employee": employee_id},
+			fields=["log_type"],
+			order_by="time desc",
+			limit=1
+		)
 	
 	if latest_log and latest_log[0].log_type == "IN":
 		return {"status": "success", "state": "IN"}

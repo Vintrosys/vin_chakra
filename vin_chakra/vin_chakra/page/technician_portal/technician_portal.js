@@ -673,7 +673,13 @@ class TechnicianPortal {
                             ${phone ? `<a href="tel:${phone.replace(/[^\d+]/g, '')}" style="color: var(--tp-primary); text-decoration: none; font-weight: 700;"><i class="fa fa-phone"></i> ${phone}</a>` : '-'}
                         </span>
                     </div>
-                    <div class="tp-meta-item" style="grid-column: span 2;">
+                    <div class="tp-meta-item">
+                        <span class="tp-meta-label">Secondary Mobile</span>
+                        <span class="tp-meta-value">
+                            ${t.custom__secondary_phone_number ? `<a href="tel:${t.custom__secondary_phone_number.replace(/[^\d+]/g, '')}" style="color: var(--tp-primary); text-decoration: none; font-weight: 700;"><i class="fa fa-phone"></i> ${t.custom__secondary_phone_number}</a>` : '-'}
+                        </span>
+                    </div>
+                    <div class="tp-meta-item">
                         <span class="tp-meta-label">Site Address</span>
                         <span class="tp-meta-value">${address}</span>
                     </div>
@@ -739,7 +745,151 @@ class TechnicianPortal {
                 }
             });
         }
-        
+
+        // Helper to prompt Phone Selection and trigger Checkin or Resend OTP
+        function trigger_checkin_flow(ticket_doc, is_resend = false) {
+            let primary_phone = ticket_doc.custom_customer_mobile_number || "";
+            let sec_phone = ticket_doc.custom__secondary_phone_number || ticket_doc.custom_secondary_phone_number || "";
+
+            let title_text = is_resend ? `Resend Service OTP: ${ticket_doc.name}` : `Ticket Check-In & OTP Dispatch: ${ticket_doc.name}`;
+            let prompt_text = is_resend ? `Select which mobile number to resend the Service OTP SMS to:` : `Select which mobile number to send the Service OTP SMS to upon check-in:`;
+            let btn_text = is_resend ? `<i class="fa fa-paper-plane"></i> Resend OTP` : `<i class="fa fa-paper-plane"></i> Confirm Check-In & Send OTP`;
+
+            let checkin_dialog = new frappe.ui.Dialog({
+                title: title_text,
+                fields: [
+                    {
+                        fieldtype: "HTML",
+                        fieldname: "phone_select_html"
+                    }
+                ]
+            });
+
+            let default_is_secondary = !!sec_phone;
+
+            let modal_html = `
+                <div style="padding: 10px 0;">
+                    <p style="font-size: 13px; color: var(--tp-text-muted); margin-bottom: 15px;">
+                        ${prompt_text}
+                    </p>
+                    
+                    <div class="tp-phone-card" data-choice="primary" style="margin-bottom: 12px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; cursor: pointer;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; margin: 0;">
+                            <input type="radio" name="otp_phone_choice" value="primary" ${!default_is_secondary ? "checked" : ""}>
+                            Primary Mobile: <span style="color: var(--tp-primary); font-weight: 700;">${primary_phone || 'Not Set'}</span>
+                        </label>
+                    </div>
+
+                    <div class="tp-phone-card" data-choice="secondary" style="margin-bottom: 18px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; cursor: pointer;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; margin-bottom: 8px;">
+                            <input type="radio" name="otp_phone_choice" value="secondary" ${default_is_secondary ? "checked" : ""}>
+                            Secondary Phone Number
+                        </label>
+                        <input type="text" id="tp-sec-phone-input" class="form-control" style="font-size: 13px; margin-top: 6px;" placeholder="Enter secondary mobile number (+91-...)" value="${sec_phone}">
+                    </div>
+
+                    <button class="tp-btn tp-btn-success" id="tp-btn-confirm-checkin" style="width: 100%; justify-content: center; padding: 10px; font-size: 14px;">
+                        ${btn_text}
+                    </button>
+                </div>
+            `;
+
+            checkin_dialog.get_field("phone_select_html").$wrapper.html(modal_html);
+
+            let $dialog_wrap = checkin_dialog.$wrapper;
+
+            $dialog_wrap.find(".tp-phone-card[data-choice='primary']").on("click", function() {
+                $dialog_wrap.find("input[name='otp_phone_choice'][value='primary']").prop("checked", true);
+            });
+
+            $dialog_wrap.find(".tp-phone-card[data-choice='secondary']").on("click", function(e) {
+                $dialog_wrap.find("input[name='otp_phone_choice'][value='secondary']").prop("checked", true);
+            });
+
+            $dialog_wrap.find("#tp-sec-phone-input").on("focus input click change", function(e) {
+                e.stopPropagation();
+                $dialog_wrap.find("input[name='otp_phone_choice'][value='secondary']").prop("checked", true);
+            });
+
+            $dialog_wrap.find("#tp-btn-confirm-checkin").on("click", function() {
+                let selected_choice = $dialog_wrap.find("input[name='otp_phone_choice']:checked").val() || "primary";
+                let secondary_val = $dialog_wrap.find("#tp-sec-phone-input").val().trim();
+
+                if (secondary_val && secondary_val !== sec_phone && selected_choice !== "secondary") {
+                    selected_choice = "secondary";
+                    $dialog_wrap.find("input[name='otp_phone_choice'][value='secondary']").prop("checked", true);
+                }
+
+                if (selected_choice === "secondary" && !secondary_val) {
+                    frappe.show_alert({message: __("Please enter a secondary mobile number."), indicator: "red"});
+                    return;
+                }
+                if (selected_choice === "primary" && !primary_phone) {
+                    frappe.show_alert({message: __("Primary mobile number is not set. Please select or enter secondary number."), indicator: "red"});
+                    return;
+                }
+
+                let btn = $(this);
+
+                if (is_resend) {
+                    btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Resending OTP...');
+                    frappe.call({
+                        method: "vin_chakra.technician_api.resend_otp",
+                        args: {
+                            ticket_name: ticket_doc.name,
+                            otp_phone_type: selected_choice,
+                            secondary_phone: secondary_val
+                        },
+                        callback: function(res) {
+                            btn.prop("disabled", false);
+                            if (res.message && res.message.status === "success") {
+                                frappe.show_alert({message: res.message.message, indicator: "green"});
+                                checkin_dialog.hide();
+                            } else {
+                                frappe.msgprint(res.message ? res.message.message : __("Error resending OTP."));
+                                btn.html('<i class="fa fa-paper-plane"></i> Resend OTP');
+                            }
+                        }
+                    });
+                } else {
+                    btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Fetching GPS Coords...');
+
+                    get_location_promise().then(coords => {
+                        btn.html('<i class="fa fa-spinner fa-spin"></i> Checking In & Sending OTP...');
+
+                        frappe.call({
+                            method: "vin_chakra.technician_api.technician_checkin",
+                            args: {
+                                ticket_name: ticket_doc.name,
+                                latitude: coords.lat,
+                                longitude: coords.lng,
+                                otp_phone_type: selected_choice,
+                                secondary_phone: secondary_val
+                            },
+                            callback: function(res) {
+                                btn.prop("disabled", false);
+                                if (res.message && res.message.status === "success") {
+                                    frappe.show_alert({message: res.message.message, indicator: "green"});
+                                    checkin_dialog.hide();
+                                    dialog.hide();
+                                    self.load_data();
+                                    self.open_ticket_details(ticket_doc.name);
+                                } else {
+                                    frappe.msgprint(res.message ? res.message.message : __("Error checking in."));
+                                    btn.html('<i class="fa fa-paper-plane"></i> Confirm Check-In & Send OTP');
+                                }
+                            }
+                        });
+                    }).catch(err => {
+                        btn.prop("disabled", false).html('<i class="fa fa-paper-plane"></i> Confirm Check-In & Send OTP');
+                        frappe.msgprint(err.message);
+                    });
+                }
+            });
+
+            checkin_dialog.show();
+        }
+
         // Timeline Renderer
         function render_timeline_logs(logs) {
             let container = dialog.wrapper.find("#tp-dialog-timeline-logs");
@@ -790,9 +940,10 @@ class TechnicianPortal {
                     <h4 style="margin:0 0 6px 0; color:var(--tp-primary-dark); font-size:14px; font-weight:700;">Active Session: Working</h4>
                     <p style="font-size:12px; color:var(--tp-text-muted); margin:0 0 16px 0;">You are checked in. Update status once the task is finished.</p>
                     
-                    <div style="display:flex; gap:12px; margin-bottom:12px;" id="tp-action-button-row">
+                    <div style="display:flex; gap:12px; margin-bottom:12px; flex-wrap:wrap;" id="tp-action-button-row">
                         <button class="tp-btn tp-btn-primary" id="tp-btn-show-checkout"><i class="fa fa-check-square-o"></i> Complete & Check Out</button>
                         <button class="tp-btn tp-btn-warning" id="tp-btn-show-pending"><i class="fa fa-pause-circle"></i> Mark Pending</button>
+                        <button class="tp-btn" style="background:#e0e7ff; color:#3730a3;" id="tp-btn-resend-otp"><i class="fa fa-refresh"></i> Resend OTP</button>
                     </div>
                     
                     <!-- Check-out OTP input panel -->
@@ -845,38 +996,84 @@ class TechnicianPortal {
                 `);
             }
             
-            // Rebind action click listeners inside the dialog
+            // Handle Check-in button click with Day Attendance Verification and Active Ticket Check
             dialog.$wrapper.find("#tp-btn-checkin").on("click", function() {
                 let btn = $(this);
-                btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Fetching GPS Coords...');
-                
-                get_location_promise().then(coords => {
-                    btn.html('<i class="fa fa-spinner fa-spin"></i> Checking In...');
-                    
-                    frappe.call({
-                        method: "vin_chakra.technician_api.technician_checkin",
-                        args: {
-                            ticket_name: ticket.name,
-                            latitude: coords.lat,
-                            longitude: coords.lng
-                        },
-                        callback: function(res) {
-                            btn.prop("disabled", false);
-                            if (res.message && res.message.status === "success") {
-                                frappe.show_alert({message: __("Checked in successfully!"), indicator: "green"});
-                                dialog.hide();
-                                self.load_data();
-                                self.open_ticket_details(ticket.name);
-                            } else {
-                                frappe.msgprint(res.message ? res.message.message : __("Error checking in."));
-                                btn.html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
-                            }
+                btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Checking Day Attendance...');
+
+                frappe.call({
+                    method: "vin_chakra.technician_api.get_day_attendance_status",
+                    callback: function(r) {
+                        if (r.message && r.message.status === "success" && r.message.state === "IN") {
+                            btn.html('<i class="fa fa-spinner fa-spin"></i> Checking Active Tickets...');
+                            frappe.call({
+                                method: "vin_chakra.technician_api.check_active_ticket",
+                                args: { current_ticket_name: ticket.name },
+                                callback: function(res) {
+                                    btn.prop("disabled", false).html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
+                                    if (res.message && res.message.has_active) {
+                                        frappe.msgprint({
+                                            title: __("Close Existing Ticket First"),
+                                            indicator: "red",
+                                            message: __(res.message.message)
+                                        });
+                                    } else {
+                                        if (ticket.status === 'Pending') {
+                                            btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Fetching GPS Coords...');
+                                            get_location_promise().then(coords => {
+                                                btn.html('<i class="fa fa-spinner fa-spin"></i> Checking In...');
+                                                frappe.call({
+                                                    method: "vin_chakra.technician_api.technician_checkin",
+                                                    args: {
+                                                        ticket_name: ticket.name,
+                                                        latitude: coords.lat,
+                                                        longitude: coords.lng,
+                                                        skip_otp: 1
+                                                    },
+                                                    callback: function(res) {
+                                                        btn.prop("disabled", false);
+                                                        if (res.message && res.message.status === "success") {
+                                                            frappe.show_alert({message: res.message.message, indicator: "green"});
+                                                            dialog.hide();
+                                                            self.load_data();
+                                                            self.open_ticket_details(ticket.name);
+                                                        } else {
+                                                            frappe.msgprint(res.message ? res.message.message : __("Error checking in."));
+                                                            btn.html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
+                                                        }
+                                                    }
+                                                });
+                                            }).catch(err => {
+                                                btn.prop("disabled", false).html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
+                                                frappe.msgprint(err.message);
+                                            });
+                                        } else {
+                                            trigger_checkin_flow(ticket, false);
+                                        }
+                                    }
+                                },
+                                error: function() {
+                                    btn.prop("disabled", false).html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
+                                }
+                            });
+                        } else {
+                            btn.prop("disabled", false).html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
+                            frappe.msgprint({
+                                title: __("Day Attendance Required"),
+                                indicator: "orange",
+                                message: __("Please check in your day attendance first before checking into a ticket. Click the 'Day Check-in' button at the top right of your portal.")
+                            });
                         }
-                    });
-                }).catch(err => {
-                    btn.prop("disabled", false).html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
-                    frappe.msgprint(err.message);
+                    },
+                    error: function() {
+                        btn.prop("disabled", false).html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
+                    }
                 });
+            });
+
+            // Resend OTP handler
+            dialog.$wrapper.find("#tp-btn-resend-otp").on("click", function() {
+                trigger_checkin_flow(ticket, true);
             });
             
             // Show OTP Check-out Panel
