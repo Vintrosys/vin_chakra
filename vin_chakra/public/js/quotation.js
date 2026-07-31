@@ -117,7 +117,8 @@ frappe.ui.form.on('Quotation Item', {
 						method: 'vin_chakra.utils.quotation.get_item_and_previous_quotations',
 						args: {
 							item_code: current_row.item_code,
-							customer: frm.doc.party_name || null
+							customer: frm.doc.party_name || null,
+							current_quotation: frm.doc.name
 						},
 						callback: function (r) {
 							if (r.message) {
@@ -151,7 +152,8 @@ function fetch_historical_data(frm, cdn) {
 		method: 'vin_chakra.utils.quotation.get_item_and_previous_quotations',
 		args: {
 			item_code: row.item_code,
-			customer: frm.doc.party_name || null
+			customer: frm.doc.party_name || null,
+			current_quotation: frm.doc.name
 		},
 		callback: function (r) {
 			if (!r.message) return;
@@ -262,7 +264,8 @@ function inject_history_button(frm, cdn) {
 				method: 'vin_chakra.utils.quotation.get_item_and_previous_quotations',
 				args: {
 					item_code: current_row.item_code,
-					customer: frm.doc.party_name || null
+					customer: frm.doc.party_name || null,
+					current_quotation: frm.doc.name
 				},
 				callback: function (r) {
 					if (r.message) {

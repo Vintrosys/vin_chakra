@@ -1,7 +1,7 @@
 import frappe
 
 @frappe.whitelist()
-def get_item_and_previous_quotations(item_code, customer=None):
+def get_item_and_previous_quotations(item_code, customer=None, current_quotation=None):
     out = {
         "previous_quotations": [],
         "minimum_bargaining_rate": 0
@@ -19,7 +19,20 @@ def get_item_and_previous_quotations(item_code, customer=None):
         return out
         
     # Get previous quotations for this customer and item
-    query = """
+    where_clause = "q.party_name = %s AND qi.item_code = %s AND q.docstatus IN (0, 1)"
+    values = [customer, item_code]
+    
+    if current_quotation and not current_quotation.startswith("new-"):
+        # Fetch the creation date of the current quotation
+        current_creation = frappe.db.get_value("Quotation", current_quotation, "creation")
+        if current_creation:
+            where_clause += " AND q.creation < %s"
+            values.append(current_creation)
+        else:
+            where_clause += " AND q.name != %s"
+            values.append(current_quotation)
+
+    query = f"""
         SELECT 
             q.transaction_date as date,
             q.name as quotation_id,
@@ -30,14 +43,12 @@ def get_item_and_previous_quotations(item_code, customer=None):
         FROM `tabQuotation Item` qi
         JOIN `tabQuotation` q ON q.name = qi.parent
         WHERE 
-            q.party_name = %s 
-            AND qi.item_code = %s
-            AND q.docstatus IN (0, 1)
+            {where_clause}
         ORDER BY q.transaction_date DESC, q.creation DESC
         LIMIT 5
     """
     
-    past_quotes = frappe.db.sql(query, (customer, item_code), as_dict=True)
+    past_quotes = frappe.db.sql(query, tuple(values), as_dict=True)
     out["previous_quotations"] = past_quotes
     
     return out
