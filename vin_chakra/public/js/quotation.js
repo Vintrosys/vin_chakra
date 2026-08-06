@@ -167,7 +167,13 @@ function fetch_historical_data(frm, cdn) {
 
 			// Fill the custom_minimum_bargaining_rate column in the grid if it exists
 			if (frappe.meta.has_field('Quotation Item', 'custom_minimum_bargaining_rate')) {
-				frappe.model.set_value(row.doctype, row.name, 'custom_minimum_bargaining_rate', row.__min_rate);
+				// Only update the value if it's a draft and the value actually changed.
+				// This prevents marking the form as 'Not Saved' on every page refresh.
+				let current_val = flt(row.custom_minimum_bargaining_rate);
+				let new_val = flt(row.__min_rate);
+				if (frm.doc.docstatus === 0 && current_val !== new_val) {
+					frappe.model.set_value(row.doctype, row.name, 'custom_minimum_bargaining_rate', new_val);
+				}
 			}
 
 			// Inject the history button — retry up to 5 times if DOM not ready yet
