@@ -314,11 +314,13 @@ function show_previous_quotations_dialog(frm, row) {
 	}
 
 	let html = `
-		<table class="table table-bordered table-sm">
+		<div class="table-responsive">
+			<table class="table table-bordered table-sm" style="min-width: 500px;">
 			<thead class="thead-dark">
 				<tr>
 					<th>Date</th>
 					<th>Quotation ID</th>
+					<th>Customer Name</th>
 					<th>Qty</th>
 					<th>Rate</th>
 					<th>Status</th>
@@ -336,17 +338,18 @@ function show_previous_quotations_dialog(frm, row) {
 			let color = q.docstatus === 0 ? 'orange' : 'blue';
 			html += `
 				<tr>
-					<td>${frappe.datetime.str_to_user(q.date)}</td>
-					<td><a href="/app/quotation/${q.quotation_id}" target="_blank">${q.quotation_id}</a></td>
+					<td style="white-space: nowrap;">${frappe.datetime.str_to_user(q.date)}</td>
+					<td style="white-space: nowrap;"><a href="/app/quotation/${q.quotation_id}" target="_blank">${q.quotation_id}</a></td>
+					<td>${q.customer_name || ''}</td>
 					<td>${q.qty}</td>
-					<td><b>${format_currency(q.rate, frm.doc.currency)}</b></td>
+					<td style="white-space: nowrap;"><b>${format_currency(q.rate, frm.doc.currency)}</b></td>
 					<td><span class="indicator-pill ${color}">${q.status}</span></td>
 				</tr>
 			`;
 		});
 	}
 
-	html += `</tbody></table>`;
+	html += `</tbody></table></div>`;
 
 	let d = new frappe.ui.Dialog({
 		title: `Previous Quotations — ${row.item_code}`,
