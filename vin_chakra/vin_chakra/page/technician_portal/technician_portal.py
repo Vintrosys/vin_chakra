@@ -15,6 +15,11 @@ def get_portal_data(
     if user == "Guest":
         frappe.throw(_("Authentication required."), frappe.PermissionError)
         
+    cache_key = f"tech_portal:{user}:{status}:{priority}:{search_query}:{limit_start}:{limit_page_length}:{view}"
+    cached_res = frappe.cache().get_value(cache_key)
+    if cached_res:
+        return frappe.parse_json(cached_res)
+        
     conditions = ["JSON_SEARCH(`_assign`, 'one', %(user)s) IS NOT NULL"]
     values = {"user": user}
     
@@ -95,8 +100,10 @@ def get_portal_data(
     
     tickets = frappe.db.sql(tickets_query, values, as_dict=True)
     
-    return {
+    result = {
         "tickets": tickets,
         "total_count": total_count,
         "summary": summary
     }
+    frappe.cache().set_value(cache_key, result, expires_in_sec=600)
+    return result

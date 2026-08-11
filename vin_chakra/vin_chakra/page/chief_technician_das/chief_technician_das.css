@@ -82,23 +82,22 @@
     box-shadow: var(--ct-shadow-sm);
 }
 
-/* Summary Row */
 .ct-summary-row {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 16px;
-    margin-bottom: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
 }
 
 .ct-summary-card {
     background: white;
-    padding: 18px 24px;
+    padding: 10px 16px;
     border-radius: var(--ct-radius);
     border: 1px solid var(--ct-border);
     box-shadow: var(--ct-shadow-sm);
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     transition: var(--ct-transition);
     border-top: 4px solid var(--ct-border);
     user-select: none;
@@ -117,17 +116,19 @@
 }
 
 .ct-summary-val {
-    font-size: 28px;
+    font-size: 20px;
     font-weight: 800;
     color: var(--ct-text-main);
+    line-height: 1.2;
 }
 
 .ct-summary-label {
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 700;
     color: var(--ct-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+    line-height: 1.2;
 }
 
 /* Filters Area */
