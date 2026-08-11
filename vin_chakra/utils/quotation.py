@@ -19,7 +19,7 @@ def get_item_and_previous_quotations(item_code, customer=None, current_quotation
         return out
         
     # Get previous quotations for this customer and item
-    where_clause = "q.party_name = %s AND qi.item_code = %s AND q.docstatus IN (0, 1)"
+    where_clause = "q.party_name = %s AND qi.item_code = %s AND q.status = 'Open'"
     values = [customer, item_code]
     
     if current_quotation and not current_quotation.startswith("new-"):
@@ -36,6 +36,7 @@ def get_item_and_previous_quotations(item_code, customer=None, current_quotation
         SELECT 
             q.transaction_date as date,
             q.name as quotation_id,
+            q.customer_name,
             qi.qty,
             qi.rate,
             q.status,
