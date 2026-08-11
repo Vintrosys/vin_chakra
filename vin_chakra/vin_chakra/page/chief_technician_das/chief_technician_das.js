@@ -142,6 +142,7 @@ class ChiefTechnicianDashboard {
                             <option value="Working">Working</option>
                             <option value="Pending">Pending</option>
                             <option value="Resolved">Resolved</option>
+                            <option value="Self-Completed">Self-Completed</option>
                         </select>
                     </div>
                     <div class="ct-filter-item" id="ct-filter-priority-wrap">
@@ -176,6 +177,10 @@ class ChiefTechnicianDashboard {
                     <div class="ct-summary-card" data-status="Resolved" style="border-top-color: #15803d; cursor: pointer;">
                         <div class="ct-summary-val" id="ct-summary-resolved">-</div>
                         <div class="ct-summary-label">Resolved</div>
+                    </div>
+                    <div class="ct-summary-card" data-status="Self-Completed" style="border-top-color: #0d9488; cursor: pointer;">
+                        <div class="ct-summary-val" id="ct-summary-self-completed">-</div>
+                        <div class="ct-summary-label">Self-Completed</div>
                     </div>
                     <div class="ct-summary-card" data-status="Pending" style="border-top-color: #d97706; cursor: pointer;">
                         <div class="ct-summary-val" id="ct-summary-pending">-</div>
@@ -319,6 +324,7 @@ class ChiefTechnicianDashboard {
                             <option value="Working" ${this.map_filters.status === 'Working' ? 'selected' : ''}>Working</option>
                             <option value="Pending" ${this.map_filters.status === 'Pending' ? 'selected' : ''}>Pending</option>
                             <option value="Resolved" ${this.map_filters.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
+                            <option value="Self-Completed" ${this.map_filters.status === 'Self-Completed' ? 'selected' : ''}>Self-Completed</option>
                         </select>
                     </div>
                     <div class="ct-filter-item" style="margin: 0; display: flex; align-items: flex-end; height: 55px;">
@@ -676,6 +682,7 @@ class ChiefTechnicianDashboard {
         this.wrapper.find("#ct-summary-open").text(summary.Open);
         this.wrapper.find("#ct-summary-working").text(summary.Working);
         this.wrapper.find("#ct-summary-resolved").text(summary.Resolved);
+        this.wrapper.find("#ct-summary-self-completed").text(summary["Self-Completed"] || 0);
         this.wrapper.find("#ct-summary-pending").text(summary.Pending);
     }
     
@@ -899,7 +906,7 @@ class ChiefTechnicianDashboard {
                         },
                         type: 'donut',
                         height: 250,
-                        colors: ['#6366f1', '#10b981', '#f59e0b', '#ef4444']
+                        colors: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#0d9488']
                     });
                     
                     // Render Priority Chart
@@ -1295,7 +1302,7 @@ class ChiefTechnicianDashboard {
         let d = new frappe.ui.Dialog({
             title: __("Change Ticket Status"),
             fields: [
-                { label: "New Status", fieldname: "status", fieldtype: "Select", options: ["Open", "Working", "Pending", "Resolved"], default: current_status, reqd: 1 }
+                { label: "New Status", fieldname: "status", fieldtype: "Select", options: ["Open", "Working", "Pending", "Resolved", "Self-Completed"], default: current_status, reqd: 1 }
             ],
             primary_action_label: __("Update"),
             primary_action: (v) => {

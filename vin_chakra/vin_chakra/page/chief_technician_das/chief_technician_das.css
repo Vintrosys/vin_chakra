@@ -15,6 +15,7 @@
     --ct-status-working-bg: #e0f2fe; --ct-status-working-fg: #0369a1;
     --ct-status-resolved-bg: #dcfce7; --ct-status-resolved-fg: #15803d;
     --ct-status-pending-bg: #fffbeb; --ct-status-pending-fg: #d97706;
+    --ct-status-selfcompleted-bg: #ccfbf1; --ct-status-selfcompleted-fg: #0d9488;
 
     /* Priority Colors */
     --ct-priority-low-bg: #f0fdf4; --ct-priority-low-fg: #16a34a;
@@ -85,7 +86,7 @@
 /* Summary Row */
 .ct-summary-row {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     gap: 16px;
     margin-bottom: 24px;
 }
@@ -345,6 +346,7 @@
 .ct-badge-status-Working { background: var(--ct-status-working-bg); color: var(--ct-status-working-fg); }
 .ct-badge-status-Resolved { background: var(--ct-status-resolved-bg); color: var(--ct-status-resolved-fg); }
 .ct-badge-status-Pending { background: var(--ct-status-pending-bg); color: var(--ct-status-pending-fg); }
+.ct-badge-status-Self-Completed { background: var(--ct-status-selfcompleted-bg); color: var(--ct-status-selfcompleted-fg); }
 
 .ct-badge-priority-Low { background: var(--ct-priority-low-bg); color: var(--ct-priority-low-fg); }
 .ct-badge-priority-Medium { background: var(--ct-priority-medium-bg); color: var(--ct-priority-medium-fg); }

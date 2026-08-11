@@ -80,6 +80,7 @@ def get_dashboard_data(
             "Working": 0,
             "Resolved": 0,
             "Pending": 0,
+            "Self-Completed": 0,
             "Total": 0
         }
         for row in status_counts_raw:
@@ -135,7 +136,7 @@ def get_dashboard_data(
             SELECT 
                 td.allocated_to as assigned_to, 
                 COUNT(DISTINCT td.reference_name) as total_assigned,
-                SUM(CASE WHEN t.status='Resolved' THEN 1 ELSE 0 END) as total_resolved
+                SUM(CASE WHEN t.status IN ('Resolved', 'Self-Completed') THEN 1 ELSE 0 END) as total_resolved
             FROM `tabToDo` td
             INNER JOIN `tabHD Ticket` t ON td.reference_name = t.name
             WHERE {todo_where}
@@ -311,7 +312,7 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
             conditions.append("t.status = %(ticket_status)s")
             values["ticket_status"] = ticket_status
         else:
-            conditions.append("t.status = 'Resolved'")
+            conditions.append("t.status IN ('Resolved', 'Self-Completed')")
             
         where_clause = " AND ".join(conditions)
         
