@@ -138,10 +138,6 @@ class ChiefTechnicianDashboard {
                         <label>Status</label>
                         <select id="ct-filter-status">
                             <option value="">All Statuses</option>
-                            <option value="Open">Open</option>
-                            <option value="Working">Working</option>
-                            <option value="Pending">Pending</option>
-                            <option value="Resolved">Resolved</option>
                         </select>
                     </div>
                     <div class="ct-filter-item" id="ct-filter-priority-wrap">
@@ -159,33 +155,12 @@ class ChiefTechnicianDashboard {
                 <!-- Active Filters Area -->
                 <div class="ct-active-filters" id="ct-active-filters"></div>
                 
-                <!-- Summary Cards Row -->
-                <div class="ct-summary-row" id="ct-summary-row">
-                    <div class="ct-summary-card" data-status="" style="border-top-color: #64748b; cursor: pointer;">
-                        <div class="ct-summary-val" id="ct-summary-total">-</div>
-                        <div class="ct-summary-label">Total Filtered</div>
-                    </div>
-                    <div class="ct-summary-card" data-status="Open" style="border-top-color: #64748b; cursor: pointer;">
-                        <div class="ct-summary-val" id="ct-summary-open">-</div>
-                        <div class="ct-summary-label">Open</div>
-                    </div>
-                    <div class="ct-summary-card" data-status="Working" style="border-top-color: #0369a1; cursor: pointer;">
-                        <div class="ct-summary-val" id="ct-summary-working">-</div>
-                        <div class="ct-summary-label">Working</div>
-                    </div>
-                    <div class="ct-summary-card" data-status="Resolved" style="border-top-color: #15803d; cursor: pointer;">
-                        <div class="ct-summary-val" id="ct-summary-resolved">-</div>
-                        <div class="ct-summary-label">Resolved</div>
-                    </div>
-                    <div class="ct-summary-card" data-status="Pending" style="border-top-color: #d97706; cursor: pointer;">
-                        <div class="ct-summary-val" id="ct-summary-pending">-</div>
-                        <div class="ct-summary-label">Pending</div>
-                    </div>
-                </div>
-                
-                <!-- Main Dynamic Views Section -->
-                <div class="ct-loader" id="ct-loader" style="display: none;"></div>
-                <div id="ct-view-content"></div>
+                 <!-- Summary Cards Row -->
+                 <div class="ct-summary-row" id="ct-summary-row"></div>
+                 
+                 <!-- Main Dynamic Views Section -->
+                 <div class="ct-loader" id="ct-loader" style="display: none;"></div>
+                 <div id="ct-view-content"></div>
             </div>
         `);
         
@@ -297,6 +272,17 @@ class ChiefTechnicianDashboard {
                 </div>
             `);
         } else if (this.current_tab === "movement") {
+            let map_status_options = '<option value="">All Statuses</option>';
+            let map_statuses = this.enabled_statuses || [
+                {name: "Open"},
+                {name: "Working"},
+                {name: "Pending"},
+                {name: "Resolved"}
+            ];
+            map_statuses.forEach(status => {
+                map_status_options += `<option value="${status.name}" ${this.map_filters.status === status.name ? 'selected' : ''}>${status.name}</option>`;
+            });
+
             content.html(`
                 <div class="ct-movement-filters" style="background: white; border: 1px solid var(--ct-border); border-radius: var(--ct-radius); padding: 15px; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; box-shadow: var(--ct-shadow-sm); align-items: center;">
                     <div class="ct-filter-item" style="margin: 0; min-width: 150px;">
@@ -314,11 +300,7 @@ class ChiefTechnicianDashboard {
                     <div class="ct-filter-item" style="margin: 0; min-width: 150px;">
                         <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Ticket Status</label>
                         <select id="ct-map-filter-status" style="width: 100%; height: 36px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 10px; font-size: 13px; background: white;">
-                            <option value="">All Statuses</option>
-                            <option value="Open" ${this.map_filters.status === 'Open' ? 'selected' : ''}>Open</option>
-                            <option value="Working" ${this.map_filters.status === 'Working' ? 'selected' : ''}>Working</option>
-                            <option value="Pending" ${this.map_filters.status === 'Pending' ? 'selected' : ''}>Pending</option>
-                            <option value="Resolved" ${this.map_filters.status === 'Resolved' ? 'selected' : ''}>Resolved</option>
+                            ${map_status_options}
                         </select>
                     </div>
                     <div class="ct-filter-item" style="margin: 0; display: flex; align-items: flex-end; height: 55px;">
@@ -651,9 +633,8 @@ class ChiefTechnicianDashboard {
                 if (r.message) {
                     let data = r.message;
                     self.tickets_total = data.total_count;
-                    
-                    // Update Summary Row
-                    self.update_summary_row(data.summary);
+                                        // Update Summary Row
+                     self.update_summary_row(data.summary, data.enabled_statuses);
                     
                     // Render Tickets
                     if (self.view_type === "card") {
@@ -671,15 +652,106 @@ class ChiefTechnicianDashboard {
         });
     }
     
-    update_summary_row(summary) {
-        this.wrapper.find("#ct-summary-total").text(summary.Total);
-        this.wrapper.find("#ct-summary-open").text(summary.Open);
-        this.wrapper.find("#ct-summary-working").text(summary.Working);
-        this.wrapper.find("#ct-summary-resolved").text(summary.Resolved);
-        this.wrapper.find("#ct-summary-pending").text(summary.Pending);
+    update_summary_row(summary, enabled_statuses) {
+        if (enabled_statuses) {
+            this.enabled_statuses = enabled_statuses;
+            this.enabled_status_names = enabled_statuses.map(s => s.name);
+        }
+
+        let row_container = this.wrapper.find("#ct-summary-row");
+        if (!row_container.length) return;
+
+        let current_status = this.filters.status || "";
+        
+        let html = `
+            <div class="ct-summary-card ${current_status === "" ? "active" : ""}" data-status="" style="border-top-color: #64748b; cursor: pointer;">
+                <div class="ct-summary-val">${summary.Total}</div>
+                <div class="ct-summary-label">Total Filtered</div>
+            </div>
+        `;
+
+        const STATUS_COLOR_MAP = {
+            "Gray": "#64748b",
+            "Grey": "#64748b",
+            "Blue": "#0369a1",
+            "Green": "#15803d",
+            "Orange": "#d97706",
+            "Red": "#dc2626",
+            "Yellow": "#ca8a04",
+            "Purple": "#7c3aed",
+            "Pink": "#db2777",
+            "Cyan": "#0891b2",
+            "Black": "#1f2937"
+        };
+
+        let statuses = this.enabled_statuses || [
+            {name: "Open", color: "Gray"},
+            {name: "Working", color: "Blue"},
+            {name: "Resolved", color: "Green"},
+            {name: "Pending", color: "Orange"}
+        ];
+
+        statuses.forEach(status => {
+            let count = summary[status.name] || 0;
+            let color_val = (status.color && status.color.startsWith("#"))
+                ? status.color
+                : (STATUS_COLOR_MAP[status.color] || "#64748b");
+            
+            html += `
+                <div class="ct-summary-card ${current_status === status.name ? "active" : ""}" data-status="${status.name}" style="border-top-color: ${color_val}; cursor: pointer;">
+                    <div class="ct-summary-val">${count}</div>
+                    <div class="ct-summary-label">${status.name}</div>
+                </div>
+            `;
+        });
+
+        row_container.html(html);
+
+        // Dynamically populate filter status select dropdown
+        let status_select = this.wrapper.find("#ct-filter-status");
+        if (status_select.length && this.enabled_statuses) {
+            let current_val = status_select.val() || "";
+            let options_html = '<option value="">All Statuses</option>';
+            this.enabled_statuses.forEach(status => {
+                options_html += `<option value="${status.name}">${status.name}</option>`;
+            });
+            status_select.html(options_html);
+            status_select.val(current_val);
+        }
+    }
+
+    get_status_badge(status, ticket_name) {
+        let status_obj = this.enabled_statuses ? this.enabled_statuses.find(s => s.name === status) : null;
+        let color = status_obj ? status_obj.color : "Gray";
+
+        const BADGE_COLOR_MAP = {
+            "Gray": { bg: "#f1f5f9", text: "#475569" },
+            "Grey": { bg: "#f1f5f9", text: "#475569" },
+            "Blue": { bg: "#e0f2fe", text: "#0369a1" },
+            "Green": { bg: "#dcfce7", text: "#15803d" },
+            "Orange": { bg: "#fef3c7", text: "#d97706" },
+            "Red": { bg: "#fee2e2", text: "#dc2626" },
+            "Yellow": { bg: "#fef9c3", text: "#854d0e" },
+            "Purple": { bg: "#f3e8ff", text: "#7c3aed" },
+            "Pink": { bg: "#fce7f3", text: "#db2777" },
+            "Cyan": { bg: "#ecfeff", text: "#0891b2" },
+            "Black": { bg: "#f3f4f6", text: "#1f2937" }
+        };
+
+        let badge_style = BADGE_COLOR_MAP[color] || BADGE_COLOR_MAP["Gray"];
+        
+        return `
+            <span class="ct-badge" 
+                  onclick="event.stopPropagation(); frappe.pages['chief-technician-das']._dashboard.open_status_change_dialog('${ticket_name}', '${status}')" 
+                  style="background-color: ${badge_style.bg}; color: ${badge_style.text}; cursor:pointer;" 
+                  title="Change status">
+                ${status} <i class="fa fa-pencil" style="font-size:8px; margin-left:2px;"></i>
+            </span>
+        `;
     }
     
     render_ticket_cards(tickets) {
+        let self = this;
         let container = $("#ct-tickets-container");
         if (!tickets || tickets.length === 0) {
             container.html(`
@@ -700,7 +772,7 @@ class ChiefTechnicianDashboard {
                 return `<div class="ct-assignee-avatar" title="${u}">${initial}</div>`;
             }).join("");
             
-            let status_badge = `<span class="ct-badge ct-badge-status-${t.status.replace(/\s+/g, '')}" onclick="event.stopPropagation(); frappe.pages['chief-technician-das']._dashboard.open_status_change_dialog('${t.name}', '${t.status}')" style="cursor:pointer;" title="Change status">${t.status} <i class="fa fa-pencil" style="font-size:8px; margin-left:2px;"></i></span>`;
+            let status_badge = self.get_status_badge(t.status, t.name);
             let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
             
             return `
@@ -728,6 +800,7 @@ class ChiefTechnicianDashboard {
     }
     
     render_ticket_list(tickets) {
+        let self = this;
         let container = $("#ct-tickets-container");
         if (!tickets || tickets.length === 0) {
             container.html(`
@@ -748,7 +821,7 @@ class ChiefTechnicianDashboard {
                 return `<div class="ct-assignee-avatar" title="${u}">${initial}</div>`;
             }).join("");
             
-            let status_badge = `<span class="ct-badge ct-badge-status-${t.status.replace(/\s+/g, '')}" onclick="event.stopPropagation(); frappe.pages['chief-technician-das']._dashboard.open_status_change_dialog('${t.name}', '${t.status}')" style="cursor:pointer;" title="Change status">${t.status} <i class="fa fa-pencil" style="font-size:8px; margin-left:2px;"></i></span>`;
+            let status_badge = self.get_status_badge(t.status, t.name);
             let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
             
             return `
@@ -1278,7 +1351,9 @@ class ChiefTechnicianDashboard {
             let key = $(this).data("key");
             if (key === "technician") {
                 self.tech_control.set_value("");
-            } else if (key === "search") {
+                return; // tech_control.set_value("") triggers onchange, which handles pagination reset and load_data
+            }
+            if (key === "search") {
                 self.search_query = "";
                 self.wrapper.find("#ct-ticket-search").val("");
             } else {
@@ -1292,10 +1367,13 @@ class ChiefTechnicianDashboard {
     
     open_status_change_dialog(ticket_id, current_status) {
         let self = this;
+        let options = this.enabled_status_names && this.enabled_status_names.length 
+            ? this.enabled_status_names 
+            : ["Open", "Working", "Pending", "Resolved"];
         let d = new frappe.ui.Dialog({
             title: __("Change Ticket Status"),
             fields: [
-                { label: "New Status", fieldname: "status", fieldtype: "Select", options: ["Open", "Working", "Pending", "Resolved"], default: current_status, reqd: 1 }
+                { label: "New Status", fieldname: "status", fieldtype: "Select", options: options, default: current_status, reqd: 1 }
             ],
             primary_action_label: __("Update"),
             primary_action: (v) => {

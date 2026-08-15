@@ -15,19 +15,57 @@ def get_dashboard_data(
     if not (frappe.has_permission("HD Ticket", "read") and ("Chief Technician" in frappe.get_roles() or "System Manager" in frappe.get_roles())):
         frappe.throw("You are not permitted to access this dashboard.")
         
+    # Sanitize input parameters to normalize empty strings/falsy values
+    date_from = date_from if date_from not in (None, "", "None", "null", "undefined") else None
+    date_to = date_to if date_to not in (None, "", "None", "null", "undefined") else None
+    technician = technician if technician not in (None, "", "None", "null", "undefined") else None
+    status = status if status not in (None, "", "None", "null", "undefined") else None
+    priority = priority if priority not in (None, "", "None", "null", "undefined") else None
+    search_query = search_query if search_query not in (None, "", "None", "null", "undefined") else None
+
+    # Check cache first using sanitized values
+    cache_key = f"chief_dash:{view}:{date_from}:{date_to}:{technician}:{status}:{priority}:{search_query}:{limit_start}:{limit_page_length}"
+    cached_res = frappe.cache().get_value(cache_key)
+    if cached_res:
+        return frappe.parse_json(cached_res)
+        
     # Construct base conditions for HD Tickets
-    summary_conditions = ["1=1"]
+    summary_conditions = ["status NOT IN ('Replied', 'Closed')"]
     summary_values = {}
     
-    if date_from:
-        summary_conditions.append("DATE(creation) >= %(date_from)s")
-        summary_values["date_from"] = date_from
-    if date_to:
-        summary_conditions.append("DATE(creation) <= %(date_to)s")
-        summary_values["date_to"] = date_to
+    if date_from or date_to:
+        date_conds = []
+        if date_from:
+            date_conds.append("COALESCE(custom_date, DATE(creation)) >= %(date_from)s")
+            summary_values["date_from"] = date_from
+        if date_to:
+            date_conds.append("COALESCE(custom_date, DATE(creation)) <= %(date_to)s")
+            summary_values["date_to"] = date_to
+            
+        subquery_conds = []
+        if date_from:
+            subquery_conds.append("DATE(timestamp) >= %(date_from)s")
+        if date_to:
+            subquery_conds.append("DATE(timestamp) <= %(date_to)s")
+            
+        working_conds = ["status = 'Working'"]
+        if date_from:
+            working_conds.append("%(today)s >= %(date_from)s")
+        if date_to:
+            working_conds.append("%(today)s <= %(date_to)s")
+        summary_values["today"] = frappe.utils.today()
+        
+        summary_conditions.append(f"""(
+            ({" AND ".join(date_conds)})
+            OR name IN (SELECT parent FROM `tabHD Ticket Check Log` WHERE {" AND ".join(subquery_conds)})
+            OR ({" AND ".join(working_conds)})
+        )""")
     if technician:
-        summary_conditions.append("name IN (SELECT reference_name FROM `tabToDo` WHERE reference_type='HD Ticket' AND allocated_to = %(technician)s)")
-        summary_values["technician"] = technician
+        summary_conditions.append("`tabHD Ticket`._assign LIKE %(technician_like)s")
+        summary_values["technician_like"] = f'%"{technician}"%'
+    if priority:
+        summary_conditions.append("priority = %(priority)s")
+        summary_values["priority"] = priority
     if search_query:
         search_escaped = f"%{search_query}%"
         summary_conditions.append("(name LIKE %(search)s OR subject LIKE %(search)s OR custom_customer_name LIKE %(search)s)")
@@ -35,18 +73,17 @@ def get_dashboard_data(
 
     summary_where = " AND ".join(summary_conditions)
 
+    result = {}
+
     # 1. TICKETS VIEW
     if view == "tickets":
-        # Additional filters for status and priority
+        # Additional filters for status
         ticket_conditions = summary_conditions[:]
         ticket_values = summary_values.copy()
         
         if status:
             ticket_conditions.append("status = %(status)s")
             ticket_values["status"] = status
-        if priority:
-            ticket_conditions.append("priority = %(priority)s")
-            ticket_values["priority"] = priority
             
         ticket_where = " AND ".join(ticket_conditions)
         
@@ -75,22 +112,36 @@ def get_dashboard_data(
             GROUP BY status
         """, summary_values, as_dict=True)
         
-        summary = {
-            "Open": 0,
-            "Working": 0,
-            "Resolved": 0,
-            "Pending": 0,
-            "Total": 0
-        }
+        # Fetch enabled ticket statuses (excluding Replied and Closed)
+        enabled_statuses = frappe.cache().get_value("enabled_hd_ticket_statuses")
+        if not enabled_statuses:
+            enabled_statuses = frappe.get_all(
+                "HD Ticket Status",
+                filters={
+                    "enabled": 1,
+                    "name": ["not in", ["Replied", "Closed"]]
+                },
+                fields=["name", "color"],
+                order_by="order asc, name asc"
+            )
+            frappe.cache().set_value("enabled_hd_ticket_statuses", enabled_statuses, expires_in_sec=3600)
+        else:
+            enabled_statuses = frappe.parse_json(enabled_statuses)
+            
+        summary = {"Total": 0}
+        for status_obj in enabled_statuses:
+            summary[status_obj.name] = 0
+            
         for row in status_counts_raw:
             if row.status in summary:
                 summary[row.status] = row.count
             summary["Total"] += row.count
             
-        return {
+        result = {
             "tickets": tickets,
             "total_count": total_count,
-            "summary": summary
+            "summary": summary,
+            "enabled_statuses": enabled_statuses
         }
 
     # 2. ANALYTICS VIEW
@@ -115,12 +166,33 @@ def get_dashboard_data(
         todo_conditions = ["td.reference_type = 'HD Ticket'", "td.allocated_to IS NOT NULL", "td.allocated_to != ''"]
         todo_values = {}
         
-        if date_from:
-            todo_conditions.append("DATE(t.creation) >= %(date_from)s")
-            todo_values["date_from"] = date_from
-        if date_to:
-            todo_conditions.append("DATE(t.creation) <= %(date_to)s")
-            todo_values["date_to"] = date_to
+        if date_from or date_to:
+            date_conds = []
+            if date_from:
+                date_conds.append("COALESCE(t.custom_date, DATE(t.creation)) >= %(date_from)s")
+                todo_values["date_from"] = date_from
+            if date_to:
+                date_conds.append("COALESCE(t.custom_date, DATE(t.creation)) <= %(date_to)s")
+                todo_values["date_to"] = date_to
+                
+            subquery_conds = []
+            if date_from:
+                subquery_conds.append("DATE(timestamp) >= %(date_from)s")
+            if date_to:
+                subquery_conds.append("DATE(timestamp) <= %(date_to)s")
+                
+            working_conds = ["t.status = 'Working'"]
+            if date_from:
+                working_conds.append("%(today)s >= %(date_from)s")
+            if date_to:
+                working_conds.append("%(today)s <= %(date_to)s")
+            todo_values["today"] = frappe.utils.today()
+            
+            todo_conditions.append(f"""(
+                ({" AND ".join(date_conds)})
+                OR t.name IN (SELECT parent FROM `tabHD Ticket Check Log` WHERE {" AND ".join(subquery_conds)})
+                OR ({" AND ".join(working_conds)})
+            )""")
         if technician:
             todo_conditions.append("td.allocated_to = %(technician)s")
             todo_values["technician"] = technician
@@ -143,10 +215,28 @@ def get_dashboard_data(
             ORDER BY total_resolved DESC
         """, todo_values, as_dict=True)
         
-        return {
+        filtered_performance = []
+        if performance:
+            # Fetch all users carrying the target roles in a single query
+            technicians_with_roles = frappe.get_all(
+                "Has Role",
+                filters={"role": ["in", ["Agent", "TP Agent", "Chief Technician"]]},
+                fields=["parent"],
+                distinct=True
+            )
+            allowed_techs = {r.parent for r in technicians_with_roles}
+            
+            for p in performance:
+                user = p.assigned_to
+                if user in ["Administrator", "admin@example.com"]:
+                    continue
+                if user in allowed_techs:
+                    filtered_performance.append(p)
+                
+        result = {
             "status_summary": status_summary,
             "priority_summary": priority_summary,
-            "performance": performance
+            "performance": filtered_performance
         }
 
     # 3. MOVEMENT VIEW
@@ -200,7 +290,7 @@ def get_dashboard_data(
             ORDER BY cl.timestamp ASC
         """, movement_values, as_dict=True)
         
-        return {
+        result = {
             "movement": movement,
             "total_count": movement_total,
             "map_points": map_points
@@ -242,18 +332,37 @@ def get_dashboard_data(
         
         attendance_total = attendance_total_row[0].count if attendance_total_row else 0
         
-        return {
+        result = {
             "attendance": attendance,
             "total_count": attendance_total
         }
+
+    frappe.cache().set_value(cache_key, result, expires_in_sec=600)
+    return result
+
 
 @frappe.whitelist()
 def get_technician_map_data(date, technician=None, customer=None, ticket_status=None):
     if not (frappe.has_permission("HD Ticket", "read") and ("Chief Technician" in frappe.get_roles() or "System Manager" in frappe.get_roles())):
         frappe.throw("You are not permitted to access this dashboard.")
         
-    date_str = date or frappe.utils.today()
+    # Sanitize inputs
+    date_str = date if date not in (None, "", "None", "null", "undefined") else frappe.utils.today()
+    technician = technician if technician not in (None, "", "None", "null", "undefined") else None
+    customer = customer if customer not in (None, "", "None", "null", "undefined") else None
     
+    # Normalize ticket_status (None vs empty string "")
+    if ticket_status in (None, "None", "null", "undefined"):
+        ticket_status = None
+
+    # Check cache first
+    cache_key = f"tech_map:{date_str}:{technician}:{customer}:{ticket_status}"
+    cached_res = frappe.cache().get_value(cache_key)
+    if cached_res:
+        return frappe.parse_json(cached_res)
+        
+    result = {}
+
     # 1. Without technician: Latest check log for each technician on the date
     if not technician:
         conditions = ["DATE(cl.timestamp) = %(date)s", "cl.latitude IS NOT NULL", "cl.longitude IS NOT NULL"]
@@ -268,32 +377,27 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
             
         where_clause = " AND ".join(conditions)
         
+        # Single DB call to retrieve all logs on this date to avoid N+1 query loop
         query = f"""
             SELECT 
-                cl.technician as user,
-                MAX(cl.timestamp) as last_time
+                cl.name, cl.technician as user, cl.latitude, cl.longitude, cl.timestamp as creation, 
+                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name as customer
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {where_clause}
-            GROUP BY cl.technician
+            ORDER BY cl.timestamp DESC
         """
-        latest_times = frappe.db.sql(query, values, as_dict=True)
+        all_logs = frappe.db.sql(query, values, as_dict=True)
         
+        # Keep only the latest log per technician
+        seen_users = set()
         results = []
-        for row in latest_times:
-            log_detail = frappe.db.sql(f"""
-                SELECT 
-                    cl.name, cl.technician as user, cl.latitude, cl.longitude, cl.timestamp as creation, 
-                    cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name as customer
-                FROM `tabHD Ticket Check Log` cl
-                LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
-                WHERE cl.technician = %(user)s AND cl.timestamp = %(last_time)s
-                LIMIT 1
-            """, {"user": row.user, "last_time": row.last_time}, as_dict=True)
-            if log_detail:
-                results.append(log_detail[0])
+        for log in all_logs:
+            if log.user not in seen_users:
+                seen_users.add(log.user)
+                results.append(log)
                 
-        return {
+        result = {
             "mode": "all_technicians",
             "markers": results
         }
@@ -310,7 +414,11 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         if ticket_status:
             conditions.append("t.status = %(ticket_status)s")
             values["ticket_status"] = ticket_status
+        elif ticket_status == "":
+            # "All Statuses" selected, do not filter by status
+            pass
         else:
+            # Defaults to 'Resolved' if None
             conditions.append("t.status = 'Resolved'")
             
         where_clause = " AND ".join(conditions)
@@ -389,8 +497,11 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
             "avg_time_seconds": avg_time
         }
         
-        return {
+        result = {
             "mode": "technician_route",
             "visits": valid_visits,
             "summary": summary
         }
+
+    frappe.cache().set_value(cache_key, result, expires_in_sec=600)
+    return result

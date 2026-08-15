@@ -360,7 +360,7 @@
    "collapsible_depends_on": null,
    "columns": 0,
    "creation": "2026-07-27 17:17:45.161520",
-   "default": null,
+   "default": "__user",
    "depends_on": null,
    "description": null,
    "docstatus": 0,

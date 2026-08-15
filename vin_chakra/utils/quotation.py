@@ -55,6 +55,9 @@ def get_item_and_previous_quotations(item_code, customer=None, current_quotation
     return out
 
 def validate_quotation(doc, method=None):
+    if not doc.custom_sales_person and frappe.session.user:
+        doc.custom_sales_person = frappe.session.user
+
     warnings = []
     
     for item in doc.get("items"):

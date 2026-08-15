@@ -34,6 +34,12 @@ $(`<style>
 </style>`).appendTo('head');
 
 frappe.ui.form.on('Quotation', {
+	onload: function (frm) {
+		if (frm.is_new() && !frm.doc.custom_sales_person) {
+			frm.set_value('custom_sales_person', frappe.session.user);
+		}
+	},
+
 	refresh: function (frm) {
 		// On form load, inject buttons for all existing rows that already have an item
 		setTimeout(() => {

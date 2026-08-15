@@ -82,8 +82,18 @@ after_migrate = "vin_chakra.vin_chakra.setup.run_setup"
 doc_events = {
 	"HD Ticket": {
 		"before_validate": "vin_chakra.vin_chakra.custom.hd_ticket.fix_phone_numbers",
-		"after_insert": "vin_chakra.vin_chakra.custom.hd_ticket.assign_to_chief_technician",
-		"validate": "vin_chakra.vin_chakra.custom.hd_ticket.validate_ticket"
+		"after_insert": [
+			"vin_chakra.vin_chakra.custom.hd_ticket.assign_to_chief_technician",
+			"vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches"
+		],
+		"validate": "vin_chakra.vin_chakra.custom.hd_ticket.validate_ticket",
+		"on_update": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches",
+		"on_trash": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches"
+	},
+	"Employee Checkin": {
+		"after_insert": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches",
+		"on_update": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches",
+		"on_trash": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches"
 	},
 	"ToDo": {
 		"before_insert": "vin_chakra.vin_chakra.custom.hd_ticket.validate_todo_assignment",

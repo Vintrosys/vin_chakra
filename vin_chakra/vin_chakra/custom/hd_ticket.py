@@ -144,3 +144,14 @@ def validate_todo_assignment(todo, method=None):
 	if todo.reference_type == "HD Ticket":
 		if _is_technician(frappe.session.user):
 			frappe.throw(_("Technicians are not allowed to assign or unassign tickets."))
+
+
+def clear_dashboard_caches(doc, method=None):
+	"""Clears Redis cache keys for dashboards when tickets or check-ins change."""
+	try:
+		frappe.cache().delete_keys("tech_portal:*")
+		frappe.cache().delete_keys("chief_dash:*")
+		frappe.cache().delete_keys("tech_map:*")
+	except Exception:
+		pass
+
