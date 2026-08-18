@@ -197,3 +197,8 @@ fixtures = [
     "Custom Field",
     "Property Setter"
 ]
+
+
+permission_query_conditions = {
+    "Quotation": "vin_chakra.permissions.quotation_query"
+}
