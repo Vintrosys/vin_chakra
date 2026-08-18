@@ -76,358 +76,6 @@
      breakpoints; a few structural breakpoints remain only where the
      layout must genuinely change shape (grid → single column).
   ──────────────────────────────────────────────────────────────────── */
-  const CSS = `
-    :root {
-      --ink:            #1c2420;
-      --charcoal:       #232f29;
-      --charcoal-deep:  #16211c;
-      --brass:          #b8863a;
-      --brass-dark:     #93691f;
-      --brass-light:    rgba(184,134,58,0.12);
-      --thread:         #b23b2e;
-      --thread-bg:      #fbeeec;
-      --thread-border:  #f0c3bc;
-      --spool:          #2f6f52;
-      --spool-bg:       #e9f3ec;
-      --spool-border:   #b9dcc7;
-      --text-main:      #1c2420;
-      --text-muted:     #57645c;
-      --text-light:     #98a49c;
-      --border:         #dde3dc;
-      --input-bg:       #f6f7f3;
-      --surface:        #ffffff;
-      --bg:             #edf0ea;
-      --radius:         18px;
-      --radius-sm:      12px;
-      --shadow-lg:      0 20px 40px rgba(28,36,32,.12), 0 8px 16px rgba(28,36,32,.07);
-      --transition:     .2s cubic-bezier(.4,0,.2,1);
-      --sp-1: clamp(12px, 2.6vw, 16px);
-      --sp-2: clamp(16px, 4vw, 28px);
-      --sp-3: clamp(20px, 5.5vw, 44px);
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-
-    #ticket-root {
-      min-height: 100vh;
-      background: var(--bg);
-      background-image: radial-gradient(ellipse 80% 50% at 50% -10%, var(--brass-light) 0%, transparent 70%);
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      width: 100%;
-      max-width: 100%;
-      overflow-x: hidden;
-      padding: clamp(16px, 5vw, 40px) clamp(10px, 4vw, 16px)
-               max(56px, env(safe-area-inset-bottom)) clamp(10px, 4vw, 16px);
-      font-family: 'Inter','Segoe UI',system-ui,sans-serif;
-      color: var(--text-main);
-      -webkit-font-smoothing: antialiased;
-      text-size-adjust: 100%;
-      -webkit-text-size-adjust: 100%;
-    }
-
-    /* Card */
-    .tk-card {
-      width: 100%; max-width: 860px;
-      background: var(--surface);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow-lg);
-      border: 1px solid var(--border);
-      overflow: hidden;
-      animation: tk-rise .5s cubic-bezier(.22,.68,0,1.2) both;
-    }
-    @keyframes tk-rise {
-      from { opacity:0; transform:translateY(24px) scale(.98); }
-      to   { opacity:1; transform:translateY(0)    scale(1); }
-    }
-
-    /* Header — machine-body charcoal with a brass glow, like enamel + hardware */
-    .tk-header {
-      position: relative;
-      background: linear-gradient(135deg, var(--charcoal) 0%, var(--charcoal-deep) 100%);
-      padding: var(--sp-3) var(--sp-3) clamp(18px, 4vw, 32px);
-      text-align: center;
-      overflow: hidden;
-    }
-    .tk-header::before {
-      content:'';
-      position:absolute; inset:0;
-      background:
-        radial-gradient(circle at 18% 40%, rgba(255,255,255,.06) 0%, transparent 55%),
-        radial-gradient(circle at 82% 15%, rgba(184,134,58,.28) 0%, transparent 46%);
-      pointer-events:none;
-    }
-    .tk-header-inner { position:relative; z-index:1; }
-    .tk-logo-wrap {
-      display:inline-flex; align-items:center; justify-content:center;
-      background:rgba(184,134,58,.16); backdrop-filter:blur(8px);
-      border:1px solid rgba(184,134,58,.35); border-radius:16px;
-      width:clamp(52px, 12vw, 64px); height:clamp(52px, 12vw, 64px);
-      margin-bottom:16px;
-    }
-    .tk-logo-wrap svg { width:50%; height:50%; color:var(--brass); }
-    .tk-badge {
-      display:inline-flex; align-items:center; gap:6px;
-      background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.16);
-      border-radius:99px; padding:4px 14px;
-      font-size:11.5px; font-weight:600; color:rgba(255,255,255,.82);
-      letter-spacing:.04em; text-transform:uppercase; margin-bottom:14px;
-    }
-    .tk-badge-dot {
-      width:6px; height:6px; background:#5fbf8f;
-      border-radius:50%; box-shadow:0 0 6px #5fbf8f;
-      animation:tk-pulse 2s ease infinite;
-    }
-    @keyframes tk-pulse {
-      0%,100%{opacity:1;transform:scale(1)}
-      50%{opacity:.6;transform:scale(.85)}
-    }
-    .tk-header h1 {
-      color:#fff; font-size:clamp(19px, 5vw, 28px); font-weight:800;
-      letter-spacing:-.5px; line-height:1.2; margin-bottom:6px;
-      word-wrap: break-word;
-    }
-    .tk-header p { color:rgba(255,255,255,.62); font-size:clamp(12.5px, 3vw, 14.5px); font-weight:500; }
-
-    /* Step bar — dashed "thread" line between bobbin markers */
-    .tk-steps {
-      display:flex; align-items:center; justify-content:center;
-      padding:0 clamp(6px, 4vw, 44px);
-      background:rgba(0,0,0,.16);
-      position:relative; z-index:1;
-    }
-    .tk-step {
-      display:flex; flex-direction:column; align-items:center;
-      gap:5px; padding:clamp(10px,3vw,14px) 0; flex:1; min-width:0;
-    }
-    .tk-step-dot {
-      width:clamp(22px, 6vw, 28px); height:clamp(22px, 6vw, 28px); border-radius:50%;
-      background:rgba(255,255,255,.14); border:2px solid rgba(255,255,255,.28);
-      display:flex; align-items:center; justify-content:center;
-      font-size:11px; font-weight:700; color:rgba(255,255,255,.65);
-      transition:var(--transition); flex-shrink:0;
-    }
-    .tk-step.active .tk-step-dot {
-      background:var(--brass); border-color:var(--brass); color:#1c2420;
-      box-shadow:0 0 0 4px rgba(184,134,58,.28);
-    }
-    .tk-step.done .tk-step-dot { background:#5fbf8f; border-color:#5fbf8f; color:#0f2b1c; }
-    .tk-step-label {
-      font-size:9.5px; font-weight:600; color:rgba(255,255,255,.5);
-      text-transform:uppercase; letter-spacing:.05em; white-space:nowrap;
-    }
-    .tk-step.active .tk-step-label { color:rgba(255,255,255,.9); }
-    .tk-step-line {
-      flex:1; height:0; border-top:2px dashed rgba(255,255,255,.25);
-      margin-bottom:20px; align-self:flex-start; margin-top:clamp(20px,6vw,28px);
-      min-width:8px;
-    }
-
-    /* Body */
-    .tk-body { padding:var(--sp-3); }
-
-    /* Alerts */
-    .tk-alert {
-      display:none; align-items:flex-start; gap:12px;
-      padding:14px clamp(12px,3vw,18px); border-radius:var(--radius-sm);
-      margin-bottom:var(--sp-2); font-size:clamp(13.5px,3vw,14.5px); font-weight:500;
-      line-height:1.5; border:1px solid transparent;
-      animation:tk-pop .28s cubic-bezier(.22,.68,0,1.2) both;
-    }
-    @keyframes tk-pop {
-      from{opacity:0;transform:scale(.96) translateY(-4px)}
-      to{opacity:1;transform:scale(1) translateY(0)}
-    }
-    .tk-alert.success { background:var(--spool-bg); color:var(--spool); border-color:var(--spool-border); display:flex; }
-    .tk-alert.error   { background:var(--thread-bg); color:var(--thread); border-color:var(--thread-border); display:flex; }
-    .tk-alert svg { flex-shrink:0; width:20px; height:20px; margin-top:1px; }
-
-    /* Info banner */
-    .tk-info-banner {
-      display:flex; align-items:center; gap:12px;
-      padding:13px clamp(12px,3vw,18px); border-radius:var(--radius-sm);
-      margin-bottom:var(--sp-2); font-size:clamp(13px,3vw,14px); font-weight:500;
-      background:var(--brass-light); color:var(--brass-dark);
-      border:1px solid rgba(184,134,58,.22);
-    }
-    .tk-info-banner svg { flex-shrink:0; width:18px; height:18px; }
-
-    /* Section header — stitched dashed rule, since sections are a real sequence */
-    .tk-section-head {
-      grid-column:1/-1;
-      display:flex; align-items:center; gap:12px;
-      margin:6px 0 18px;
-    }
-    .tk-section-num {
-      width:26px; height:26px; border-radius:8px;
-      background:var(--brass-light); color:var(--brass-dark);
-      font-size:11.5px; font-weight:800;
-      display:flex; align-items:center; justify-content:center; flex-shrink:0;
-    }
-    .tk-section-title {
-      font-size:12.5px; font-weight:700; color:var(--charcoal);
-      letter-spacing:.06em; text-transform:uppercase;
-    }
-    .tk-section-line {
-      flex:1; height:0; border-top:2px dashed var(--border);
-    }
-
-    /* Grid */
-    .tk-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 var(--sp-2); }
-
-    /* Fields */
-    .tk-field { margin-bottom:18px; min-width:0; }
-    .tk-field.full { grid-column:1/-1; }
-
-    .tk-label {
-      display:flex; align-items:center; gap:6px;
-      font-size:12.5px; font-weight:600; color:var(--text-muted);
-      margin-bottom:7px; letter-spacing:.03em;
-    }
-    .tk-label-icon { width:14px; height:14px; opacity:.6; flex-shrink:0; }
-    .req { color:var(--thread); margin-left:1px; }
-
-    /* Input prefix icon wrapper */
-    .tk-input-wrap { position:relative; min-width:0; }
-    .tk-input-prefix {
-      position:absolute; left:14px; top:50%; transform:translateY(-50%);
-      display:flex; align-items:center; pointer-events:none;
-    }
-    .tk-input-prefix svg { width:16px; height:16px; color:var(--text-light); }
-    .tk-input-wrap .tk-control { padding-left:40px; }
-
-    /* Controls — 16px font on the input itself avoids iOS auto-zoom on focus */
-    .tk-control {
-      display:block; width:100%; min-height:48px; padding:12px 16px;
-      border:1.5px solid var(--border); border-radius:var(--radius-sm);
-      background:var(--input-bg); font-size:16px;
-      font-family:inherit; color:var(--text-main);
-      transition:border-color var(--transition),box-shadow var(--transition),background var(--transition);
-      outline:none; appearance:none; -webkit-appearance:none; line-height:1.5;
-    }
-    .tk-control::placeholder { color:var(--text-light); }
-    .tk-control:hover:not(:disabled) { border-color:#d8c39a; background:#fff; }
-    .tk-control:focus {
-      border-color:var(--brass); background:var(--surface);
-      box-shadow:0 0 0 4px var(--brass-light);
-    }
-    textarea.tk-control { resize:vertical; min-height:110px; line-height:1.6; }
-    .tk-control:disabled { background:#eef0eb; color:var(--text-light); cursor:not-allowed; }
-
-    select.tk-control {
-      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b8863a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-      background-repeat:no-repeat; background-position:right 14px center;
-      padding-right:42px; cursor:pointer;
-    }
-    select.tk-control:disabled {
-      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2398a49c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-    }
-
-    /* Validation */
-    .tk-control.tk-invalid {
-      border-color:var(--thread) !important;
-      box-shadow:0 0 0 3px rgba(178,59,46,.13) !important;
-      animation:tk-shake .3s ease;
-    }
-    @keyframes tk-shake {
-      0%,100%{transform:translateX(0)}
-      20%,60%{transform:translateX(-4px)}
-      40%,80%{transform:translateX(4px)}
-    }
-    .tk-field-error {
-      display:none; align-items:center; gap:5px;
-      color:var(--thread); font-size:12px; font-weight:500; margin-top:6px;
-    }
-    .tk-field-error svg { width:12px; height:12px; flex-shrink:0; }
-
-    /* "Other" free-text row */
-    .tk-other-row { margin-top:8px; display:none; }
-    .tk-other-row.visible { display:block; }
-    .tk-other-row .tk-control { background:#fff; }
-
-    /* Char counter */
-    .tk-char-wrap { position:relative; }
-    .tk-char-count {
-      display:block; text-align:right;
-      font-size:11px; color:var(--text-light); margin-top:5px;
-    }
-    .tk-char-count.warn { color:var(--brass-dark); }
-
-    /* Submit — brass-on-charcoal, matches header hardware */
-    .tk-submit-wrap { margin-top:14px; }
-    .tk-submit {
-      display:flex; align-items:center; justify-content:center; gap:10px;
-      width:100%; min-height:52px; padding:14px 24px; border:none;
-      border-radius:var(--radius-sm);
-      background:linear-gradient(135deg, var(--charcoal) 0%, var(--charcoal-deep) 100%);
-      color:#fff; font-size:15.5px; font-weight:700; font-family:inherit;
-      cursor:pointer;
-      transition:opacity var(--transition),transform var(--transition),box-shadow var(--transition);
-      box-shadow:0 4px 14px rgba(28,36,32,.35);
-      letter-spacing:.01em; position:relative; overflow:hidden;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .tk-submit:hover:not(:disabled) {
-      transform:translateY(-2px);
-      box-shadow:0 8px 22px rgba(28,36,32,.4);
-    }
-    .tk-submit:active:not(:disabled) {
-      transform:translateY(0);
-      box-shadow:0 3px 10px rgba(28,36,32,.3);
-    }
-    .tk-submit:disabled { opacity:.65; cursor:not-allowed; transform:none; }
-    .tk-spinner {
-      width:18px; height:18px;
-      border:2.5px solid rgba(255,255,255,.35); border-top-color:var(--brass);
-      border-radius:50%; animation:tk-spin .6s linear infinite; display:none;
-    }
-    @keyframes tk-spin { to{transform:rotate(360deg)} }
-
-    /* Skeleton */
-    .tk-skeleton-wrap { padding:var(--sp-3); }
-    .tk-skel {
-      background:linear-gradient(90deg,#eef0eb 25%,#e2e6dd 50%,#eef0eb 75%);
-      background-size:200% 100%; border-radius:8px;
-      animation:tk-shimmer 1.5s ease infinite;
-    }
-    @keyframes tk-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-    .tk-skel-title { height:24px; width:min(280px,52%); margin:0 auto 32px; border-radius:8px; }
-    .tk-skel-grid  { display:grid; grid-template-columns:1fr 1fr; gap:0 var(--sp-2); }
-    .tk-skel-field { margin-bottom:18px; }
-    .tk-skel-label { height:13px; width:38%; margin-bottom:9px; border-radius:6px; }
-    .tk-skel-input { height:48px; border-radius:10px; }
-    .tk-skel-full  { grid-column:1/-1; }
-    .tk-skel-btn   { height:52px; border-radius:12px; margin-top:14px; }
-
-    /* Footer */
-    .tk-footer {
-      text-align:center; font-size:12px; color:var(--text-light);
-      padding:0 var(--sp-3) clamp(20px,5vw,32px);
-      display:flex; align-items:center; justify-content:center; gap:6px;
-      flex-wrap:wrap;
-    }
-    .tk-footer svg { width:13px; height:13px; flex-shrink:0; }
-
-    /* ── Structural breakpoints (shape changes, not just scale) ── */
-    @media (max-width:700px) {
-      .tk-grid, .tk-skel-grid { grid-template-columns:1fr; gap:0; }
-      .tk-field.full   { grid-column:1; }
-      .tk-section-head { grid-column:1; }
-    }
-    @media (max-width:520px) {
-      #ticket-root      { padding:0 0 max(56px, env(safe-area-inset-bottom)); }
-      .tk-card          { border-radius:0; box-shadow:none; border-left:none; border-right:none; }
-      .tk-step-label    { display:none; }
-      .tk-steps         { padding:0 14px; }
-    }
-    @media (max-width:360px) {
-      .tk-badge { display:none; }
-    }
-    @media (prefers-reduced-motion:reduce) {
-      *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; }
-    }
-  `;
-
   /* ─── SVG icons ──────────────────────────────────────────────────── */
   const ICONS = {
     /* thread spool / bobbin — the widget's signature mark */
@@ -476,21 +124,13 @@
     constructor(rootId) {
       this.root     = document.getElementById(rootId);
       this.schema   = null;
+      this.currentStep = 0;
       /* These refs are set during _buildLocationSection, used by _populateDistricts */
       this._stateSelect    = null;
       this._districtSelect = null;
       this._districtOtherRow = null;
-      this._injectStyles();
       this._renderSkeleton();
       this._bootstrap();
-    }
-
-    _injectStyles() {
-      if (document.getElementById('tk-styles')) return;
-      const s = document.createElement('style');
-      s.id = 'tk-styles';
-      s.textContent = CSS;
-      document.head.appendChild(s);
     }
 
     /* ── Skeleton ── */
@@ -553,6 +193,7 @@
 
     /* ── Main render ── */
     _render() {
+      this.currentStep = 0;
       const card = el('div', 'tk-card');
       card.appendChild(this._buildHeader());
 
@@ -572,28 +213,34 @@
       form.noValidate = true;
       form.addEventListener('submit', e => this._onSubmit(e));
 
-      const grid = el('div', 'tk-grid');
-
       const fieldMap = {};
       this.schema.fields.forEach(f => { fieldMap[f.fieldname] = f; });
 
       const sections = [
-        { label:'Customer Details', num:'01', keys:['custom_customer_name','custom_customer_mobile_number'] },
-        { label:'Location',         num:'02', keys:['custom_state','custom_city__district_','custom_address'] },
-        { label:'Machine Details',  num:'03', keys:['custom_date','custom_machine_name','custom_machine_problem','custom_purchased_at_sree_chakra_sewing_systems','custom_purchase_year'] },
-        { label:'Issue Details',    num:'04', keys:['subject'] },
+        { label:'Customer & Location Info', num:'01', keys:['custom_customer_name','custom_customer_mobile_number','custom_state','custom_city__district_','custom_address','custom_date'] },
+        { label:'Machine & Issue Details',  num:'02', keys:['custom_machine_name','custom_machine_problem','custom_purchased_at_sree_chakra_sewing_systems','custom_purchase_year','subject'] },
       ];
+
+      this.totalSteps = sections.length;
 
       const usedKeys = new Set();
 
-      sections.forEach(sec => {
+      sections.forEach((sec, idx) => {
+        const stepContent = el('div', 'tk-step-content');
+        stepContent.dataset.step = idx;
+        if (idx !== 0) {
+          stepContent.style.display = 'none';
+        }
+
+        const stepGrid = el('div', 'tk-grid');
+
         /* Section divider */
         const head = el('div', 'tk-section-head');
         head.innerHTML = `
           <div class="tk-section-num">${sec.num}</div>
           <span class="tk-section-title">${sec.label}</span>
           <div class="tk-section-line"></div>`;
-        grid.appendChild(head);
+        stepGrid.appendChild(head);
 
         sec.keys.forEach(key => {
           const f = fieldMap[key];
@@ -601,31 +248,48 @@
           usedKeys.add(key);
 
           if (key === 'custom_state') {
-            grid.appendChild(this._buildStateField(f));
+            stepGrid.appendChild(this._buildStateField(f));
           } else if (key === 'custom_city__district_') {
-            grid.appendChild(this._buildDistrictField(f));
+            stepGrid.appendChild(this._buildDistrictField(f));
           } else {
-            grid.appendChild(this._buildField(f));
+            stepGrid.appendChild(this._buildField(f));
           }
         });
-      });
 
-      /* Unmapped fallback */
-      this.schema.fields.forEach(f => {
-        if (!usedKeys.has(f.fieldname)) grid.appendChild(this._buildField(f));
-      });
+        if (idx === sections.length - 1) {
+          /* Append unmapped fields to final step */
+          this.schema.fields.forEach(f => {
+            if (!usedKeys.has(f.fieldname)) {
+              stepGrid.appendChild(this._buildField(f));
+            }
+          });
+        }
 
-      form.appendChild(grid);
+        stepContent.appendChild(stepGrid);
+        form.appendChild(stepContent);
+      });
 
       /* ── CRITICAL: populate districts AFTER both selects exist in DOM ── */
       this._populateDistricts('Tamil Nadu');
 
-
-      /* Submit button */
-      const submitWrap = el('div', 'tk-submit-wrap');
-      const btn = el('button', 'tk-submit');
-      btn.type = 'submit';
-      btn.id   = 'tk-btn';
+      /* Wizard Navigation Buttons */
+      const navButtons = el('div', 'tk-nav-buttons');
+      
+      const backBtn = el('button', 'tk-nav-btn tk-back-btn');
+      backBtn.type = 'button';
+      backBtn.id = 'tk-btn-back';
+      backBtn.style.display = 'none';
+      backBtn.innerHTML = `<i class="fa fa-arrow-left"></i> Back`;
+      
+      const nextBtn = el('button', 'tk-nav-btn tk-next-btn');
+      nextBtn.type = 'button';
+      nextBtn.id = 'tk-btn-next';
+      nextBtn.innerHTML = `Next <i class="fa fa-arrow-right"></i>`;
+      
+      const submitBtn = el('button', 'tk-nav-btn tk-submit-btn');
+      submitBtn.type = 'submit';
+      submitBtn.id = 'tk-btn';
+      submitBtn.style.display = 'none';
 
       const spin = el('div', 'tk-spinner');
       spin.id = 'tk-spin';
@@ -640,9 +304,24 @@
       sendIconWrap.innerHTML = ICONS.send;
       sendIconWrap.querySelector('svg').style.cssText = 'width:16px;height:16px;';
 
-      btn.append(spin, btnTxt, sendIconWrap);
-      submitWrap.appendChild(btn);
-      form.appendChild(submitWrap);
+      submitBtn.append(spin, btnTxt, sendIconWrap);
+      
+      navButtons.append(backBtn, nextBtn, submitBtn);
+      form.appendChild(navButtons);
+
+      backBtn.addEventListener('click', () => {
+        if (this.currentStep > 0) {
+          this._goToStep(this.currentStep - 1);
+        }
+      });
+
+      nextBtn.addEventListener('click', () => {
+        if (this._validateStep(this.currentStep)) {
+          if (this.currentStep < this.totalSteps - 1) {
+            this._goToStep(this.currentStep + 1);
+          }
+        }
+      });
 
       body.appendChild(form);
       card.appendChild(body);
@@ -657,35 +336,19 @@
       this._form = form;
     }
 
-    /* ── Header with step bar ── */
+    /* ── Header ── */
     _buildHeader() {
       const h = el('div', 'tk-header');
-      const stepDefs = ['Customer','Location','Machine','Issue'];
-      const stepHtml = stepDefs.map((label, i) => `
-        <div class="tk-step${i === 0 ? ' active' : ''}" data-step="${i}">
-          <div class="tk-step-dot">${i + 1}</div>
-          <span class="tk-step-label">${label}</span>
-        </div>
-        ${i < stepDefs.length - 1 ? '<div class="tk-step-line"></div>' : ''}`
-      ).join('');
-
       h.innerHTML = `
         <div class="tk-header-inner">
           <div class="tk-badge"><div class="tk-badge-dot"></div>Support</div>
           <div class="tk-logo-wrap">${ICONS.ticket}</div>
           <h1>${this.schema.title || 'Raise a Support Ticket'}</h1>
           <p>Sree Chakra Sewing Systems</p>
-        </div>
-        <div class="tk-steps">${stepHtml}</div>`;
+        </div>`;
       return h;
     }
 
-    /* ─────────────────────────────────────────────────────────────────
-       STATE FIELD
-       Renders a <select> with all states. Stores ref in this._stateSelect.
-       Does NOT call _populateDistricts here — district select doesn't
-       exist yet. Population happens after both fields are in the DOM.
-    ───────────────────────────────────────────────────────────────── */
     _buildStateField(f) {
       const group = el('div', 'tk-field');
       group.innerHTML = `
@@ -730,11 +393,6 @@
       return group;
     }
 
-    /* ─────────────────────────────────────────────────────────────────
-       DISTRICT FIELD
-       Renders a <select> + an "Other" free-text input below it.
-       Stores refs in this._districtSelect and this._districtOtherRow.
-    ───────────────────────────────────────────────────────────────── */
     _buildDistrictField(f) {
       const group = el('div', 'tk-field');
       group.innerHTML = `
@@ -787,12 +445,6 @@
       return group;
     }
 
-    /* ─────────────────────────────────────────────────────────────────
-       POPULATE DISTRICTS
-       Called after BOTH state & district selects are in the DOM.
-       - If state has a known list → fill dropdown, add "Other" option
-       - If state is "Other"       → show free-text immediately
-    ───────────────────────────────────────────────────────────────── */
     _populateDistricts(state) {
       const sel    = this._districtSelect;
       const other  = this._districtOtherRow;
@@ -840,10 +492,6 @@
       sel.required = true;
       sel.value = '';    /* force user to pick */
     }
-
-
-
-    /* ── Generic field builder ── */
 
     _buildField(f) {
       const isLong = ['Text Editor','Small Text','Text'].includes(f.fieldtype);
@@ -927,62 +575,16 @@
       return group;
     }
 
-    /* ── Clear a single field's error state ── */
     _clearError(ctrl, group) {
       ctrl.classList.remove('tk-invalid');
       const err = group.querySelector('.tk-field-error');
       if (err) err.style.display = 'none';
     }
 
-    /* ── Submit ── */
     _onSubmit(e) {
       e.preventDefault();
 
-      /* Reset all validation UI */
-      this._form.querySelectorAll('.tk-invalid').forEach(c => c.classList.remove('tk-invalid'));
-      this._form.querySelectorAll('.tk-field-error').forEach(c => c.style.display = 'none');
-
-      let hasError = false;
-      let firstError = null;
-
-      /* Required check */
-      this._form.querySelectorAll('[required]').forEach(ctrl => {
-        const val = ctrl.value ? ctrl.value.trim() : '';
-        if (!val) {
-          ctrl.classList.add('tk-invalid');
-          const group = ctrl.closest('.tk-field');
-          if (group) {
-            const err = group.querySelector('.tk-field-error');
-            if (err) err.style.display = 'flex';
-          }
-          if (!firstError) firstError = ctrl;
-          hasError = true;
-        }
-      });
-
-      /* Phone pattern */
-      this._form.querySelectorAll('input[type="tel"]').forEach(ctrl => {
-        if (ctrl.value && !/^[0-9]{10}$/.test(ctrl.value.trim())) {
-          ctrl.classList.add('tk-invalid');
-          const group = ctrl.closest('.tk-field');
-          if (group) {
-            const err = group.querySelector('.tk-field-error');
-            if (err) {
-              err.querySelector('span').textContent = 'Enter a valid 10-digit mobile number';
-              err.style.display = 'flex';
-            }
-          }
-          if (!firstError) firstError = ctrl;
-          hasError = true;
-        }
-      });
-
-      if (hasError) {
-        this._showAlert('error', 'Please fix the highlighted fields before submitting.');
-        if (firstError) {
-          firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          setTimeout(() => firstError.focus(), 380);
-        }
+      if (!this._validateStep(this.currentStep)) {
         return;
       }
 
@@ -1029,6 +631,7 @@
             /* Restore state/district defaults */
             if (this._stateSelect) this._stateSelect.value = 'Tamil Nadu';
             this._populateDistricts('Tamil Nadu');
+            this._goToStep(0);
             this._alertEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           } else {
             this._showAlert('error', r.message?.message || 'Something went wrong. Please try again.');
@@ -1042,6 +645,109 @@
           this._showAlert('error', 'Server error. Please try again later.');
         }
       });
+    }
+
+    _validateStep(stepIndex) {
+      const stepContent = this.root.querySelector(`.tk-step-content[data-step="${stepIndex}"]`);
+      if (!stepContent) return true;
+
+      let hasError = false;
+      let firstError = null;
+
+      /* Clear previous errors inside this step */
+      stepContent.querySelectorAll('.tk-invalid').forEach(c => c.classList.remove('tk-invalid'));
+      stepContent.querySelectorAll('.tk-field-error').forEach(c => c.style.display = 'none');
+
+      /* Required check */
+      stepContent.querySelectorAll('[required]').forEach(ctrl => {
+        const val = ctrl.value ? ctrl.value.trim() : '';
+        if (!val) {
+          ctrl.classList.add('tk-invalid');
+          const group = ctrl.closest('.tk-field');
+          if (group) {
+            const err = group.querySelector('.tk-field-error');
+            if (err) err.style.display = 'flex';
+          }
+          if (!firstError) firstError = ctrl;
+          hasError = true;
+        }
+      });
+
+      /* Phone pattern check */
+      stepContent.querySelectorAll('input[type="tel"]').forEach(ctrl => {
+        if (ctrl.value && !/^[0-9]{10}$/.test(ctrl.value.trim())) {
+          ctrl.classList.add('tk-invalid');
+          const group = ctrl.closest('.tk-field');
+          if (group) {
+            const err = group.querySelector('.tk-field-error');
+            if (err) {
+              err.querySelector('span').textContent = 'Enter a valid 10-digit mobile number';
+              err.style.display = 'flex';
+            }
+          }
+          if (!firstError) firstError = ctrl;
+          hasError = true;
+        }
+      });
+
+      if (hasError) {
+        this._showAlert('error', 'Please fill in all required fields before proceeding.');
+        if (firstError) {
+          firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setTimeout(() => firstError.focus(), 380);
+        }
+        return false;
+      }
+
+      this._alertEl.style.display = 'none';
+      return true;
+    }
+
+    _goToStep(stepIndex) {
+      // Hide current step content, show new step content
+      const stepContents = this.root.querySelectorAll('.tk-step-content');
+      stepContents.forEach(content => {
+        const step = parseInt(content.dataset.step, 10);
+        content.style.display = (step === stepIndex) ? 'block' : 'none';
+      });
+
+      // Update step indicator classes
+      const steps = this.root.querySelectorAll('.tk-step');
+      steps.forEach(stepEl => {
+        const step = parseInt(stepEl.dataset.step, 10);
+        stepEl.classList.remove('active', 'done');
+        if (step === stepIndex) {
+          stepEl.classList.add('active');
+        } else if (step < stepIndex) {
+          stepEl.classList.add('done');
+        }
+      });
+
+      // Update step lines
+      const stepLines = this.root.querySelectorAll('.tk-step-line');
+      stepLines.forEach((lineEl, idx) => {
+        lineEl.classList.remove('done');
+        if (idx < stepIndex) {
+          lineEl.classList.add('done');
+        }
+      });
+
+      // Update navigation button visibility
+      const backBtn = this.root.querySelector('#tk-btn-back');
+      const nextBtn = this.root.querySelector('#tk-btn-next');
+      const submitBtn = this.root.querySelector('#tk-btn');
+
+      if (backBtn) backBtn.style.display = (stepIndex === 0) ? 'none' : 'block';
+      if (nextBtn) nextBtn.style.display = (stepIndex === this.totalSteps - 1) ? 'none' : 'block';
+      if (submitBtn) submitBtn.style.display = (stepIndex === this.totalSteps - 1) ? 'block' : 'none';
+
+      this.currentStep = stepIndex;
+
+      // Scroll to top of card for better UX on mobile
+      const card = this.root.querySelector('.tk-card');
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
     }
 
     _showAlert(type, html) {

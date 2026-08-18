@@ -138,6 +138,7 @@ permission_query_conditions = {
 # ----------------
 # before_request = ["vin_chakra.utils.before_request"]
 after_request = ["vin_chakra.vin_chakra.custom_helpdesk.inject_helpdesk_scripts"]
+website_path_resolver = ["vin_chakra.vin_chakra.custom_helpdesk.resolve_website_path"]
 
 # ----------
 # before_job = ["vin_chakra.utils.before_job"]

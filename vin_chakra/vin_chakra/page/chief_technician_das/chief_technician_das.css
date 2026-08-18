@@ -163,6 +163,18 @@
     color: var(--ct-primary);
 }
 
+#ct-btn-raise-ticket {
+    background: var(--ct-primary);
+    color: white;
+    border-color: var(--ct-primary);
+}
+
+#ct-btn-raise-ticket:hover, #ct-btn-raise-ticket.active {
+    background: var(--ct-primary-dark);
+    border-color: var(--ct-primary-dark);
+    color: white;
+}
+
 .ct-search-input-wrap {
     position: relative;
     width: 280px;
