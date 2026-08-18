@@ -20,3 +20,13 @@ def inject_helpdesk_scripts(request=None, response=None):
 					response.set_data(html)
 	except Exception as e:
 		frappe.log_error(f"Error injecting helpdesk scripts: {str(e)}", "Helpdesk Script Injection")
+
+
+def resolve_website_path(path):
+	"""Redirect System Users to desk instead of helpdesk default portal page."""
+	if not path or path == "index":
+		if frappe.session.user != "Guest" and frappe.db.get_value("User", frappe.session.user, "user_type") == "System User":
+			return "desk"
+
+	from frappe.website.path_resolver import resolve_path
+	return resolve_path(path)

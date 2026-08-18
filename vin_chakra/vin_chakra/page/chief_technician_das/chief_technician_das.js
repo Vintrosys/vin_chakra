@@ -117,6 +117,10 @@ class ChiefTechnicianDashboard {
                         <button class="ct-filter-btn" id="ct-btn-filter-toggle">
                             <i class="fa fa-filter"></i> Filters
                         </button>
+
+                        <button class="ct-filter-btn" id="ct-btn-raise-ticket">
+                            <i class="fa fa-plus"></i> Raise Ticket
+                        </button>
                     </div>
                 </div>
                 
@@ -586,6 +590,11 @@ class ChiefTechnicianDashboard {
             
             self.wrapper.find("#ct-loader").show();
             self.load_movement_data();
+        });
+
+        // Redirect to raise ticket page
+        this.wrapper.on("click", "#ct-btn-raise-ticket", function() {
+            window.location.href = "/ticket-support";
         });
     }
     
