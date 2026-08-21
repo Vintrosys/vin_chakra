@@ -171,6 +171,9 @@ class TechnicianPortal {
                     </div>
                     
                     <div class="tp-view-selector">
+                        <button class="tp-filter-btn" id="tp-btn-today-tickets">
+                            <i class="fa fa-calendar-check-o"></i> Today's Tickets
+                        </button>
                         <button class="tp-view-btn ${this.view_type === 'card' ? 'active' : ''}" data-view="card"><i class="fa fa-th"></i> Card</button>
                         <button class="tp-view-btn ${this.view_type === 'list' ? 'active' : ''}" data-view="list"><i class="fa fa-list"></i> List</button>
                         <button class="tp-view-btn ${this.view_type === 'calendar' ? 'active' : ''}" data-view="calendar"><i class="fa fa-calendar"></i> Calendar</button>
@@ -262,7 +265,9 @@ class TechnicianPortal {
         this.wrapper.on("click", "#tp-day-attendance-btn", function() {
             self.handle_day_attendance_click();
         });
-        
+        this.wrapper.on("click", "#tp-btn-today-tickets", function() {
+            self.open_today_tickets_dialog();
+        });
         // Toggle Filters
         this.wrapper.on("click", "#tp-btn-filter-toggle", function() {
             $(this).toggleClass("active");
@@ -627,7 +632,109 @@ class TechnicianPortal {
             }
         });
     }
-    
+    open_today_tickets_dialog() {
+    let self = this;
+    frappe.call({
+        method: "vin_chakra.vin_chakra.page.technician_portal.technician_portal.get_portal_data",
+        args: {
+            status: "",
+            priority: "",
+            search_query: "",
+            limit_start: 0,
+            limit_page_length: 1000,
+            view: "list"
+        },
+        callback: function(r) {
+            if (!r.message) return;
+            let today_str = frappe.datetime.get_today();
+            let allowed_status = ["Working", "Resolved", "Pending"];
+            let filtered = (r.message.tickets || []).filter(t => {
+                return t.custom_date === today_str && allowed_status.includes(t.status);
+            });
+            self.show_today_tickets_dialog(filtered);
+        }
+    });
+}
+
+   show_today_tickets_dialog(tickets) {
+    let self = this;
+    let dialog = new frappe.ui.Dialog({
+        title: "View Tickets",
+        size: "extra-large",
+        fields: [{ fieldtype: "HTML", fieldname: "today_tickets_html" }]
+    });
+
+    let rows = tickets.map(t => {
+        let location = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ') || '';
+        return `
+            <tr>
+                <td>
+                    <a href="javascript:void(0)" class="tp-today-ticket-link" data-name="${t.name}" style="color:var(--tp-primary); font-weight:700; text-decoration:none;">
+                        ${t.name}
+                    </a>
+                </td>
+                <td>${t.custom_machine_name || ''}</td>
+                <td>${t.custom_customer_name || ''}</td>
+                <td>${location}</td>
+                <td>${t.custom_date || ''}</td>
+                <td>${t.status}</td>
+            </tr>
+        `;
+    }).join("");
+
+    let html = `
+        <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
+            <button class="btn btn-success btn-sm" id="tp-btn-share-excel">
+                <i class="fa fa-file-excel-o"></i> Share (Excel)
+            </button>
+        </div>
+        <div style="max-height:60vh; overflow:auto;">
+        <table class="table table-bordered" id="tp-today-table" style="width:100%;">
+            <thead>
+                <tr>
+                    <th>Ticket No</th><th>Machine</th><th>Customer</th><th>Location</th><th>Date</th><th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows || `<tr><td colspan="6" style="text-align:center;">No tickets found for today</td></tr>`}
+            </tbody>
+        </table>
+        </div>
+    `;
+
+    dialog.get_field("today_tickets_html").$wrapper.html(html);
+
+    dialog.$wrapper.find("#tp-btn-share-excel").on("click", function() {
+        self.export_table_to_excel("tp-today-table", "today_tickets");
+    });
+
+    // Ticket No click -> open the same ticket detail dialog used elsewhere in the portal
+    dialog.$wrapper.find(".tp-today-ticket-link").on("click", function() {
+        let ticket_name = $(this).data("name");
+        dialog.hide();
+        self.open_ticket_details(ticket_name);
+    });
+
+    dialog.show();
+}
+
+    export_table_to_excel(table_id, filename) {
+        let table = document.getElementById(table_id);
+        let template = `
+            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+            <head><meta charset="UTF-8"></head>
+            <body>${table.outerHTML}</body>
+            </html>
+        `;
+        let blob = new Blob(['\ufeff' + template], { type: 'application/vnd.ms-excel' });
+        let link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = filename + "_" + frappe.datetime.get_today() + ".xls";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
     show_ticket_detail_dialog(t) {
         let self = this;
         let phone = t.custom_customer_mobile_number || '';
