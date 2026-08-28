@@ -203,7 +203,7 @@ def check_active_ticket(current_ticket_name: str = None) -> dict:
 
 
 @frappe.whitelist()
-def technician_checkin(ticket_name: str, latitude: float, longitude: float, location_address: str = "", otp_phone_type: str = "primary", secondary_phone: str = "", skip_otp: Union[bool, int, str] = False) -> dict:
+def technician_checkin(ticket_name: str, latitude: float, longitude: float, location_address: str = "", otp_phone_type: str = "primary", secondary_phone: str = "", skip_otp: Union[bool, int, str] = False, accuracy: float = None) -> dict:
 	"""
 	Record check-in for a ticket:
 	- Verifies day attendance is marked
@@ -308,6 +308,7 @@ def technician_checkin(ticket_name: str, latitude: float, longitude: float, loca
 		"technician": user,
 		"latitude": float(latitude),
 		"longitude": float(longitude),
+		"accuracy": float(accuracy) if accuracy is not None else None,
 		"location_address": location_address,
 	})
 
@@ -383,7 +384,7 @@ def resend_otp(ticket_name: str, otp_phone_type: str = "primary", secondary_phon
 
 
 @frappe.whitelist()
-def technician_checkout(ticket_name: str, otp: str, latitude: float, longitude: float, location_address: str = "", mode_of_payment: str = "", gst_bill_required: str = "") -> dict:
+def technician_checkout(ticket_name: str, otp: str, latitude: float, longitude: float, location_address: str = "", mode_of_payment: str = "", gst_bill_required: str = "", accuracy: float = None) -> dict:
 	"""
 	Validate OTP and record check-out for a ticket:
 	- Validates the OTP against custom_service_otp
@@ -431,6 +432,7 @@ def technician_checkout(ticket_name: str, otp: str, latitude: float, longitude: 
 		"technician": user,
 		"latitude": float(latitude),
 		"longitude": float(longitude),
+		"accuracy": float(accuracy) if accuracy is not None else None,
 		"location_address": location_address,
 	})
 
@@ -451,7 +453,7 @@ def technician_checkout(ticket_name: str, otp: str, latitude: float, longitude: 
 	}
 
 @frappe.whitelist()
-def technician_mark_pending(ticket_name: str, reason: str, latitude: float, longitude: float, location_address: str = "", custom_reason: str = "") -> dict:
+def technician_mark_pending(ticket_name: str, reason: str, latitude: float, longitude: float, location_address: str = "", custom_reason: str = "", accuracy: float = None) -> dict:
 	"""
 	Mark a ticket as Pending:
 	- Appends a 'Check-out' row to the child table (since they are leaving)
@@ -495,6 +497,7 @@ def technician_mark_pending(ticket_name: str, reason: str, latitude: float, long
 		"technician": user,
 		"latitude": float(latitude),
 		"longitude": float(longitude),
+		"accuracy": float(accuracy) if accuracy is not None else None,
 		"location_address": location_address,
 	})
 
@@ -563,7 +566,7 @@ def get_day_attendance_status() -> dict:
 	return {"status": "success", "state": "OUT"}
 
 @frappe.whitelist()
-def mark_day_attendance(log_type: str, latitude: float, longitude: float) -> dict:
+def mark_day_attendance(log_type: str, latitude: float, longitude: float, accuracy: float = None) -> dict:
 	"""Mark Day Attendance (IN or OUT) for the technician."""
 	user = frappe.session.user
 	if user == "Guest":
@@ -586,6 +589,7 @@ def mark_day_attendance(log_type: str, latitude: float, longitude: float) -> dic
 			"log_type": log_type,
 			"latitude": float(latitude),
 			"longitude": float(longitude),
+			"custom_accuracy": float(accuracy) if accuracy is not None else None,
 			"device_id": "Technician Portal"
 		})
 		checkin.insert(ignore_permissions=True)

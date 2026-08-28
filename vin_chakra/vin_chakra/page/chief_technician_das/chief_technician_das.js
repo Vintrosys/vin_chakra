@@ -5,10 +5,14 @@ frappe.pages['chief-technician-das'].on_page_load = function(wrapper) {
         return;
     }
     wrapper._dashboard = new ChiefTechnicianDashboard(wrapper);
+    frappe.pages['chief-technician-das']._dashboard = wrapper._dashboard;
 };
 
 frappe.pages['chief-technician-das'].on_page_show = function(wrapper) {
     if (wrapper._dashboard) {
+        wrapper._dashboard.read_url_params();
+        wrapper._dashboard.sync_ui_from_state();
+        wrapper._dashboard.render_view_structure();
         wrapper._dashboard.load_data();
     }
 };
@@ -23,7 +27,7 @@ class ChiefTechnicianDashboard {
         });
         
         // State variables
-        this.current_tab = "tickets"; // tickets, analytics, movement
+        this.current_tab = "tickets"; // tickets, analytics, movement, attendance
         this.view_type = localStorage.getItem("ct_dashboard_view_type") || "card"; // card, list, calendar
         
         // Paginated tickets filter state
@@ -73,18 +77,127 @@ class ChiefTechnicianDashboard {
             let link = document.createElement("link");
             link.id = "leaflet-style-link";
             link.rel = "stylesheet";
-            link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+            link.href = "/assets/vin_chakra/js/lib/leaflet/leaflet.css";
             document.head.appendChild(link);
         }
+        this.read_url_params();
         this.render_skeleton();
+        this.sync_ui_from_state();
         this.bind_events();
+        this.bind_popstate();
         this.load_data();
+    }
+
+    read_url_params() {
+        let params = new URLSearchParams(window.location.search);
+        
+        let tab = params.get("tab");
+        if (tab && ["tickets", "analytics", "movement", "attendance"].includes(tab)) {
+            this.current_tab = tab;
+        }
+        
+        let view = params.get("view");
+        if (view && ["card", "list", "calendar"].includes(view)) {
+            this.view_type = view;
+        }
+        
+        let tickets_page = parseInt(params.get("tickets_page") || params.get("page") || "1");
+        if (!isNaN(tickets_page) && tickets_page > 0) {
+            this.tickets_start = (tickets_page - 1) * this.tickets_length;
+        } else {
+            this.tickets_start = 0;
+        }
+        
+        let attendance_page = parseInt(params.get("attendance_page") || "1");
+        if (!isNaN(attendance_page) && attendance_page > 0) {
+            this.attendance_start = (attendance_page - 1) * this.attendance_length;
+        } else {
+            this.attendance_start = 0;
+        }
+        
+        this.filters.date_from = params.get("date_from") || "";
+        this.filters.date_to = params.get("date_to") || "";
+        this.filters.technician = params.get("technician") || "";
+        this.filters.status = params.get("status") || "";
+        this.filters.priority = params.get("priority") || "";
+        this.search_query = params.get("search") || "";
+    }
+
+    update_url(push = false) {
+        let params = new URLSearchParams(window.location.search);
+        
+        params.set("tab", this.current_tab);
+        params.set("view", this.view_type);
+        
+        let tickets_page = Math.floor(this.tickets_start / this.tickets_length) + 1;
+        if (tickets_page > 1) {
+            params.set("tickets_page", tickets_page);
+        } else {
+            params.delete("tickets_page");
+            params.delete("page");
+        }
+        
+        let attendance_page = Math.floor(this.attendance_start / this.attendance_length) + 1;
+        if (attendance_page > 1) {
+            params.set("attendance_page", attendance_page);
+        } else {
+            params.delete("attendance_page");
+        }
+        
+        if (this.filters.date_from) params.set("date_from", this.filters.date_from); else params.delete("date_from");
+        if (this.filters.date_to) params.set("date_to", this.filters.date_to); else params.delete("date_to");
+        if (this.filters.technician) params.set("technician", this.filters.technician); else params.delete("technician");
+        if (this.filters.status) params.set("status", this.filters.status); else params.delete("status");
+        if (this.filters.priority) params.set("priority", this.filters.priority); else params.delete("priority");
+        if (this.search_query) params.set("search", this.search_query); else params.delete("search");
+        
+        let queryString = params.toString();
+        let newUrl = window.location.pathname + (queryString ? "?" + queryString : "") + window.location.hash;
+        
+        if (newUrl !== (window.location.pathname + window.location.search + window.location.hash)) {
+            if (push) {
+                history.pushState({ tab: this.current_tab, tickets_start: this.tickets_start }, "", newUrl);
+            } else {
+                history.replaceState({ tab: this.current_tab, tickets_start: this.tickets_start }, "", newUrl);
+            }
+        }
+    }
+
+    sync_ui_from_state() {
+        if (!this.wrapper) return;
+        this.wrapper.find(".ct-tab-btn").removeClass("active");
+        this.wrapper.find(`.ct-tab-btn[data-tab="${this.current_tab}"]`).addClass("active");
+
+        this.wrapper.find("#ct-filter-date-from").val(this.filters.date_from || "");
+        this.wrapper.find("#ct-filter-date-to").val(this.filters.date_to || "");
+        this.wrapper.find("#ct-filter-status").val(this.filters.status || "");
+        this.wrapper.find("#ct-filter-priority").val(this.filters.priority || "");
+        this.wrapper.find("#ct-ticket-search").val(this.search_query || "");
+
+        if (this.tech_control && this.filters.technician) {
+            this.tech_control.set_value(this.filters.technician);
+        }
+    }
+
+    bind_popstate() {
+        let self = this;
+        $(window).off("popstate.chief_tech_dash").on("popstate.chief_tech_dash", function() {
+            if (!self.wrapper || !$.contains(document.documentElement, self.wrapper[0])) {
+                $(window).off("popstate.chief_tech_dash");
+                return;
+            }
+            self.read_url_params();
+            self.sync_ui_from_state();
+            self.render_view_structure();
+            self.load_data();
+        });
     }
     
     reset_pagination() {
         this.tickets_start = 0;
         this.movement_start = 0;
         this.attendance_start = 0;
+        this.update_url(false);
     }
     
     render_skeleton() {
@@ -392,12 +505,12 @@ class ChiefTechnicianDashboard {
     init_map() {
         let self = this;
         setTimeout(() => {
-            if (!self.map && $("#ct-movement-map").length) {
+            if (!self.map && self.wrapper.find("#ct-movement-map").length) {
                 frappe.require([
-                    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-                    'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+                    '/assets/vin_chakra/js/lib/leaflet/leaflet.css',
+                    '/assets/vin_chakra/js/lib/leaflet/leaflet.js'
                 ], function() {
-                    let map_el = $("#ct-movement-map")[0];
+                    let map_el = self.wrapper.find("#ct-movement-map")[0];
                     self.map = L.map(map_el, { scrollWheelZoom: false }).setView([20.5937, 78.9629], 5);
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         attribution: '© OpenStreetMap contributors'
@@ -421,6 +534,7 @@ class ChiefTechnicianDashboard {
             self.wrapper.find(".ct-tab-btn").removeClass("active");
             $(this).addClass("active");
             self.current_tab = tab;
+            self.update_url(true);
             self.render_view_structure();
             self.load_data();
         });
@@ -432,6 +546,7 @@ class ChiefTechnicianDashboard {
             $(this).addClass("active");
             self.view_type = view;
             localStorage.setItem("ct_dashboard_view_type", view);
+            self.update_url(false);
             self.render_view_structure();
             self.load_data();
         });
@@ -540,6 +655,7 @@ class ChiefTechnicianDashboard {
             } else if (action === "next" && (self.tickets_start + self.tickets_length) < self.tickets_total) {
                 self.tickets_start += self.tickets_length;
             }
+            self.update_url(true);
             self.load_data();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
@@ -552,6 +668,7 @@ class ChiefTechnicianDashboard {
             } else if (action === "next" && (self.movement_start + self.movement_length) < self.movement_total) {
                 self.movement_start += self.movement_length;
             }
+            self.update_url(true);
             self.load_data();
         });
         
@@ -563,6 +680,7 @@ class ChiefTechnicianDashboard {
             } else if (action === "next" && (self.attendance_start + self.attendance_length) < self.attendance_total) {
                 self.attendance_start += self.attendance_length;
             }
+            self.update_url(true);
             self.load_data();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
@@ -595,6 +713,16 @@ class ChiefTechnicianDashboard {
         // Redirect to raise ticket page
         this.wrapper.on("click", "#ct-btn-raise-ticket", function() {
             window.location.href = "/ticket-support";
+        });
+        
+        // Attendance location map popup click
+        this.wrapper.on("click", ".ct-attendance-map-link", function(e) {
+            e.preventDefault();
+            let lat = parseFloat($(this).data("lat"));
+            let lng = parseFloat($(this).data("lng"));
+            if (!isNaN(lat) && !isNaN(lng)) {
+                self.open_map_popup(lat, lng);
+            }
         });
     }
     
@@ -654,7 +782,7 @@ class ChiefTechnicianDashboard {
                         self.render_tickets_pagination();
                     } else if (self.view_type === "calendar") {
                         self.render_ticket_calendar(data.tickets);
-                        $("#ct-tickets-pagination").empty();
+                        self.wrapper.find("#ct-tickets-pagination").empty();
                     }
                 }
             }
@@ -761,7 +889,7 @@ class ChiefTechnicianDashboard {
     
     render_ticket_cards(tickets) {
         let self = this;
-        let container = $("#ct-tickets-container");
+        let container = this.wrapper.find("#ct-tickets-container");
         if (!tickets || tickets.length === 0) {
             container.html(`
                 <div class="ct-empty-state">
@@ -810,7 +938,7 @@ class ChiefTechnicianDashboard {
     
     render_ticket_list(tickets) {
         let self = this;
-        let container = $("#ct-tickets-container");
+        let container = this.wrapper.find("#ct-tickets-container");
         if (!tickets || tickets.length === 0) {
             container.html(`
                 <div class="ct-empty-state">
@@ -858,7 +986,7 @@ class ChiefTechnicianDashboard {
     }
     
     render_ticket_calendar(tickets) {
-        let container = $("#ct-tickets-container");
+        let container = this.wrapper.find("#ct-tickets-container");
         container.removeClass("ct-tickets-grid ct-tickets-list");
         
         let month = this.calendar_date.getMonth();
@@ -933,7 +1061,7 @@ class ChiefTechnicianDashboard {
     }
     
     render_tickets_pagination() {
-        let container = $("#ct-tickets-pagination");
+        let container = this.wrapper.find("#ct-tickets-pagination");
         if (this.tickets_total <= this.tickets_length) {
             container.empty();
             return;
@@ -973,7 +1101,7 @@ class ChiefTechnicianDashboard {
                     let status_labels = data.status_summary.map(d => d.status);
                     let status_values = data.status_summary.map(d => d.count);
                     
-                    $("#ct-chart-status").empty();
+                    self.wrapper.find("#ct-chart-status").empty();
                     new frappe.Chart("#ct-chart-status", {
                         data: {
                             labels: status_labels,
@@ -988,7 +1116,7 @@ class ChiefTechnicianDashboard {
                     let priority_labels = data.priority_summary.map(d => d.priority);
                     let priority_values = data.priority_summary.map(d => d.count);
                     
-                    $("#ct-chart-priority").empty();
+                    self.wrapper.find("#ct-chart-priority").empty();
                     new frappe.Chart("#ct-chart-priority", {
                         data: {
                             labels: priority_labels,
@@ -1007,7 +1135,7 @@ class ChiefTechnicianDashboard {
     }
     
     render_leaderboard(performance) {
-        let container = $("#ct-leaderboard-container");
+        let container = this.wrapper.find("#ct-leaderboard-container");
         if (!performance || performance.length === 0) {
             container.html(`<div class="ct-empty-state"><p>No technician performance records found.</p></div>`);
             return;
@@ -1117,7 +1245,7 @@ class ChiefTechnicianDashboard {
             bounds.push([log.latitude, log.longitude]);
         });
         
-        $("#ct-map-legend-routes").html(legend_html);
+        self.wrapper.find("#ct-map-legend-routes").html(legend_html);
         if (bounds.length > 0) {
             self.map.fitBounds(bounds, {padding: [50, 50]});
         } else {
@@ -1145,7 +1273,7 @@ class ChiefTechnicianDashboard {
             <div class="ct-map-legend-item">
                 <span class="badge" style="background:#ef4444; color:white; font-size:9px; padding:2px 4px; margin-right:6px;">END</span> Last Ticket
             </div>`;
-        $("#ct-map-legend-routes").html(legend_html);
+        self.wrapper.find("#ct-map-legend-routes").html(legend_html);
         
         if (visits.length > 1) {
             let path_coords = visits.map(v => [v.latitude, v.longitude]);
@@ -1406,6 +1534,9 @@ class ChiefTechnicianDashboard {
                 });
             }
         });
+        d.onhide = () => {
+            d.$wrapper.remove();
+        };
         d.show();
     }
     
@@ -1434,7 +1565,7 @@ class ChiefTechnicianDashboard {
     }
 
     render_attendance_list(logs) {
-        let container = $("#ct-attendance-list-container");
+        let container = this.wrapper.find("#ct-attendance-list-container");
         if (!logs || logs.length === 0) {
             container.html(`
                 <div class="ct-empty-state">
@@ -1465,9 +1596,26 @@ class ChiefTechnicianDashboard {
             
             let time_str = log.time ? frappe.datetime.global_date_format(log.time) + " " + log.time.split(" ")[1].substring(0, 5) : "-";
             
-            let location_str = (log.latitude && log.longitude) 
-                ? `<a href="javascript:void(0)" onclick="frappe.pages['chief-technician-das']._dashboard.open_map_popup(${log.latitude}, ${log.longitude})" style="color: var(--ct-primary);"><i class="fa fa-map-marker"></i> ${log.latitude.toFixed(5)}, ${log.longitude.toFixed(5)}</a>`
+            let accuracy_indicator = "";
+            let acc = log.custom_accuracy || log.accuracy;
+            if (acc) {
+                if (acc > 100) {
+                    accuracy_indicator = `<br><span class="badge" style="background: #fffbeb; color: #b45309; border: 1px solid #fef3c7; font-size: 10px; margin-top: 4px; display: inline-block;" title="Accuracy: ${acc} meters"><i class="fa fa-warning"></i> Low Accuracy GPS (±${Math.round(acc)}m)</span>`;
+                } else {
+                    accuracy_indicator = `<br><span style="color: #10b981; font-size: 11px; font-weight: 600; margin-top: 2px; display: inline-block;">±${Math.round(acc)}m accuracy</span>`;
+                }
+            }
+
+            let lat = log.latitude !== null && log.latitude !== undefined ? parseFloat(log.latitude) : null;
+            let lng = log.longitude !== null && log.longitude !== undefined ? parseFloat(log.longitude) : null;
+
+            let location_str = (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) 
+                ? `<a href="javascript:void(0)" class="ct-attendance-map-link" data-lat="${lat}" data-lng="${lng}" style="color: var(--ct-primary); font-weight: 600;"><i class="fa fa-map-marker"></i> ${lat.toFixed(5)}, ${lng.toFixed(5)}</a>`
                 : "-";
+            
+            if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng) && accuracy_indicator) {
+                location_str += accuracy_indicator;
+            }
 
             html += `
                 <tr>
@@ -1485,7 +1633,7 @@ class ChiefTechnicianDashboard {
     }
 
     render_attendance_pagination() {
-        let container = $("#ct-attendance-pagination");
+        let container = this.wrapper.find("#ct-attendance-pagination");
         if (this.attendance_total <= this.attendance_length) {
             container.empty();
             return;
@@ -1506,8 +1654,13 @@ class ChiefTechnicianDashboard {
     }
 
     open_map_popup(lat, lng) {
+        let popup_map = null;
+        let invalidate_timeout = null;
+        let init_timeout = null;
+        let map_id = "ct-popup-map-" + Math.random().toString(36).substring(2, 9);
+
         let d = new frappe.ui.Dialog({
-            title: "Check-in Location",
+            title: __("Check-in Location"),
             fields: [
                 {
                     fieldtype: "HTML",
@@ -1516,24 +1669,52 @@ class ChiefTechnicianDashboard {
             ]
         });
         
-        d.get_field("map_html").$wrapper.html('<div id="ct-popup-map" style="height: 400px; width: 100%; border-radius: 8px;"></div>');
-        d.show();
+        d.onhide = () => {
+            if (invalidate_timeout) clearTimeout(invalidate_timeout);
+            if (init_timeout) clearTimeout(init_timeout);
+            if (popup_map) {
+                try {
+                    popup_map.remove();
+                } catch(e) {
+                    console.error("Error removing popup map:", e);
+                }
+                popup_map = null;
+            }
+            d.$wrapper.remove();
+        };
         
-        setTimeout(() => {
-            frappe.require([
-                'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
-                'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
-            ], function() {
-                let map = L.map("ct-popup-map").setView([lat, lng], 15);
+        d.get_field("map_html").$wrapper.html(`<div id="${map_id}" style="height: 400px; width: 100%; border-radius: 8px;"></div>`);
+        d.show();
+
+        const render_map = () => {
+            let el = document.getElementById(map_id);
+            if (!el) return;
+            try {
+                popup_map = L.map(el).setView([lat, lng], 15);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                     attribution: '© OpenStreetMap contributors'
-                }).addTo(map);
-                L.marker([lat, lng]).addTo(map);
+                }).addTo(popup_map);
+                L.marker([lat, lng]).addTo(popup_map);
                 
-                // Fix map size after dialog finishes opening
-                setTimeout(() => map.invalidateSize(), 200);
-            });
-        }, 300);
+                invalidate_timeout = setTimeout(() => {
+                    if (popup_map) popup_map.invalidateSize();
+                }, 200);
+            } catch(e) {
+                console.error("Error initializing popup map:", e);
+            }
+        };
+
+        if (window.L) {
+            init_timeout = setTimeout(render_map, 150);
+        } else {
+            init_timeout = setTimeout(() => {
+                frappe.require([
+                    '/assets/vin_chakra/js/lib/leaflet/leaflet.css',
+                    '/assets/vin_chakra/js/lib/leaflet/leaflet.js'
+                ], function() {
+                    render_map();
+                });
+            }, 150);
+        }
     }
 }
-frappe.pages['chief-technician-das']._dashboard = null;
