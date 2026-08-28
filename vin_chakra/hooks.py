@@ -91,6 +91,7 @@ doc_events = {
 		"on_trash": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches"
 	},
 	"Employee Checkin": {
+		"before_validate": "vin_chakra.vin_chakra.custom.employee_checkin.validate_employee_checkin",
 		"after_insert": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches",
 		"on_update": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches",
 		"on_trash": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches"
@@ -187,12 +188,6 @@ fixtures = [
         "dt": "HD Ticket Status",
         "filters": [
             ["name", "=", "Self-Completed"]
-        ]
-    },
-    {
-        "dt": "HD Ticket Template",
-        "filters": [
-            ["name", "=", "Default"]
         ]
     },
     "Custom Field",

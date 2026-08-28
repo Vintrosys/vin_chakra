@@ -23,11 +23,6 @@ def get_dashboard_data(
     priority = priority if priority not in (None, "", "None", "null", "undefined") else None
     search_query = search_query if search_query not in (None, "", "None", "null", "undefined") else None
 
-    # Check cache first using sanitized values
-    cache_key = f"chief_dash:{view}:{date_from}:{date_to}:{technician}:{status}:{priority}:{search_query}:{limit_start}:{limit_page_length}"
-    cached_res = frappe.cache().get_value(cache_key)
-    if cached_res:
-        return frappe.parse_json(cached_res)
         
     # Construct base conditions for HD Tickets
     summary_conditions = ["status NOT IN ('Replied', 'Closed')"]
@@ -315,7 +310,7 @@ def get_dashboard_data(
         
         attendance = frappe.db.sql(f"""
             SELECT 
-                ec.name, ec.employee, ec.employee_name, ec.time, ec.log_type, ec.latitude, ec.longitude, ec.device_id, e.user_id
+                ec.name, ec.employee, ec.employee_name, ec.time, ec.log_type, ec.latitude, ec.longitude, ec.custom_accuracy, ec.device_id, e.user_id
             FROM `tabEmployee Checkin` ec
             LEFT JOIN `tabEmployee` e ON ec.employee = e.name
             WHERE {attendance_where}
@@ -337,7 +332,6 @@ def get_dashboard_data(
             "total_count": attendance_total
         }
 
-    frappe.cache().set_value(cache_key, result, expires_in_sec=600)
     return result
 
 
@@ -355,11 +349,6 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
     if ticket_status in (None, "None", "null", "undefined"):
         ticket_status = None
 
-    # Check cache first
-    cache_key = f"tech_map:{date_str}:{technician}:{customer}:{ticket_status}"
-    cached_res = frappe.cache().get_value(cache_key)
-    if cached_res:
-        return frappe.parse_json(cached_res)
         
     result = {}
 
@@ -503,5 +492,4 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
             "summary": summary
         }
 
-    frappe.cache().set_value(cache_key, result, expires_in_sec=600)
     return result

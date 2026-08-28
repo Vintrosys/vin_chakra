@@ -4,9 +4,51 @@ frappe.pages['technician-portal'].on_page_load = function(wrapper) {
 
 frappe.pages['technician-portal'].on_page_show = function(wrapper) {
     if (wrapper._dashboard) {
+        wrapper._dashboard.read_url_params();
+        wrapper._dashboard.sync_ui_from_state();
+        wrapper._dashboard.render_view_structure();
         wrapper._dashboard.load_data();
     }
 };
+
+function getLocationSafe(hardTimeoutMs = 15000) {
+    const attempt = (retryCount = 0) => {
+        if (retryCount > 0) {
+            frappe.show_alert({ message: "Improving GPS accuracy...", indicator: "orange" });
+        }
+        return Promise.race([
+            new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    return reject(new Error("Geolocation is not supported by this browser."));
+                }
+                navigator.geolocation.getCurrentPosition(
+                    pos => {
+                        const acc = pos.coords.accuracy;
+                        if (acc > 100 && retryCount < 2) {
+                            resolve(attempt(retryCount + 1));
+                        } else {
+                            resolve({
+                                lat: pos.coords.latitude,
+                                lng: pos.coords.longitude,
+                                accuracy: acc
+                            });
+                        }
+                    },
+                    err => {
+                        let msg = "Failed to fetch GPS coordinates.";
+                        if (err.code === 1) msg = "Location access denied. Please enable GPS and allow location permissions.";
+                        else if (err.code === 2) msg = "Location provider unavailable. Ensure GPS is on.";
+                        else if (err.code === 3) msg = "GPS fetch timeout occurred.";
+                        reject(new Error(msg));
+                    },
+                    { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+                );
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Location request timed out. Please move to an open area and retry.")), hardTimeoutMs))
+        ]);
+    };
+    return attempt(0);
+}
 
 class TechnicianPortal {
     constructor(wrapper) {
@@ -37,15 +79,90 @@ class TechnicianPortal {
     }
     
     init() {
+        this.read_url_params();
         this.render_skeleton();
+        this.sync_ui_from_state();
         this.bind_events();
+        this.bind_popstate();
         this.fetch_user_fullname();
         this.fetch_day_attendance_status();
         this.load_data();
     }
+
+    read_url_params() {
+        let params = new URLSearchParams(window.location.search);
+        let view = params.get("view");
+        if (view && ["card", "list", "calendar"].includes(view)) {
+            this.view_type = view;
+        }
+        
+        let page = parseInt(params.get("tickets_page") || params.get("page") || "1");
+        if (!isNaN(page) && page > 0) {
+            this.tickets_start = (page - 1) * this.tickets_length;
+        } else {
+            this.tickets_start = 0;
+        }
+        
+        this.filters.status = params.get("status") || "";
+        this.filters.priority = params.get("priority") || "";
+        this.search_query = params.get("search") || "";
+    }
+
+    update_url(push = false) {
+        let params = new URLSearchParams(window.location.search);
+        params.set("view", this.view_type);
+        
+        let page = Math.floor(this.tickets_start / this.tickets_length) + 1;
+        if (page > 1) {
+            params.set("tickets_page", page);
+        } else {
+            params.delete("tickets_page");
+            params.delete("page");
+        }
+        
+        if (this.filters.status) params.set("status", this.filters.status); else params.delete("status");
+        if (this.filters.priority) params.set("priority", this.filters.priority); else params.delete("priority");
+        if (this.search_query) params.set("search", this.search_query); else params.delete("search");
+        
+        let queryString = params.toString();
+        let newUrl = window.location.pathname + (queryString ? "?" + queryString : "") + window.location.hash;
+        
+        if (newUrl !== (window.location.pathname + window.location.search + window.location.hash)) {
+            if (push) {
+                history.pushState({ tickets_start: this.tickets_start }, "", newUrl);
+            } else {
+                history.replaceState({ tickets_start: this.tickets_start }, "", newUrl);
+            }
+        }
+    }
+
+    sync_ui_from_state() {
+        if (!this.wrapper) return;
+        this.wrapper.find(".tp-view-btn").removeClass("active");
+        this.wrapper.find(`.tp-view-btn[data-view="${this.view_type}"]`).addClass("active");
+        
+        this.wrapper.find("#tp-filter-status").val(this.filters.status || "");
+        this.wrapper.find("#tp-filter-priority").val(this.filters.priority || "");
+        this.wrapper.find("#tp-ticket-search").val(this.search_query || "");
+    }
+
+    bind_popstate() {
+        let self = this;
+        $(window).off("popstate.tech_portal").on("popstate.tech_portal", function() {
+            if (!self.wrapper || !$.contains(document.documentElement, self.wrapper[0])) {
+                $(window).off("popstate.tech_portal");
+                return;
+            }
+            self.read_url_params();
+            self.sync_ui_from_state();
+            self.render_view_structure();
+            self.load_data();
+        });
+    }
     
     reset_pagination() {
         this.tickets_start = 0;
+        this.update_url(false);
     }
     
     fetch_user_fullname() {
@@ -97,46 +214,32 @@ class TechnicianPortal {
 
         btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Processing...');
 
-        // Fetch location
-        if (!navigator.geolocation) {
-            frappe.msgprint("Geolocation is not supported by this browser.");
-            self.fetch_day_attendance_status();
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                frappe.call({
-                    method: "vin_chakra.technician_api.mark_day_attendance",
-                    args: {
-                        log_type: action,
-                        latitude: pos.coords.latitude,
-                        longitude: pos.coords.longitude
-                    },
-                    callback: function(res) {
-                        if (res.message && res.message.status === "success") {
-                            frappe.show_alert({message: res.message.message, indicator: "green"});
-                        } else {
-                            frappe.msgprint(res.message ? res.message.message : "Error marking attendance.");
-                        }
-                        self.fetch_day_attendance_status();
-                    },
-                    error: function() {
-                        self.fetch_day_attendance_status();
+        getLocationSafe().then(coords => {
+            frappe.call({
+                method: "vin_chakra.technician_api.mark_day_attendance",
+                args: {
+                    log_type: action,
+                    latitude: coords.lat,
+                    longitude: coords.lng,
+                    accuracy: coords.accuracy
+                },
+                callback: function(res) {
+                    if (res.message && res.message.status === "success") {
+                        frappe.show_alert({message: res.message.message, indicator: "green"});
+                    } else {
+                        frappe.msgprint(res.message ? res.message.message : "Error marking attendance.");
                     }
-                });
-            },
-            (err) => {
-                btn.prop("disabled", false);
-                self.fetch_day_attendance_status();
-                let msg = "Failed to fetch GPS coordinates.";
-                if (err.code === 1) msg = "Location access denied. Please enable GPS and allow location permissions.";
-                else if (err.code === 2) msg = "Location provider unavailable. Ensure GPS is on.";
-                else if (err.code === 3) msg = "GPS fetch timeout occurred.";
-                frappe.msgprint(msg);
-            },
-            { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
-        );
+                    self.fetch_day_attendance_status();
+                },
+                error: function() {
+                    self.fetch_day_attendance_status();
+                }
+            });
+        }).catch(err => {
+            btn.prop("disabled", false);
+            self.fetch_day_attendance_status();
+            frappe.msgprint(err.message);
+        });
     }
     
     render_skeleton() {
@@ -304,6 +407,7 @@ class TechnicianPortal {
             $(this).addClass("active");
             self.view_type = view;
             localStorage.setItem("tp_portal_view_type", view);
+            self.update_url(false);
             self.render_view_structure();
             self.load_data();
         });
@@ -316,6 +420,7 @@ class TechnicianPortal {
             } else if (action === "next" && (self.tickets_start + self.tickets_length) < self.tickets_total) {
                 self.tickets_start += self.tickets_length;
             }
+            self.update_url(true);
             self.load_data();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
@@ -437,7 +542,7 @@ class TechnicianPortal {
     }
     
     render_ticket_cards(tickets) {
-        let container = $("#tp-tickets-container");
+        let container = this.wrapper.find("#tp-tickets-container");
         if (!tickets || tickets.length === 0) {
             container.html(`
                 <div class="tp-empty-state">
@@ -478,7 +583,7 @@ class TechnicianPortal {
     }
     
     render_ticket_list(tickets) {
-        let container = $("#tp-tickets-container");
+        let container = this.wrapper.find("#tp-tickets-container");
         if (!tickets || tickets.length === 0) {
             container.html(`
                 <div class="tp-empty-state">
@@ -518,7 +623,7 @@ class TechnicianPortal {
     }
     
     render_ticket_calendar(tickets) {
-        let container = $("#tp-tickets-container");
+        let container = this.wrapper.find("#tp-tickets-container");
         container.removeClass("tp-tickets-grid tp-tickets-list");
         
         let month = this.calendar_date.getMonth();
@@ -603,7 +708,7 @@ class TechnicianPortal {
     }
     
     render_tickets_pagination() {
-        let container = $("#tp-tickets-pagination");
+        let container = this.wrapper.find("#tp-tickets-pagination");
         if (this.tickets_total <= this.tickets_length) {
             container.empty();
             return;
@@ -663,6 +768,9 @@ class TechnicianPortal {
         size: "extra-large",
         fields: [{ fieldtype: "HTML", fieldname: "today_tickets_html" }]
     });
+    dialog.onhide = () => {
+        dialog.$wrapper.remove();
+    };
 
     let rows = tickets.map(t => {
         let location = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ') || '';
@@ -754,6 +862,9 @@ class TechnicianPortal {
                 }
             ]
         });
+        dialog.onhide = () => {
+            dialog.$wrapper.remove();
+        };
         
         // Build the HTML template for details, service action workflow, and activity timeline
         let html_content = `
@@ -831,27 +942,6 @@ class TechnicianPortal {
         `;
         
         dialog.get_field("detail_html").$wrapper.html(html_content);
-        
-        // Helper function to fetch user's GPS coords
-        function get_location_promise() {
-            return new Promise((resolve, reject) => {
-                if (!navigator.geolocation) {
-                    reject(new Error("Geolocation is not supported by this browser."));
-                } else {
-                    navigator.geolocation.getCurrentPosition(
-                        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                        (err) => {
-                            let msg = "Failed to fetch GPS coordinates.";
-                            if (err.code === 1) msg = "Location access denied. Please enable GPS and allow location permissions.";
-                            else if (err.code === 2) msg = "Location provider unavailable. Ensure GPS is on.";
-                            else if (err.code === 3) msg = "GPS fetch timeout occurred.";
-                            reject(new Error(msg));
-                        },
-                        { enableHighAccuracy: true, timeout: 30000, maximumAge: 10000 }
-                    );
-                }
-            });
-        }
 
         // Helper to prompt Phone Selection and trigger Checkin or Resend OTP
         function trigger_checkin_flow(ticket_doc, is_resend = false) {
@@ -871,6 +961,9 @@ class TechnicianPortal {
                     }
                 ]
             });
+            checkin_dialog.onhide = () => {
+                checkin_dialog.$wrapper.remove();
+            };
 
             let default_is_secondary = !!sec_phone;
 
@@ -961,7 +1054,7 @@ class TechnicianPortal {
                 } else {
                     btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Fetching GPS Coords...');
 
-                    get_location_promise().then(coords => {
+                    getLocationSafe().then(coords => {
                         btn.html('<i class="fa fa-spinner fa-spin"></i> Checking In & Sending OTP...');
 
                         frappe.call({
@@ -970,6 +1063,7 @@ class TechnicianPortal {
                                 ticket_name: ticket_doc.name,
                                 latitude: coords.lat,
                                 longitude: coords.lng,
+                                accuracy: coords.accuracy,
                                 otp_phone_type: selected_choice,
                                 secondary_phone: secondary_val
                             },
@@ -1127,7 +1221,7 @@ class TechnicianPortal {
                                     } else {
                                         if (ticket.status === 'Pending') {
                                             btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Fetching GPS Coords...');
-                                            get_location_promise().then(coords => {
+                                            getLocationSafe().then(coords => {
                                                 btn.html('<i class="fa fa-spinner fa-spin"></i> Checking In...');
                                                 frappe.call({
                                                     method: "vin_chakra.technician_api.technician_checkin",
@@ -1135,6 +1229,7 @@ class TechnicianPortal {
                                                         ticket_name: ticket.name,
                                                         latitude: coords.lat,
                                                         longitude: coords.lng,
+                                                        accuracy: coords.accuracy,
                                                         skip_otp: 1
                                                     },
                                                     callback: function(res) {
@@ -1238,7 +1333,7 @@ class TechnicianPortal {
                 let btn = $(this);
                 btn.prop("disabled", true).text("Locating GPS...");
                 
-                get_location_promise().then(coords => {
+                getLocationSafe().then(coords => {
                     btn.text("Checking Out...");
                     
                     frappe.call({
@@ -1249,7 +1344,8 @@ class TechnicianPortal {
                             mode_of_payment: mopVal,
                             gst_bill_required: gstVal,
                             latitude: coords.lat,
-                            longitude: coords.lng
+                            longitude: coords.lng,
+                            accuracy: coords.accuracy
                         },
                         callback: function(res) {
                             btn.prop("disabled", false).text("Verify & Check Out");
@@ -1288,7 +1384,7 @@ class TechnicianPortal {
                 let btn = $(this);
                 btn.prop("disabled", true).text("Locating GPS...");
                 
-                get_location_promise().then(coords => {
+                getLocationSafe().then(coords => {
                     btn.text("Submitting...");
                     
                     frappe.call({
@@ -1298,7 +1394,8 @@ class TechnicianPortal {
                             reason: reasonVal,
                             custom_reason: customReasonVal,
                             latitude: coords.lat,
-                            longitude: coords.lng
+                            longitude: coords.lng,
+                            accuracy: coords.accuracy
                         },
                         callback: function(res) {
                             btn.prop("disabled", false).text("Submit & Leave");

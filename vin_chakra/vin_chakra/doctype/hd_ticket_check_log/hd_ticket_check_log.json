@@ -10,6 +10,7 @@
   "technician",
   "latitude",
   "longitude",
+  "accuracy",
   "location_address"
  ],
  "fields": [
@@ -47,6 +48,11 @@
    "fieldtype": "Float",
    "label": "Longitude",
    "precision": "7"
+  },
+  {
+   "fieldname": "accuracy",
+   "fieldtype": "Float",
+   "label": "Accuracy"
   },
   {
    "fieldname": "location_address",
