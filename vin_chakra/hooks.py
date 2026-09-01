@@ -198,7 +198,7 @@ fixtures = [
     {
         "dt": "Custom Field",
         "filters": [
-            ["dt", "in", ["Employee Checkin", "Support Form Template", "Machine type list"]]
+            ["dt", "in", ["Employee Checkin", "Support Form Template", "Machine type list", "HD Ticket"]]
         ]
     },
     {

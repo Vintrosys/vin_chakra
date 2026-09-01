@@ -5,6 +5,14 @@ class SupportFormTemplate(Document):
 	def validate(self):
 		meta = frappe.get_meta("HD Ticket")
 		valid_fields = {df.fieldname for df in meta.fields}
+		missing = [row.fieldname for row in self.fields if row.fieldname and row.fieldname not in valid_fields]
+		if missing:
+			from vin_chakra.vin_chakra.setup import create_custom_fields
+			create_custom_fields()
+			frappe.clear_cache(doctype="HD Ticket")
+			meta = frappe.get_meta("HD Ticket")
+			valid_fields = {df.fieldname for df in meta.fields}
+
 		for row in self.fields:
 			if row.fieldname and row.fieldname not in valid_fields:
 				frappe.throw(f"Field '{row.fieldname}' does not exist in HD Ticket doctype")

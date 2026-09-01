@@ -21,7 +21,7 @@
  "list_columns": [],
  "login_required": 0,
  "max_attachment_size": 0,
- "modified": "2026-08-31 17:02:34.815277",
+ "modified": "2026-09-01 16:58:39.795809",
  "modified_by": "Administrator",
  "module": "vin_chakra",
  "name": "raise-a-ticket",
@@ -127,6 +127,20 @@
   },
   {
    "allow_read_on_all_link_options": 0,
+   "fieldname": "ticket_type",
+   "fieldtype": "Link",
+   "hidden": 0,
+   "label": "Call Type",
+   "max_length": 0,
+   "max_value": 0,
+   "options": "HD Ticket Type",
+   "precision": "",
+   "read_only": 0,
+   "reqd": 1,
+   "show_in_filter": 0
+  },
+  {
+   "allow_read_on_all_link_options": 0,
    "fieldname": "subject",
    "fieldtype": "Data",
    "hidden": 0,
@@ -136,20 +150,6 @@
    "precision": "",
    "read_only": 0,
    "reqd": 1,
-   "show_in_filter": 0
-  },
-  {
-   "allow_read_on_all_link_options": 0,
-   "fieldname": "custom_gst_bill_required",
-   "fieldtype": "Select",
-   "hidden": 0,
-   "label": "GST Bill Required",
-   "max_length": 0,
-   "max_value": 0,
-   "options": "Yes\nNo",
-   "precision": "",
-   "read_only": 0,
-   "reqd": 0,
    "show_in_filter": 0
   },
   {

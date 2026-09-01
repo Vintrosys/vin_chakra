@@ -147,6 +147,15 @@ def create_custom_fields():
 		print("Custom Field 'custom_machine_type_list' created")
 
 
+def configure_hr_settings():
+	if frappe.db.exists("DocType", "HR Settings"):
+		hr_settings = frappe.get_single("HR Settings")
+		hr_settings.allow_geolocation_tracking = 1
+		hr_settings.allow_employee_checkin_from_mobile_app = 1
+		hr_settings.save(ignore_permissions=True)
+		frappe.db.commit()
+		print("HR Settings configured with geolocation tracking enabled.")
+
 def run_setup():
 	print("Starting post-install/migrate setup for Vin Chakra...")
 
@@ -172,5 +181,10 @@ def run_setup():
 		create_custom_fields()
 	except Exception as e:
 		frappe.log_error(message=f"Setup Custom Fields Error: {e}", title="Vin Chakra Setup Error")
+
+	try:
+		configure_hr_settings()
+	except Exception as e:
+		frappe.log_error(message=f"Setup HR Settings Error: {e}", title="Vin Chakra Setup Error")
 
 	print("Vin Chakra setup execution complete.")
