@@ -84,7 +84,7 @@ def get_dashboard_data(
         
         # Paginated tickets query
         tickets = frappe.db.sql(f"""
-            SELECT name, subject, status, priority, custom_customer_name, custom_machine_name, custom_date, _assign
+            SELECT name, subject, status, priority, custom_customer_name, custom_machine_name, custom_date, resolution_date, modified, _assign
             FROM `tabHD Ticket`
             WHERE {ticket_where}
             ORDER BY creation DESC

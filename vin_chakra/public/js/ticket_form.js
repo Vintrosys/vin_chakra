@@ -97,20 +97,7 @@
     send:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
   };
 
-  const FIELD_ICONS = {
-    custom_customer_name: 'user',
-    custom_customer_mobile_number: 'phone',
-    custom_state: 'map',
-    'custom_city__district_': 'pin',
-    custom_address: 'home',
-    custom_date: 'calendar',
-    custom_machine_name: 'tag',
-    custom_machine_problem: 'wrench',
-    custom_purchased_at_sree_chakra_sewing_systems: 'tag',
-    custom_purchase_year: 'calendar',
-    subject: 'tag',
-    description: 'file',
-  };
+
 
   /* ─── Tiny element helper ────────────────────────────────────────── */
   const el = (tag, cls) => {
@@ -213,19 +200,10 @@
       form.noValidate = true;
       form.addEventListener('submit', e => this._onSubmit(e));
 
-      const fieldMap = {};
-      this.schema.fields.forEach(f => { fieldMap[f.fieldname] = f; });
+      const steps = this.schema.steps || [];
+      this.totalSteps = steps.length;
 
-      const sections = [
-        { label:'Customer & Location Info', num:'01', keys:['custom_customer_name','custom_customer_mobile_number','custom_state','custom_city__district_','custom_address','custom_date'] },
-        { label:'Machine & Issue Details',  num:'02', keys:['custom_machine_name','custom_machine_problem','custom_purchased_at_sree_chakra_sewing_systems','custom_purchase_year','subject'] },
-      ];
-
-      this.totalSteps = sections.length;
-
-      const usedKeys = new Set();
-
-      sections.forEach((sec, idx) => {
+      steps.forEach((stepObj, idx) => {
         const stepContent = el('div', 'tk-step-content');
         stepContent.dataset.step = idx;
         if (idx !== 0) {
@@ -234,36 +212,35 @@
 
         const stepGrid = el('div', 'tk-grid');
 
-        /* Section divider */
-        const head = el('div', 'tk-section-head');
-        head.innerHTML = `
-          <div class="tk-section-num">${sec.num}</div>
-          <span class="tk-section-title">${sec.label}</span>
-          <div class="tk-section-line"></div>`;
-        stepGrid.appendChild(head);
+        (stepObj.sections || []).forEach((sec) => {
+          /* Section divider */
+          const numStr = String(idx + 1).padStart(2, '0');
+          const head = el('div', 'tk-section-head');
+          head.innerHTML = `
+            <div class="tk-section-num">${numStr}</div>
+            <span class="tk-section-title">${sec.label || 'Section'}</span>
+            <div class="tk-section-line"></div>`;
+          stepGrid.appendChild(head);
 
-        sec.keys.forEach(key => {
-          const f = fieldMap[key];
-          if (!f) return;
-          usedKeys.add(key);
-
-          if (key === 'custom_state') {
-            stepGrid.appendChild(this._buildStateField(f));
-          } else if (key === 'custom_city__district_') {
-            stepGrid.appendChild(this._buildDistrictField(f));
-          } else {
-            stepGrid.appendChild(this._buildField(f));
-          }
-        });
-
-        if (idx === sections.length - 1) {
-          /* Append unmapped fields to final step */
-          this.schema.fields.forEach(f => {
-            if (!usedKeys.has(f.fieldname)) {
+          (sec.fields || []).forEach(f => {
+            /*
+             * SPECIAL CASE: State & District fields
+             * We keep _buildStateField / _buildDistrictField and the state->district
+             * cascade logic keyed off fieldname === 'custom_state' / 'custom_city__district_'
+             * specifically — that cascade is bespoke UI behavior (South Indian states/districts + 'Other'),
+             * not something a generic field definition can express, so it stays as a special case even after this refactor.
+             */
+            if (f.fieldname === 'custom_state') {
+              stepGrid.appendChild(this._buildStateField(f));
+            } else if (f.fieldname === 'custom_city__district_') {
+              stepGrid.appendChild(this._buildDistrictField(f));
+            } else if (f.fieldtype === 'Table' || f.fieldname === 'custom_machine_type_list') {
+              stepGrid.appendChild(this._buildTableField(f));
+            } else {
               stepGrid.appendChild(this._buildField(f));
             }
           });
-        }
+        });
 
         stepContent.appendChild(stepGrid);
         form.appendChild(stepContent);
@@ -350,10 +327,12 @@
     }
 
     _buildStateField(f) {
+      const iconKey = f.icon || 'map';
+      const iconSvg = ICONS[iconKey] || ICONS.map;
       const group = el('div', 'tk-field');
       group.innerHTML = `
         <label class="tk-label">
-          <span class="tk-label-icon">${ICONS.map}</span>
+          <span class="tk-label-icon">${iconSvg}</span>
           ${f.label}${f.reqd ? '<span class="req">*</span>' : ''}
         </label>`;
 
@@ -394,10 +373,12 @@
     }
 
     _buildDistrictField(f) {
+      const iconKey = f.icon || 'pin';
+      const iconSvg = ICONS[iconKey] || ICONS.pin;
       const group = el('div', 'tk-field');
       group.innerHTML = `
         <label class="tk-label">
-          <span class="tk-label-icon">${ICONS.pin}</span>
+          <span class="tk-label-icon">${iconSvg}</span>
           ${f.label}${f.reqd ? '<span class="req">*</span>' : ''}
         </label>`;
 
@@ -496,11 +477,12 @@
     _buildField(f) {
       const isLong = ['Text Editor','Small Text','Text'].includes(f.fieldtype);
       const group  = el('div', `tk-field${isLong ? ' full' : ''}`);
-      const iconKey = FIELD_ICONS[f.fieldname];
+      const iconKey = f.icon || 'tag';
+      const iconSvg = ICONS[iconKey] || ICONS.tag;
 
       const lbl = el('label', 'tk-label');
       lbl.innerHTML = `
-        ${iconKey ? `<span class="tk-label-icon">${ICONS[iconKey]}</span>` : ''}
+        ${iconSvg ? `<span class="tk-label-icon">${iconSvg}</span>` : ''}
         ${f.label}${f.reqd ? '<span class="req">*</span>' : ''}`;
       group.appendChild(lbl);
 
@@ -555,7 +537,7 @@
 
       } else {
         const wrap = el('div', 'tk-input-wrap');
-        if (iconKey) wrap.innerHTML = `<span class="tk-input-prefix">${ICONS[iconKey]}</span>`;
+        if (iconSvg) wrap.innerHTML = `<span class="tk-input-prefix">${iconSvg}</span>`;
         ctrl = el('input', 'tk-control');
         ctrl.type = 'text';
         ctrl.placeholder = `Enter ${f.label}`;
@@ -575,10 +557,209 @@
       return group;
     }
 
+    _buildTableField(f) {
+      const group = el('div', 'tk-field full');
+      const iconKey = f.icon || 'wrench';
+      const iconSvg = ICONS[iconKey] || ICONS.wrench;
+
+      group.innerHTML = `
+        <label class="tk-label">
+          <span class="tk-label-icon">${iconSvg}</span>
+          ${f.label}${f.reqd ? '<span class="req">*</span>' : ''}
+        </label>`;
+
+      const widget = el('div', 'tk-table-widget');
+      widget.dataset.fieldname = f.fieldname;
+
+      const headBar = el('div', 'tk-table-head-bar');
+      headBar.innerHTML = `
+        <div class="tk-table-title">${ICONS.wrench} Machine Type List</div>`;
+
+      const addBtn = el('button', 'tk-add-row-btn');
+      addBtn.type = 'button';
+      addBtn.innerHTML = `<i class="fa fa-plus"></i> + Add Row`;
+      headBar.appendChild(addBtn);
+
+      widget.appendChild(headBar);
+
+      const tableWrapper = el('div', 'tk-table-wrapper');
+      const table = el('table', 'tk-grid-table');
+
+      const childFields = (f.child_fields || []).filter(cf => cf.fieldname !== 'machine_name');
+
+      // Table Header <thead>
+      const thead = el('thead');
+      const headerTr = el('tr');
+      
+      const numTh = el('th');
+      numTh.style.width = '45px';
+      numTh.style.textAlign = 'center';
+      numTh.textContent = '#';
+      headerTr.appendChild(numTh);
+
+      childFields.forEach(cf => {
+        const th = el('th');
+        th.innerHTML = `${cf.label}${cf.reqd ? ' <span class="req">*</span>' : ''}`;
+        headerTr.appendChild(th);
+      });
+
+      const actionTh = el('th');
+      actionTh.style.width = '60px';
+      actionTh.style.textAlign = 'center';
+      actionTh.textContent = 'Action';
+      headerTr.appendChild(actionTh);
+
+      thead.appendChild(headerTr);
+      table.appendChild(thead);
+
+      // Table Body <tbody>
+      const tbody = el('tbody', 'tk-table-tbody');
+      table.appendChild(tbody);
+      tableWrapper.appendChild(table);
+      widget.appendChild(tableWrapper);
+
+      const errMsg = el('div', 'tk-field-error');
+      errMsg.innerHTML = `${ICONS.errSmall}<span>At least one machine entry is required with all details filled</span>`;
+      widget.appendChild(errMsg);
+
+      group.appendChild(widget);
+
+      const addRow = (initialValues = {}) => {
+        const rowIndex = tbody.querySelectorAll('tr.tk-table-row').length + 1;
+        const tr = el('tr', 'tk-table-row');
+        tr.dataset.rowIndex = rowIndex;
+
+        // Cell 1: Index
+        const tdIdx = el('td', 'tk-row-idx');
+        tdIdx.textContent = rowIndex;
+        tr.appendChild(tdIdx);
+
+        // Cells for child fields
+        childFields.forEach(cf => {
+          const td = el('td');
+          let ctrl;
+
+          if (cf.fieldname === 'machine_type') {
+            ctrl = el('select', 'tk-control');
+            ctrl.dataset.cfname = cf.fieldname;
+            ctrl.innerHTML = `<option value="" disabled selected>Select Machine Type</option>`;
+            (cf.options || []).forEach(optObj => {
+              const opt = document.createElement('option');
+              if (typeof optObj === 'object') {
+                opt.value = optObj.value;
+                opt.textContent = optObj.label;
+                opt.dataset.itemName = optObj.item_name || optObj.label;
+                if (optObj.brand) opt.dataset.brand = optObj.brand;
+              } else {
+                opt.value = optObj;
+                opt.textContent = optObj;
+              }
+              ctrl.appendChild(opt);
+            });
+            if (initialValues.machine_type) ctrl.value = initialValues.machine_type;
+
+            ctrl.addEventListener('change', () => {
+              const selectedOpt = ctrl.options[ctrl.selectedIndex];
+              if (selectedOpt) {
+                const itemName = selectedOpt.dataset.itemName;
+                const brand = selectedOpt.dataset.brand;
+                const row = ctrl.closest('tr');
+                if (row) {
+                  const nameInput = row.querySelector('[data-cfname="machine_name"]');
+                  if (nameInput && itemName) nameInput.value = itemName;
+                  const brandCtrl = row.querySelector('[data-cfname="machine_brand"]');
+                  if (brandCtrl && brand) {
+                    brandCtrl.value = brand;
+                  }
+                }
+              }
+            });
+
+          } else if (cf.fieldtype === 'Select' || cf.fieldtype === 'Link' || cf.fieldname === 'machine_problem' || cf.fieldname === 'machine_brand') {
+            ctrl = el('select', 'tk-control');
+            ctrl.dataset.cfname = cf.fieldname;
+            ctrl.innerHTML = `<option value="" disabled selected>Select ${cf.label}</option>`;
+            (cf.options || []).forEach(o => {
+              const opt = document.createElement('option');
+              const val = typeof o === 'object' ? (o.value || o.name) : o;
+              const lbl = typeof o === 'object' ? (o.label || o.name || o.value) : o;
+              opt.value = val;
+              opt.textContent = lbl;
+              ctrl.appendChild(opt);
+            });
+            if (initialValues[cf.fieldname]) ctrl.value = initialValues[cf.fieldname];
+
+          } else if (cf.fieldtype === 'Int' || cf.fieldname === 'machine_quantity') {
+            ctrl = el('input', 'tk-control');
+            ctrl.type = 'number';
+            ctrl.min = '1';
+            ctrl.value = initialValues.machine_quantity || '1';
+            ctrl.style.width = '75px';
+            ctrl.dataset.cfname = cf.fieldname;
+
+          } else {
+            ctrl = el('input', 'tk-control');
+            ctrl.type = 'text';
+            ctrl.dataset.cfname = cf.fieldname;
+            if (initialValues[cf.fieldname]) ctrl.value = initialValues[cf.fieldname];
+          }
+
+          if (cf.reqd) ctrl.required = true;
+
+          ctrl.addEventListener('input', () => this._clearError(ctrl, group));
+          ctrl.addEventListener('change', () => this._clearError(ctrl, group));
+
+          td.appendChild(ctrl);
+          tr.appendChild(td);
+        });
+
+        // Delete button cell
+        const tdAction = el('td');
+        tdAction.style.textAlign = 'center';
+        const delBtn = el('button', 'tk-row-del-btn');
+        delBtn.type = 'button';
+        delBtn.title = 'Remove row';
+        delBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+        tdAction.appendChild(delBtn);
+        tr.appendChild(tdAction);
+
+        tbody.appendChild(tr);
+
+        delBtn.addEventListener('click', () => {
+          tr.remove();
+          this._updateTableIndices(tbody);
+          this._clearError(null, group);
+        });
+
+        this._updateTableIndices(tbody);
+      };
+
+      addBtn.addEventListener('click', () => {
+        addRow();
+        this._clearError(null, group);
+      });
+
+      // Add initial row automatically
+      addRow();
+
+      this._tableWidgetGroup = group;
+      return group;
+    }
+
+    _updateTableIndices(tbody) {
+      const rows = tbody.querySelectorAll('tr.tk-table-row');
+      rows.forEach((tr, idx) => {
+        const idxTd = tr.querySelector('.tk-row-idx');
+        if (idxTd) idxTd.textContent = idx + 1;
+      });
+    }
+
     _clearError(ctrl, group) {
-      ctrl.classList.remove('tk-invalid');
-      const err = group.querySelector('.tk-field-error');
-      if (err) err.style.display = 'none';
+      if (ctrl) ctrl.classList.remove('tk-invalid');
+      if (group) {
+        const err = group.querySelector('.tk-field-error');
+        if (err) err.style.display = 'none';
+      }
     }
 
     _onSubmit(e) {
@@ -596,6 +777,33 @@
       }
       /* Remove the _other helper key so it's not sent to Frappe */
       Object.keys(rawData).forEach(k => { if (k.endsWith('_other')) delete rawData[k]; });
+
+      /* Gather Child Table rows if table widget exists */
+      if (this._tableWidgetGroup) {
+        const rows = this._tableWidgetGroup.querySelectorAll('tr.tk-table-row');
+        const rowsData = [];
+        rows.forEach(tr => {
+          const rowObj = {};
+          const inputs = tr.querySelectorAll('[data-cfname]');
+          inputs.forEach(input => {
+            const key = input.dataset.cfname;
+            if (key) {
+              rowObj[key] = input.value ? input.value.trim() : '';
+              if (key === 'machine_type' && input.options && input.selectedIndex >= 0) {
+                const selectedOpt = input.options[input.selectedIndex];
+                rowObj['machine_name'] = selectedOpt?.dataset?.itemName || selectedOpt?.textContent || rowObj[key];
+              }
+            }
+          });
+          if (rowObj.machine_quantity) {
+            rowObj.machine_quantity = parseInt(rowObj.machine_quantity, 10) || 1;
+          }
+          if (Object.keys(rowObj).length > 0) {
+            rowsData.push(rowObj);
+          }
+        });
+        rawData.custom_machine_type_list = rowsData;
+      }
 
       const phoneInput  = this._form.querySelector('input[type="tel"]');
       const phoneNumber = phoneInput ? phoneInput.value.trim() : '';
@@ -631,6 +839,17 @@
             /* Restore state/district defaults */
             if (this._stateSelect) this._stateSelect.value = 'Tamil Nadu';
             this._populateDistricts('Tamil Nadu');
+
+            /* Reset Table Widget */
+            if (this._tableWidgetGroup) {
+              const tbody = this._tableWidgetGroup.querySelector('.tk-table-tbody');
+              if (tbody) {
+                tbody.innerHTML = '';
+                const addBtn = this._tableWidgetGroup.querySelector('.tk-add-row-btn');
+                if (addBtn) addBtn.click();
+              }
+            }
+
             this._goToStep(0);
             this._alertEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
           } else {
@@ -672,6 +891,37 @@
           hasError = true;
         }
       });
+
+      /* Table Widget Check */
+      const tableWidget = stepContent.querySelector('.tk-table-widget');
+      if (tableWidget) {
+        const rows = tableWidget.querySelectorAll('tr.tk-table-row');
+        const widgetErr = tableWidget.querySelector('.tk-field-error');
+
+        if (rows.length === 0) {
+          if (widgetErr) {
+            widgetErr.querySelector('span').textContent = 'At least one machine entry is required';
+            widgetErr.style.display = 'flex';
+          }
+          if (!firstError) firstError = tableWidget;
+          hasError = true;
+        } else {
+          rows.forEach(tr => {
+            tr.querySelectorAll('[required]').forEach(ctrl => {
+              const val = ctrl.value ? ctrl.value.trim() : '';
+              if (!val) {
+                ctrl.classList.add('tk-invalid');
+                if (widgetErr) {
+                  widgetErr.querySelector('span').textContent = 'Please fill in all required machine details';
+                  widgetErr.style.display = 'flex';
+                }
+                if (!firstError) firstError = ctrl;
+                hasError = true;
+              }
+            });
+          });
+        }
+      }
 
       /* Phone pattern check */
       stepContent.querySelectorAll('input[type="tel"]').forEach(ctrl => {

@@ -886,6 +886,14 @@ class ChiefTechnicianDashboard {
             </span>
         `;
     }
+
+    get_resolved_date_formatted(t) {
+        let is_resolved = ["Resolved", "Closed", "Self-Completed"].includes(t.status);
+        if (!is_resolved) return null;
+        let date_val = t.resolution_date || t.modified;
+        if (!date_val) return null;
+        return frappe.datetime.global_date_format(date_val);
+    }
     
     render_ticket_cards(tickets) {
         let self = this;
@@ -911,6 +919,10 @@ class ChiefTechnicianDashboard {
             
             let status_badge = self.get_status_badge(t.status, t.name);
             let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
+            let res_date = self.get_resolved_date_formatted(t);
+            let res_date_html = res_date 
+                ? `<div><i class="fa fa-check-circle" style="color: #10b981;"></i> <span>Resolved Date: <strong>${res_date}</strong></span></div>` 
+                : "";
             
             return `
                 <div class="ct-ticket-card" onclick="window.location.href='/helpdesk/tickets/${t.name}'">
@@ -924,6 +936,7 @@ class ChiefTechnicianDashboard {
                         <div><i class="fa fa-user"></i> <span>Customer: <strong>${t.custom_customer_name || 'N/A'}</strong></span></div>
                         <div><i class="fa fa-cogs"></i> <span>Machine: ${t.custom_machine_name || 'N/A'}</span></div>
                         <div><i class="fa fa-calendar-o"></i> <span>Date: ${t.custom_date ? frappe.datetime.global_date_format(t.custom_date) : 'N/A'}</span></div>
+                        ${res_date_html}
                     </div>
                     
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
@@ -960,6 +973,10 @@ class ChiefTechnicianDashboard {
             
             let status_badge = self.get_status_badge(t.status, t.name);
             let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
+            let res_date = self.get_resolved_date_formatted(t);
+            let res_date_html = res_date 
+                ? `<div style="color: #10b981;"><strong>Resolved:</strong> ${res_date}</div>` 
+                : "";
             
             return `
                 <div class="ct-ticket-list-row" onclick="window.location.href='/helpdesk/tickets/${t.name}'">
@@ -974,6 +991,7 @@ class ChiefTechnicianDashboard {
                     <div class="ct-list-meta-col">
                         <div><strong>Cust:</strong> ${t.custom_customer_name || 'N/A'}</div>
                         <div><strong>Machine:</strong> ${t.custom_machine_name || 'N/A'}</div>
+                        ${res_date_html}
                     </div>
                     <div class="ct-list-assignees-col">
                         <div class="ct-assignees">${avatars}</div>
@@ -986,6 +1004,7 @@ class ChiefTechnicianDashboard {
     }
     
     render_ticket_calendar(tickets) {
+        let self = this;
         let container = this.wrapper.find("#ct-tickets-container");
         container.removeClass("ct-tickets-grid ct-tickets-list");
         
@@ -1039,10 +1058,20 @@ class ChiefTechnicianDashboard {
                 let currentDay = d;
                 let day_tickets = ticketsByDate[currentDay] || [];
                 let tickets_html = day_tickets.map(t => {
+                    let res_date = self.get_resolved_date_formatted(t);
+                    let is_resolved = !!res_date;
+                    let bg_color = is_resolved ? "rgba(16, 185, 129, 0.12)" : "var(--ct-primary-light)";
+                    let text_color = is_resolved ? "#15803d" : "var(--ct-primary)";
+                    let border_color = is_resolved ? "rgba(16, 185, 129, 0.3)" : "rgba(99, 102, 241, 0.2)";
+                    let tooltip = t.subject + (res_date ? ` (Resolved: ${res_date})` : "");
+
                     return `
                         <div class="ct-cal-event" onclick="window.location.href='/helpdesk/tickets/${t.name}'" 
-                             style="background: var(--ct-primary-light); color: var(--ct-primary); padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-bottom: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid rgba(99, 102, 241, 0.2); font-weight:600;" 
-                             title="${t.subject}">${t.subject}</div>
+                             style="background: ${bg_color}; color: ${text_color}; padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-bottom: 4px; cursor: pointer; border: 1px solid ${border_color}; font-weight:600;" 
+                             title="${tooltip}">
+                            <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.subject}</div>
+                            ${res_date ? `<div style="font-size: 9px; font-weight: 700; color: #15803d; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fa fa-check-circle" style="font-size: 8px;"></i> ${res_date}</div>` : ""}
+                        </div>
                     `;
                 }).join("");
                 

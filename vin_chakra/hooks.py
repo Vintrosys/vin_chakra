@@ -103,6 +103,9 @@ doc_events = {
 	},
 	"Quotation": {
 		"validate": "vin_chakra.utils.quotation.validate_quotation"
+	},
+	"Support Form Template": {
+		"on_update": "vin_chakra.vin_chakra.doctype.support_form_template.support_form_template.sync_web_form"
 	}
 }
 
@@ -110,7 +113,8 @@ doc_events = {
 # Regular agents (technicians) only see tickets assigned to them.
 # Administrator and Agent Managers see all tickets.
 permission_query_conditions = {
-	"HD Ticket": "vin_chakra.vin_chakra.custom.hd_ticket.get_assignee_restricted_ticket_query"
+	"HD Ticket": "vin_chakra.vin_chakra.custom.hd_ticket.get_assignee_restricted_ticket_query",
+	"Quotation": "vin_chakra.permissions.quotation_query"
 }
 
 # ---------------
@@ -164,15 +168,13 @@ fixtures = [
     {
         "dt": "Workspace",
         "filters": [
-            ["name", "=", "Cheif Technician Dashboard"],
-            ["name", "=", "Technician Dashboard"]
+            ["name", "in", ["Cheif Technician Dashboard", "Technician Dashboard"]]
         ]
     },
     {
         "dt": "Workspace Sidebar",
         "filters": [
-            ["name", "=", "Technician Dashboard"],
-            ["name", "=", "Cheif Technician Dashboard"]
+            ["name", "in", ["Technician Dashboard", "Cheif Technician Dashboard"]]
         ]
     },
     {
@@ -182,7 +184,10 @@ fixtures = [
         ]
     },
     {
-        "dt": "Module Def"
+        "dt": "Module Def",
+        "filters": [
+            ["name", "=", "vin_chakra"]
+        ]
     },
     {
         "dt": "HD Ticket Status",
@@ -190,11 +195,16 @@ fixtures = [
             ["name", "=", "Self-Completed"]
         ]
     },
-    "Custom Field",
-    "Property Setter"
+    {
+        "dt": "Custom Field",
+        "filters": [
+            ["dt", "in", ["Employee Checkin", "Support Form Template", "Machine type list"]]
+        ]
+    },
+    {
+        "dt": "Property Setter",
+        "filters": [
+            ["doc_type", "in", ["HD Ticket", "Employee Checkin", "Quotation", "Item", "Sales Invoice", "Support Form Template", "Machine type list"]]
+        ]
+    }
 ]
-
-
-permission_query_conditions = {
-    "Quotation": "vin_chakra.permissions.quotation_query"
-}

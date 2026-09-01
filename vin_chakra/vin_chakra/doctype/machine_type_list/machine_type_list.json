@@ -1,0 +1,93 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-08-28 13:50:16.146979",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "machine_type",
+  "machine_name",
+  "machine_brand",
+  "machine_quantity",
+  "machine_problem",
+  "purchased_at_scs",
+  "purchase_year"
+ ],
+ "fields": [
+  {
+   "fieldname": "machine_type",
+   "fieldtype": "Link",
+   "in_filter": 1,
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Machine",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "machine_type.item_name",
+   "fieldname": "machine_name",
+   "fieldtype": "Data",
+   "in_filter": 1,
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "label": "Name"
+  },
+  {
+   "fieldname": "machine_quantity",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Qty",
+   "reqd": 1
+  },
+  {
+   "fieldname": "machine_problem",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Machine Problem",
+   "options": "Machine Problem",
+   "reqd": 1
+  },
+  {
+   "fieldname": "purchase_year",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Purchase Year",
+   "options": "2010\n2011\n2012\n2013\n2014\n2015\n2016\n2017\n2018\n2019\n2020\n2021\n2022\n2023\n2024\n2025\n2026",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "machine_type.brand",
+   "fieldname": "machine_brand",
+   "fieldtype": "Link",
+   "label": "Machine Brand",
+   "options": "Brand",
+   "reqd": 1
+  },
+  {
+   "fieldname": "purchased_at_scs",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Purchased at SCS",
+   "options": "\nYes\nNo",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-08-31 16:37:00.037562",
+ "modified_by": "Administrator",
+ "module": "vin_chakra",
+ "name": "Machine type list",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

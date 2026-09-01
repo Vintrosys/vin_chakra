@@ -100,6 +100,24 @@ def get_portal_data(
     
     tickets = frappe.db.sql(tickets_query, values, as_dict=True)
     
+    if tickets:
+        ticket_names = [t["name"] for t in tickets]
+        child_rows = frappe.get_all(
+            "Machine type list",
+            filters={"parent": ["in", ticket_names], "parenttype": "HD Ticket"},
+            fields=["parent", "machine_type", "machine_name", "machine_brand", "machine_quantity", "machine_problem", "purchased_at_scs", "purchase_year"],
+            order_by="idx asc"
+        )
+        child_map = {}
+        for row in child_rows:
+            p = row["parent"]
+            if p not in child_map:
+                child_map[p] = []
+            child_map[p].append(row)
+            
+        for t in tickets:
+            t["custom_machine_type_list"] = child_map.get(t["name"], [])
+    
     result = {
         "tickets": tickets,
         "total_count": total_count,

@@ -214,9 +214,12 @@
 
         const coreGroup = [];
         const templateGroup = [];
+        const tableGroup = [];
 
         fields.forEach(f => {
-            if (coreFieldnames.includes(f.fieldname)) {
+            if (f.fieldtype === 'Table') {
+                tableGroup.push(f);
+            } else if (coreFieldnames.includes(f.fieldname)) {
                 coreGroup.push(f);
             } else {
                 templateGroup.push(f);
@@ -284,10 +287,159 @@
             `;
         }
 
+        function createTableSectionHtml(f) {
+            const childFields = (f.child_fields || []).filter(cf => cf.fieldname !== 'machine_name');
+
+            let headersHtml = `<th style="padding: 8px 10px; width: 35px; text-align: center;">#</th>`;
+            childFields.forEach(cf => {
+                headersHtml += `<th style="padding: 8px 10px;">${escapeHtml(cf.label)}${cf.reqd ? ' <span style="color:#ef4444;">*</span>' : ''}</th>`;
+            });
+            headersHtml += `<th style="padding: 8px 10px; width: 45px; text-align: center;">Action</th>`;
+
+            return `
+                <div class="ct-modal-section ct-modal-table-section" data-fieldname="${f.fieldname}" style="margin-bottom: 24px; width: 100%;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 12px;">
+                        <h4 style="margin: 0; font-size: 14px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                            <span>⚙️</span> ${escapeHtml(f.label)}
+                        </h4>
+                        <button type="button" class="ct-modal-add-row-btn" data-table="${f.fieldname}" style="padding: 5px 12px; font-size: 12px; font-weight: 600; background-color: #2563eb; color: #ffffff; border: none; border-radius: 6px; cursor: pointer;">
+                            + Add Row
+                        </button>
+                    </div>
+                    <div style="overflow-x: auto; border: 1px solid #cbd5e1; border-radius: 8px; background: #ffffff;">
+                        <table class="ct-modal-grid-table" data-table="${f.fieldname}" style="width: 100%; border-collapse: collapse; min-width: 750px; font-size: 12px;">
+                            <thead>
+                                <tr style="background-color: #f8fafc; border-bottom: 1.5px solid #cbd5e1; text-align: left; color: #334155;">
+                                    ${headersHtml}
+                                </tr>
+                            </thead>
+                            <tbody class="ct-modal-table-tbody" data-table="${f.fieldname}">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderTableRow(tbody, childFields, initialValues = {}) {
+            const rowIndex = tbody.querySelectorAll('tr.ct-modal-table-row').length + 1;
+            const tr = document.createElement('tr');
+            tr.className = 'ct-modal-table-row';
+            tr.style.borderBottom = '1px solid #e2e8f0';
+
+            let cellsHtml = `<td class="ct-modal-row-num" style="padding: 6px 8px; text-align: center; font-weight: 600; color: #64748b;">${rowIndex}</td>`;
+
+            childFields.forEach(cf => {
+                const val = initialValues[cf.fieldname] !== undefined && initialValues[cf.fieldname] !== null ? initialValues[cf.fieldname] : '';
+                let ctrlHtml = '';
+
+                if (cf.fieldname === 'machine_type') {
+                    let optsList = `<option value="" disabled ${!val ? 'selected' : ''}>Select Machine Type</option>`;
+                    (cf.options || []).forEach(optObj => {
+                        const optVal = typeof optObj === 'object' ? optObj.value : optObj;
+                        const optLbl = typeof optObj === 'object' ? optObj.label : optObj;
+                        const itemName = typeof optObj === 'object' ? (optObj.item_name || optObj.label) : optObj;
+                        const brand = typeof optObj === 'object' ? (optObj.brand || '') : '';
+                        const isSel = String(optVal) === String(val) ? 'selected' : '';
+                        optsList += `<option value="${escapeHtml(optVal)}" data-item-name="${escapeHtml(itemName)}" data-brand="${escapeHtml(brand)}" ${isSel}>${escapeHtml(optLbl)}</option>`;
+                    });
+                    ctrlHtml = `<select data-cfname="${cf.fieldname}" style="width:100%; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;">${optsList}</select>`;
+
+                } else if (cf.fieldtype === 'Select' || cf.fieldtype === 'Link' || cf.fieldname === 'machine_problem' || cf.fieldname === 'machine_brand') {
+                    let optsList = `<option value="" disabled ${!val ? 'selected' : ''}>Select ${escapeHtml(cf.label)}</option>`;
+                    (cf.options || []).forEach(o => {
+                        const optVal = typeof o === 'object' ? (o.value || o.name) : o;
+                        const optLbl = typeof o === 'object' ? (o.label || o.name || o.value) : o;
+                        const isSel = String(optVal) === String(val) ? 'selected' : '';
+                        optsList += `<option value="${escapeHtml(optVal)}" ${isSel}>${escapeHtml(optLbl)}</option>`;
+                    });
+                    ctrlHtml = `<select data-cfname="${cf.fieldname}" style="width:100%; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;">${optsList}</select>`;
+
+                } else if (cf.fieldtype === 'Int' || cf.fieldname === 'machine_quantity') {
+                    ctrlHtml = `<input type="number" data-cfname="${cf.fieldname}" min="1" value="${escapeHtml(val || '1')}" style="width:65px; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;">`;
+
+                } else {
+                    ctrlHtml = `<input type="text" data-cfname="${cf.fieldname}" value="${escapeHtml(val)}" style="width:100%; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 12px;">`;
+                }
+
+                cellsHtml += `<td style="padding: 6px 8px;">${ctrlHtml}</td>`;
+            });
+
+            cellsHtml += `<td style="padding: 6px 8px; text-align: center;">
+                <button type="button" class="ct-modal-del-row-btn" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size: 16px; font-weight: bold;" title="Remove Row">&times;</button>
+            </td>`;
+
+            tr.innerHTML = cellsHtml;
+            tbody.appendChild(tr);
+
+            const mtSelect = tr.querySelector('[data-cfname="machine_type"]');
+            if (mtSelect) {
+                mtSelect.onchange = () => {
+                    const selOpt = mtSelect.options[mtSelect.selectedIndex];
+                    if (selOpt) {
+                        const itemName = selOpt.getAttribute('data-item-name');
+                        const brand = selOpt.getAttribute('data-brand');
+                        const nameInput = tr.querySelector('[data-cfname="machine_name"]');
+                        if (nameInput && itemName) nameInput.value = itemName;
+                        const brandCtrl = tr.querySelector('[data-cfname="machine_brand"]');
+                        if (brandCtrl && brand) brandCtrl.value = brand;
+                    }
+                };
+            }
+
+            const delBtn = tr.querySelector('.ct-modal-del-row-btn');
+            if (delBtn) {
+                delBtn.onclick = () => {
+                    tr.remove();
+                    updateModalTableIndices(tbody);
+                };
+            }
+
+            updateModalTableIndices(tbody);
+        }
+
+        function updateModalTableIndices(tbody) {
+            const rows = tbody.querySelectorAll('tr.ct-modal-table-row');
+            rows.forEach((tr, idx) => {
+                const numTd = tr.querySelector('.ct-modal-row-num');
+                if (numTd) numTd.textContent = idx + 1;
+            });
+        }
+
+        let tablesHtml = '';
+        tableGroup.forEach(tf => {
+            tablesHtml += createTableSectionHtml(tf);
+        });
+
         bodyEl.innerHTML = `
             ${createSectionHtml('Core Ticket Fields', '📌', coreGroup)}
             ${createSectionHtml('Ticket Information (Template: Default)', '🛠️', templateGroup)}
+            ${tablesHtml}
         `;
+
+        // Initialize table rows with doc existing data
+        tableGroup.forEach(tf => {
+            const tbody = bodyEl.querySelector(`tbody.ct-modal-table-tbody[data-table="${tf.fieldname}"]`);
+            const addBtn = bodyEl.querySelector(`.ct-modal-add-row-btn[data-table="${tf.fieldname}"]`);
+            const childFields = (tf.child_fields || []).filter(cf => cf.fieldname !== 'machine_name');
+
+            if (tbody) {
+                const existingRows = doc[tf.fieldname] || [];
+                if (existingRows.length > 0) {
+                    existingRows.forEach(rowVal => {
+                        renderTableRow(tbody, childFields, rowVal);
+                    });
+                } else {
+                    renderTableRow(tbody, childFields, {});
+                }
+
+                if (addBtn) {
+                    addBtn.onclick = () => {
+                        renderTableRow(tbody, childFields, {});
+                    };
+                }
+            }
+        });
 
         // Search live filter
         const searchInput = document.getElementById('ct-modal-search-input');
@@ -323,6 +475,35 @@
                     } else {
                         updatedValues[fn] = input.value;
                     }
+                }
+            });
+
+            // Collect child table inputs
+            tableGroup.forEach(tf => {
+                const tableEl = bodyEl.querySelector(`table[data-table="${tf.fieldname}"]`);
+                if (tableEl) {
+                    const rowsData = [];
+                    const trs = tableEl.querySelectorAll('tbody tr.ct-modal-table-row');
+                    trs.forEach(tr => {
+                        const rowObj = {};
+                        tr.querySelectorAll('[data-cfname]').forEach(ctrl => {
+                            const cf = ctrl.getAttribute('data-cfname');
+                            if (cf) {
+                                rowObj[cf] = ctrl.value ? ctrl.value.trim() : '';
+                                if (cf === 'machine_type' && ctrl.options && ctrl.selectedIndex >= 0) {
+                                    const selectedOpt = ctrl.options[ctrl.selectedIndex];
+                                    rowObj['machine_name'] = selectedOpt?.dataset?.itemName || selectedOpt?.textContent || rowObj[cf];
+                                }
+                            }
+                        });
+                        if (rowObj.machine_quantity) {
+                            rowObj.machine_quantity = parseInt(rowObj.machine_quantity, 10) || 1;
+                        }
+                        if (Object.keys(rowObj).length > 0) {
+                            rowsData.push(rowObj);
+                        }
+                    });
+                    updatedValues[tf.fieldname] = rowsData;
                 }
             });
 

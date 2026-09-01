@@ -54,7 +54,7 @@ def get_my_tickets() -> list:
 
 
 def _verify_day_attendance(user):
-	"""Verify if user has checked in for the day (log_type == 'IN')."""
+	"""Verify if user has checked in for today (log_type == 'IN' on current date)."""
 	if user == "Administrator":
 		return True
 	employees = frappe.get_all("Employee", filters={"user_id": user, "status": "Active"}, pluck="name")
@@ -62,22 +62,22 @@ def _verify_day_attendance(user):
 		return False
 	
 	employee_id = employees[0]
-	latest_log = frappe.get_all(
+	today_start = f"{frappe.utils.today()} 00:00:00"
+	today_end = f"{frappe.utils.today()} 23:59:59"
+
+	# Get the latest check-in log for today from HRMS / Employee Checkin
+	logs_today = frappe.get_all(
 		"Employee Checkin",
-		filters={"employee": employee_id, "device_id": "Technician Portal"},
+		filters={
+			"employee": employee_id,
+			"time": ["between", [today_start, today_end]]
+		},
 		fields=["log_type"],
 		order_by="time desc",
 		limit=1
 	)
-	if not latest_log:
-		latest_log = frappe.get_all(
-			"Employee Checkin",
-			filters={"employee": employee_id},
-			fields=["log_type"],
-			order_by="time desc",
-			limit=1
-		)
-	return bool(latest_log and latest_log[0].log_type == "IN")
+	
+	return bool(logs_today and logs_today[0].log_type == "IN")
 
 
 def _send_otp_sms(ticket, target_mobile_number):
@@ -139,6 +139,13 @@ def get_ticket_detail(ticket_name: str) -> dict:
 	gst_field = meta.get_field("custom_gst_bill_required")
 	gst_options = gst_field.options.split("\n") if gst_field and gst_field.options else ["Yes", "No"]
 
+	machine_type_list = frappe.get_all(
+		"Machine type list",
+		filters={"parent": ticket_name, "parenttype": "HD Ticket"},
+		fields=["machine_type", "machine_name", "machine_brand", "machine_quantity", "machine_problem", "purchased_at_scs", "purchase_year"],
+		order_by="idx asc",
+	)
+
 	return {
 		"name": ticket.name,
 		"subject": ticket.subject,
@@ -155,6 +162,7 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		"custom_machine_problem": ticket.custom_machine_problem,
 		"custom_date": str(ticket.custom_date) if ticket.custom_date else "",
 		"custom_service_otp": ticket.custom_service_otp,
+		"custom_machine_type_list": machine_type_list,
 		"check_log": check_log,
 		"pending_reason_options": pending_reason_options,
 		"mop_options": mop_options,
@@ -532,7 +540,7 @@ def technician_mark_pending(ticket_name: str, reason: str, latitude: float, long
 
 @frappe.whitelist()
 def get_day_attendance_status() -> dict:
-	"""Get current check-in status for the day for the logged-in technician."""
+	"""Get current check-in status for today for the logged-in technician from HRMS, including location metadata."""
 	user = frappe.session.user
 	if user == "Guest":
 		return {"status": "error", "message": "Authentication required."}
@@ -542,32 +550,46 @@ def get_day_attendance_status() -> dict:
 		return {"status": "error", "message": "No active Employee found for current user."}
 	
 	employee_id = employees[0]
-	
-	# Get the latest check-in log from Technician Portal
-	latest_log = frappe.get_all(
+	today_start = f"{frappe.utils.today()} 00:00:00"
+	today_end = f"{frappe.utils.today()} 23:59:59"
+
+	# Get the latest check-in log for today from HRMS / Employee Checkin
+	logs_today = frappe.get_all(
 		"Employee Checkin",
-		filters={"employee": employee_id, "device_id": "Technician Portal"},
-		fields=["log_type"],
+		filters={
+			"employee": employee_id,
+			"time": ["between", [today_start, today_end]]
+		},
+		fields=["log_type", "latitude", "longitude", "custom_accuracy", "device_id", "time"],
 		order_by="time desc",
 		limit=1
 	)
-	if not latest_log:
-		latest_log = frappe.get_all(
-			"Employee Checkin",
-			filters={"employee": employee_id},
-			fields=["log_type"],
-			order_by="time desc",
-			limit=1
-		)
 	
-	if latest_log and latest_log[0].log_type == "IN":
-		return {"status": "success", "state": "IN"}
+	if logs_today and logs_today[0].log_type == "IN":
+		log = logs_today[0]
+		return {
+			"status": "success",
+			"state": "IN",
+			"device_id": log.device_id or "hrms",
+			"latitude": log.latitude,
+			"longitude": log.longitude,
+			"accuracy": log.custom_accuracy,
+			"time": str(log.time)
+		}
 	
-	return {"status": "success", "state": "OUT"}
+	latest_log = logs_today[0] if logs_today else None
+	return {
+		"status": "success",
+		"state": "OUT",
+		"device_id": latest_log.device_id if latest_log else None,
+		"latitude": latest_log.latitude if latest_log else None,
+		"longitude": latest_log.longitude if latest_log else None,
+		"time": str(latest_log.time) if latest_log else None
+	}
 
 @frappe.whitelist()
-def mark_day_attendance(log_type: str, latitude: float, longitude: float, accuracy: float = None) -> dict:
-	"""Mark Day Attendance (IN or OUT) for the technician."""
+def mark_day_attendance(log_type: str, latitude: float = None, longitude: float = None, accuracy: float = None, device_id: str = "Technician Portal") -> dict:
+	"""Mark Day Attendance (IN or OUT) for the technician with location and device_id."""
 	user = frappe.session.user
 	if user == "Guest":
 		return {"status": "error", "message": "Authentication required."}
@@ -581,16 +603,19 @@ def mark_day_attendance(log_type: str, latitude: float, longitude: float, accura
 	
 	employee_id = employees[0]
 	
+	# Determine device ID: use parameter or default to "Technician Portal"
+	effective_device_id = device_id.strip() if device_id and str(device_id).strip() else "Technician Portal"
+
 	try:
 		checkin = frappe.get_doc({
 			"doctype": "Employee Checkin",
 			"employee": employee_id,
 			"time": frappe.utils.now_datetime(),
 			"log_type": log_type,
-			"latitude": float(latitude),
-			"longitude": float(longitude),
-			"custom_accuracy": float(accuracy) if accuracy is not None else None,
-			"device_id": "Technician Portal"
+			"latitude": float(latitude) if latitude is not None and str(latitude).strip() != "" else None,
+			"longitude": float(longitude) if longitude is not None and str(longitude).strip() != "" else None,
+			"custom_accuracy": float(accuracy) if accuracy is not None and str(accuracy).strip() != "" else None,
+			"device_id": effective_device_id
 		})
 		checkin.insert(ignore_permissions=True)
 		frappe.db.commit()
@@ -598,7 +623,11 @@ def mark_day_attendance(log_type: str, latitude: float, longitude: float, accura
 		return {
 			"status": "success", 
 			"message": f"Successfully checked {log_type.lower()}.",
-			"state": log_type
+			"state": log_type,
+			"device_id": effective_device_id,
+			"latitude": checkin.latitude,
+			"longitude": checkin.longitude,
+			"accuracy": checkin.custom_accuracy
 		}
 	except Exception as e:
 		frappe.log_error("Day Attendance Checkin Failed", str(e))

@@ -560,6 +560,9 @@ class TechnicianPortal {
             let customer = t.custom_customer_name || 'N/A';
             let address = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ') || 'N/A';
             let date_str = t.custom_date ? frappe.datetime.global_date_format(t.custom_date) : 'N/A';
+            let machine_display = (t.custom_machine_type_list && t.custom_machine_type_list.length > 0)
+                ? t.custom_machine_type_list.map(m => m.machine_name || m.machine_type).filter(Boolean).join(', ')
+                : (t.custom_machine_name || 'N/A');
             
             return `
                 <div class="tp-ticket-card" data-name="${t.name}">
@@ -572,7 +575,7 @@ class TechnicianPortal {
                     <div class="tp-card-meta">
                         <div><i class="fa fa-user"></i> <span>Customer: <strong>${customer}</strong></span></div>
                         <div><i class="fa fa-map-marker"></i> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;" title="${address}">Loc: ${address}</span></div>
-                        <div><i class="fa fa-cogs"></i> <span>Machine: ${t.custom_machine_name || 'N/A'}</span></div>
+                        <div><i class="fa fa-cogs"></i> <span>Machine: ${machine_display}</span></div>
                         <div><i class="fa fa-calendar"></i> <span>Date: ${date_str}</span></div>
                     </div>
                 </div>
@@ -774,6 +777,9 @@ class TechnicianPortal {
 
     let rows = tickets.map(t => {
         let location = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ') || '';
+        let machine_display = (t.custom_machine_type_list && t.custom_machine_type_list.length > 0)
+            ? t.custom_machine_type_list.map(m => m.machine_name || m.machine_type).filter(Boolean).join(', ')
+            : (t.custom_machine_name || '');
         return `
             <tr>
                 <td>
@@ -781,7 +787,7 @@ class TechnicianPortal {
                         ${t.name}
                     </a>
                 </td>
-                <td>${t.custom_machine_name || ''}</td>
+                <td>${machine_display}</td>
                 <td>${t.custom_customer_name || ''}</td>
                 <td>${location}</td>
                 <td>${t.custom_date || ''}</td>
@@ -866,6 +872,59 @@ class TechnicianPortal {
             dialog.$wrapper.remove();
         };
         
+        // Machine Type List Table Section
+        let machine_type_list = t.custom_machine_type_list || [];
+        let machine_table_rows = machine_type_list.map((m, idx) => {
+            let m_name = m.machine_name || m.machine_type || '-';
+            let m_brand = m.machine_brand || '-';
+            let m_qty = m.machine_quantity || 1;
+            let m_prob = m.machine_problem || '-';
+            let m_scs = m.purchased_at_scs || '-';
+            let m_year = m.purchase_year || '-';
+
+            return `
+                <tr>
+                    <td style="text-align: center; font-weight: 600; color: var(--tp-text-muted);">${idx + 1}</td>
+                    <td><strong style="color: var(--tp-text-main);">${m_name}</strong></td>
+                    <td>${m_brand}</td>
+                    <td style="text-align: center; font-weight: 600;">${m_qty}</td>
+                    <td>${m_prob}</td>
+                    <td style="text-align: center;">${m_scs}</td>
+                    <td style="text-align: center;">${m_year}</td>
+                </tr>
+            `;
+        }).join("");
+
+        let machine_table_section = `
+            <div class="tp-modal-section">
+                <h4 style="display: flex; align-items: center; gap: 6px;"><i class="fa fa-wrench" style="color: var(--tp-primary);"></i> Machine Type List</h4>
+                ${machine_type_list.length > 0 ? `
+                    <div style="overflow-x: auto; border: 1px solid var(--tp-border); border-radius: 8px; background: white; box-shadow: var(--tp-shadow-sm);">
+                        <table class="table table-bordered" style="width: 100%; margin-bottom: 0; font-size: 13px; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: #f8fafc; color: var(--tp-text-muted); text-align: left; font-size: 12px;">
+                                    <th style="width: 40px; text-align: center;">#</th>
+                                    <th>Machine</th>
+                                    <th>Brand</th>
+                                    <th style="width: 60px; text-align: center;">Qty</th>
+                                    <th>Problem</th>
+                                    <th style="text-align: center;">Purchased at SCS</th>
+                                    <th style="text-align: center;">Year</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${machine_table_rows}
+                            </tbody>
+                        </table>
+                    </div>
+                ` : `
+                    <div style="font-size: 13px; color: var(--tp-text-muted); background: #f8fafc; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--tp-border); text-align: center;">
+                        <i class="fa fa-info-circle" style="margin-right: 4px;"></i> No machine details listed for this ticket.
+                    </div>
+                `}
+            </div>
+        `;
+        
         // Build the HTML template for details, service action workflow, and activity timeline
         let html_content = `
             <div class="tp-modal-header">
@@ -915,6 +974,8 @@ class TechnicianPortal {
                     </div>
                 </div>
             </div>
+
+            ${machine_table_section}
             
             ${t.description ? `
                 <div class="tp-modal-section">
