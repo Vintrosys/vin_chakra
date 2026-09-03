@@ -1,41 +1,5 @@
 import frappe
 
-def create_pending_status():
-	if not frappe.db.exists("HD Ticket Status", "Pending"):
-		doc = frappe.get_doc({
-			"doctype": "HD Ticket Status",
-			"name": "Pending",
-			"status_name": "Pending",
-			"label_agent": "Pending",
-			"label_customer": "Pending",
-			"color": "Gray",
-			"category": "Open",
-			"order": 3
-		})
-		doc.insert(ignore_permissions=True)
-		frappe.db.commit()
-		print("Status 'Pending' created successfully.")
-	else:
-		print("Status 'Pending' already exists.")
-
-def create_working_status():
-	if not frappe.db.exists("HD Ticket Status", "Working"):
-		doc = frappe.get_doc({
-			"doctype": "HD Ticket Status",
-			"name": "Working",
-			"status_name": "Working",
-			"label_agent": "Working",
-			"label_customer": "Working",
-			"color": "Orange",
-			"category": "Open",
-			"order": 2
-		})
-		doc.insert(ignore_permissions=True)
-		frappe.db.commit()
-		print("Status 'Working' created successfully.")
-	else:
-		print("Status 'Working' already exists.")
-
 def create_chief_technician_role():
 	if not frappe.db.exists("Role", "Chief Technician"):
 		doc = frappe.get_doc({
@@ -50,38 +14,6 @@ def create_chief_technician_role():
 		print("Role 'Chief Technician' already exists.")
 
 
-
-def create_dashboard_page():
-	page_name = "chief-technician-das"
-	if not frappe.db.exists("Page", page_name):
-		doc = frappe.get_doc({
-			"doctype": "Page",
-			"page_name": page_name,
-			"title": "Chief Technician Dashboard",
-			"module": "Vin Chakra",
-			"standard": "Yes"
-		})
-		doc.insert(ignore_permissions=True)
-		frappe.db.commit()
-		print("Page chief-technician-das created successfully")
-	else:
-		print("Page chief-technician-das already exists")
-
-def create_technician_portal_page():
-	page_name = "technician-portal"
-	if not frappe.db.exists("Page", page_name):
-		doc = frappe.get_doc({
-			"doctype": "Page",
-			"page_name": page_name,
-			"title": "Technician Portal",
-			"module": "Vin Chakra",
-			"standard": "Yes"
-		})
-		doc.insert(ignore_permissions=True)
-		frappe.db.commit()
-		print("Page technician-portal created successfully")
-	else:
-		print("Page technician-portal already exists")
 
 def create_web_form():
 	if not frappe.db.exists('Web Form', 'raise-a-ticket'):
@@ -116,37 +48,6 @@ def create_web_form():
 	else:
 		print("Web form 'raise-a-ticket' already exists.")
 
-def create_custom_fields():
-	if not frappe.db.exists("Custom Field", "HD Ticket-custom_purchase_year"):
-		doc = frappe.get_doc({
-			"doctype": "Custom Field",
-			"dt": "HD Ticket",
-			"fieldname": "custom_purchase_year",
-			"fieldtype": "Select",
-			"label": "Purchase Year",
-			"options": "2010\n2011\n2012\n2013\n2014\n2015\n2016\n2017\n2018\n2019\n2020\n2021\n2022\n2023\n2024\n2025\n2026",
-			"insert_after": "custom_purchased_at_sree_chakra_sewing_systems"
-		})
-		doc.insert(ignore_permissions=True)
-		frappe.db.commit()
-		print("Custom Field 'custom_purchase_year' created")
-
-	if not frappe.db.exists("Custom Field", "HD Ticket-custom_machine_type_list"):
-		doc = frappe.get_doc({
-			"doctype": "Custom Field",
-			"dt": "HD Ticket",
-			"fieldname": "custom_machine_type_list",
-			"fieldtype": "Table",
-			"label": "Machine Type List",
-			"options": "Machine type list",
-			"insert_after": "custom_date",
-			"module": "vin_chakra"
-		})
-		doc.insert(ignore_permissions=True)
-		frappe.db.commit()
-		print("Custom Field 'custom_machine_type_list' created")
-
-
 def configure_hr_settings():
 	if frappe.db.exists("DocType", "HR Settings"):
 		hr_settings = frappe.get_single("HR Settings")
@@ -160,27 +61,14 @@ def run_setup():
 	print("Starting post-install/migrate setup for Vin Chakra...")
 
 	try:
-		create_pending_status()
-		create_working_status()
 		create_chief_technician_role()
 	except Exception as e:
 		frappe.log_error(message=f"Setup Ticket Status Error: {e}", title="Vin Chakra Setup Error")
 
 	try:
-		create_dashboard_page()
-		create_technician_portal_page()
-	except Exception as e:
-		frappe.log_error(message=f"Setup Pages Error: {e}", title="Vin Chakra Setup Error")
-
-	try:
 		create_web_form()
 	except Exception as e:
 		frappe.log_error(message=f"Setup Web Form Error: {e}", title="Vin Chakra Setup Error")
-
-	try:
-		create_custom_fields()
-	except Exception as e:
-		frappe.log_error(message=f"Setup Custom Fields Error: {e}", title="Vin Chakra Setup Error")
 
 	try:
 		configure_hr_settings()

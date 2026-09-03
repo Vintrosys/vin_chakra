@@ -192,19 +192,41 @@ fixtures = [
     {
         "dt": "HD Ticket Status",
         "filters": [
-            ["name", "=", "Self-Completed"]
+            ["name", "in", ["Pending", "Working", "Self-Completed"]]
         ]
     },
     {
         "dt": "Custom Field",
         "filters": [
-            ["dt", "in", ["Employee Checkin", "Support Form Template", "Machine type list", "HD Ticket"]]
+            ["dt", "in", [
+                "HD Ticket",
+                "Employee Checkin",
+                "Support Form Template",
+                "Machine type list",
+                "Quotation",
+                "Quotation Item",
+                "Item",
+                "Sales Person",
+                "Sales Invoice",
+                "Sales Invoice Item"
+            ]]
         ]
     },
     {
         "dt": "Property Setter",
         "filters": [
-            ["doc_type", "in", ["HD Ticket", "Employee Checkin", "Quotation", "Item", "Sales Invoice", "Support Form Template", "Machine type list"]]
+            ["doc_type", "in", [
+                "HD Ticket",
+                "Employee Checkin",
+                "Quotation",
+                "Quotation Item",
+                "Item",
+                "Sales Person",
+                "Sales Invoice",
+                "Sales Invoice Item",
+                "Support Form Template",
+                "Machine type list"
+            ]]
         ]
     }
 ]

@@ -11,5 +11,31 @@
   "modified": "2026-07-11 19:10:51.759142",
   "name": "Self-Completed",
   "order": 2
+ },
+ {
+  "category": "Open",
+  "color": "Gray",
+  "different_view": 0,
+  "docstatus": 0,
+  "doctype": "HD Ticket Status",
+  "enabled": 1,
+  "label_agent": "Pending",
+  "label_customer": "Pending",
+  "modified": "2026-06-25 11:25:43.283487",
+  "name": "Pending",
+  "order": 3
+ },
+ {
+  "category": "Open",
+  "color": "Orange",
+  "different_view": 0,
+  "docstatus": 0,
+  "doctype": "HD Ticket Status",
+  "enabled": 1,
+  "label_agent": "Working",
+  "label_customer": "Working",
+  "modified": "2026-07-01 12:24:17.130604",
+  "name": "Working",
+  "order": 2
  }
 ]

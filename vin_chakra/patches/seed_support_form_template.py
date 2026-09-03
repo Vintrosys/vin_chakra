@@ -1,9 +1,7 @@
 import frappe
-from vin_chakra.vin_chakra.setup import create_custom_fields
 
 def execute():
 	"""Seed Support Form Template singleton with initial configuration if empty, without overwriting user edits."""
-	create_custom_fields()
 	frappe.clear_cache(doctype="HD Ticket")
 
 	frappe.reload_doc("vin_chakra", "doctype", "support_form_template_field")
