@@ -114,7 +114,7 @@ doc_events = {
 # Administrator and Agent Managers see all tickets.
 permission_query_conditions = {
 	"HD Ticket": "vin_chakra.vin_chakra.custom.hd_ticket.get_assignee_restricted_ticket_query",
-	"Quotation": "vin_chakra.permissions.quotation_query"
+	"Quotation": "vin_chakra.utils.quotation.quotation_query"
 }
 
 # ---------------

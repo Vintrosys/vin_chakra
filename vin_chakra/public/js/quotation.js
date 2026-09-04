@@ -34,11 +34,40 @@ $(`<style>
 </style>`).appendTo('head');
 
 frappe.ui.form.on('Quotation', {
-	onload: function (frm) {
-		if (frm.is_new() && !frm.doc.custom_sales_person) {
-			frm.set_value('custom_sales_person', frappe.session.user);
-		}
-	},
+    onload: function (frm) {
+        if (frm.is_new() && !frm.doc.custom_sales_person) {
+
+            // Get Employee linked to current logged-in user
+            frappe.db.get_value(
+                'Employee',
+                { user_id: frappe.session.user },
+                'name'
+            ).then(r => {
+
+                if (!r.message || !r.message.name) {
+                    return;
+                }
+
+                // Get Sales Person linked to that Employee
+                frappe.db.get_value(
+                    'Sales Person',
+                    { employee: r.message.name },
+                    'name'
+                ).then(sp => {
+
+                    if (sp.message && sp.message.name) {
+                        frm.set_value(
+                            'custom_sales_person',
+                            sp.message.name
+                        );
+                    }
+
+                });
+            });
+        }
+    },
+
+
 
 	refresh: function (frm) {
 		// On form load, inject buttons for all existing rows that already have an item

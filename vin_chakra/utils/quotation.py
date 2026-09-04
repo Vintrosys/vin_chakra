@@ -82,3 +82,8 @@ def validate_quotation(doc, method=None):
             "Some items are quoted below their Minimum Bargaining Rate. You cannot save this Quotation.<br><br>" + "<br>".join(warnings),
             title="Minimum Rate Validation Failed"
         )
+def quotation_query(user):
+    if "System Manager" in frappe.get_roles(user):
+        return ""
+
+    return f"`tabQuotation`.`owner` = {frappe.db.escape(user)}"
