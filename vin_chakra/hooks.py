@@ -228,5 +228,31 @@ fixtures = [
                 "Machine type list"
             ]]
         ]
+    },
+    {
+        "dt": "Report",
+        "filters": [
+            ["name", "in", ["Age-wise Quotation Report"]]
+        ]
+    },
+    {
+        "dt": "DocType",
+        "filters": [
+            ["name", "in", ["Quotation"]]
+        ]
+    },
+    {
+        "dt": "Custom Field",
+        "filters": [
+            [
+                "name",
+                "in",
+                [
+                    "Quotation-custom_terms_and_conditions",
+                    "Quotation-custom_sales_person",
+                    "Quotation-custom_terms_and_conditions_table"
+                ]
+            ]
+        ]
     }
 ]
