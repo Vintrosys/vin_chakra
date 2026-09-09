@@ -42,8 +42,8 @@ def get_form_schema() -> dict:
 					elif cdf.fieldtype == "Link" and cdf.options:
 						if cdf.options == "Item":
 							try:
-								items = frappe.get_all("Item", fields=["name", "item_name", "brand"], ignore_permissions=True, limit_page_length=500)
-								c_opts = [{"value": item.name, "label": item.item_name or item.name, "item_name": item.item_name or item.name, "brand": item.brand or ""} for item in items]
+								items = frappe.get_all("Item", fields=["name", "item_name", "brand", "custom_model_no"], ignore_permissions=True, limit_page_length=500)
+								c_opts = [{"value": item.name, "label": item.item_name or item.name, "item_name": item.item_name or item.name, "brand": item.brand or "", "model_no": item.custom_model_no or ""} for item in items]
 							except Exception:
 								c_opts = []
 						else:
@@ -51,6 +51,7 @@ def get_form_schema() -> dict:
 								c_opts = frappe.get_all(cdf.options, pluck="name", ignore_permissions=True, limit_page_length=500)
 							except Exception:
 								c_opts = []
+														
 					child_fields.append({
 						"fieldname": cdf.fieldname,
 						"fieldtype": cdf.fieldtype,

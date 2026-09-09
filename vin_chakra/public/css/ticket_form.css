@@ -505,3 +505,16 @@ select.tk-control:disabled {
   height: 16px;
 }
 
+
+.tk-combo{position:relative}
+.tk-combo-list{
+  display:none;
+  z-index:9999;
+  max-height:220px;overflow:auto;
+  background:#fff;border:1px solid #d8d8d8;
+  border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,.12);
+}
+.tk-combo-list.open{display:block}
+.tk-combo-item{padding:8px 12px;cursor:pointer;font-size:13px}
+.tk-combo-item:hover{background:#f2f2f2}
+.tk-combo-add{color:#b5651d;font-weight:600;border-top:1px solid #eee}
