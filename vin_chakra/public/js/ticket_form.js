@@ -312,7 +312,122 @@
       this.root.appendChild(card);
       this._form = form;
     }
+    
 
+    /* Search-style combo for machine_type / machine_problem.
+   Renders a search input + filtered list, with a
+   "+ Add New <label>" row that opens the linked doctype's quick-entry form. */
+_buildComboField(cf, opts = {}) {
+  const wrap  = el('div', 'tk-combo');
+  const input = el('input', 'tk-control tk-combo-input');
+  input.type = 'text';
+  input.autocomplete = 'off';
+  input.placeholder = `Search ${cf.label}…`;
+  input.dataset.cfname = cf.fieldname;
+  if (cf.reqd) input.required = true;
+  wrap.appendChild(input);
+
+  /* Dropdown is appended to <body> (not inside the table cell) so it
+     isn't clipped by the scrollable table wrapper — positioned via
+     getBoundingClientRect so it floats like the working example. */
+  const list = el('div', 'tk-combo-list');
+  document.body.appendChild(list);
+
+  const positionList = () => {
+  const r = input.getBoundingClientRect();
+  const MIN_WIDTH = 320;                       // wider than the narrow input box
+  const desiredWidth = Math.max(r.width, MIN_WIDTH);
+
+  let left = r.left;
+
+  if (left + desiredWidth > window.innerWidth - 8) {
+    left = window.innerWidth - desiredWidth - 8;
+  }
+  if (left < 8) left = 8;
+
+  list.style.position = 'fixed';
+  list.style.left  = left + 'px';
+  list.style.top   = (r.bottom + 4) + 'px';
+  list.style.width = desiredWidth + 'px';
+};
+  const openList  = () => { positionList(); list.classList.add('open'); };
+  const closeList = () => { list.classList.remove('open'); };
+
+ const options = (cf.options || []).map(o => typeof o === 'object'
+  ? { value: o.value, label: o.label, itemName: o.item_name || o.label, 
+      brand: o.brand, modelNo: o.model_no }   // ✅ add
+  : { value: o, label: o, itemName: o, brand: null, modelNo: null });
+
+const selectOpt = (o) => {
+  input.value = o.label;
+  input.dataset.value    = o.value;
+  input.dataset.itemName = o.itemName || '';
+  if (o.brand)   input.dataset.brand   = o.brand;   else delete input.dataset.brand;
+  if (o.modelNo) input.dataset.modelNo = o.modelNo; else delete input.dataset.modelNo;   // ✅ add
+  closeList();
+  this._clearError(input, wrap.closest('.tk-field') || wrap);
+  if (opts.onSelect) opts.onSelect(o, wrap);
+};
+
+  const renderList = (query) => {
+    const q = (query || '').toLowerCase();
+    list.innerHTML = '';
+    options.filter(o => o.label.toLowerCase().includes(q)).forEach(o => {
+      const item = el('div', 'tk-combo-item');
+      item.textContent = o.label;
+      item.addEventListener('mousedown', e => { e.preventDefault(); selectOpt(o); });
+      list.appendChild(item);
+    });
+    const addItem = el('div', 'tk-combo-item tk-combo-add');
+addItem.textContent = `+ Add New ${opts.doctype || cf.label}`;
+
+addItem.addEventListener('mousedown', e => { e.preventDefault(); });
+
+addItem.addEventListener('click', e => {
+  e.preventDefault();
+  closeList();
+  input.blur();
+  const doctype = opts.doctype || 'Item';
+  window.__tkPendingCombo = { doctype, selectOpt };
+  openInNewTab(doctype);
+});
+list.appendChild(addItem);
+
+function openInNewTab(doctype) {
+  const route = doctype.toLowerCase().replace(/\s+/g, '-');
+  window.open(`/app/${route}/new`, '_blank');
+}
+};
+
+  input.addEventListener('focus', () => { renderList(input.value); openList(); });
+  input.addEventListener('input', () => {
+    delete input.dataset.value; delete input.dataset.itemName; delete input.dataset.brand;
+    renderList(input.value);
+    openList();
+  });
+  input.addEventListener('blur', () => setTimeout(() => {
+    closeList();
+    if (!input.dataset.value) input.value = '';
+  }, 150));
+
+  /* Keep it aligned if the table/page scrolls or resizes */
+  const reposition = () => { if (list.classList.contains('open')) positionList(); };
+  window.addEventListener('scroll', reposition, true);
+  window.addEventListener('resize', reposition);
+
+  /* Clean up the portal element once this row is removed from the DOM */
+  const observer = new MutationObserver(() => {
+    if (!document.body.contains(wrap)) {
+      list.remove();
+      window.removeEventListener('scroll', reposition, true);
+      window.removeEventListener('resize', reposition);
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  return wrap;
+}
     /* ── Header ── */
     _buildHeader() {
       const h = el('div', 'tk-header');
@@ -639,43 +754,30 @@
           const td = el('td');
           let ctrl;
 
-          if (cf.fieldname === 'machine_type') {
-            ctrl = el('select', 'tk-control');
-            ctrl.dataset.cfname = cf.fieldname;
-            ctrl.innerHTML = `<option value="" disabled selected>Select Machine Type</option>`;
-            (cf.options || []).forEach(optObj => {
-              const opt = document.createElement('option');
-              if (typeof optObj === 'object') {
-                opt.value = optObj.value;
-                opt.textContent = optObj.label;
-                opt.dataset.itemName = optObj.item_name || optObj.label;
-                if (optObj.brand) opt.dataset.brand = optObj.brand;
-              } else {
-                opt.value = optObj;
-                opt.textContent = optObj;
-              }
-              ctrl.appendChild(opt);
-            });
-            if (initialValues.machine_type) ctrl.value = initialValues.machine_type;
+if (cf.fieldname === 'machine_type') {
+  ctrl = this._buildComboField(cf, {
+    doctype: 'Item',
+  onSelect: (o, wrap) => {
+  console.log('FULL OBJECT:', JSON.stringify(o));   
+  const row = wrap.closest('tr');
+  if (row) {
+    const brandCtrl = row.querySelector('[data-cfname="machine_brand"]');
+    if (brandCtrl && o.brand) brandCtrl.value = o.brand;
 
-            ctrl.addEventListener('change', () => {
-              const selectedOpt = ctrl.options[ctrl.selectedIndex];
-              if (selectedOpt) {
-                const itemName = selectedOpt.dataset.itemName;
-                const brand = selectedOpt.dataset.brand;
-                const row = ctrl.closest('tr');
-                if (row) {
-                  const nameInput = row.querySelector('[data-cfname="machine_name"]');
-                  if (nameInput && itemName) nameInput.value = itemName;
-                  const brandCtrl = row.querySelector('[data-cfname="machine_brand"]');
-                  if (brandCtrl && brand) {
-                    brandCtrl.value = brand;
-                  }
-                }
-              }
-            });
+    const modelCtrl = row.querySelector('[data-cfname="model_no"]');
+    console.log('modelCtrl found:', modelCtrl);   
+    if (modelCtrl && o.modelNo) modelCtrl.value = o.modelNo;
+  }
+}
+  });
+  if (initialValues.machine_type) ctrl.querySelector('input').value = initialValues.machine_type;
+}
+else if (cf.fieldname === 'machine_problem') {
+  /* confirm 'Machine Problem' is your exact doctype name */
+  ctrl = this._buildComboField(cf, { doctype: 'Machine Problem' });
+  if (initialValues.machine_problem) ctrl.querySelector('input').value = initialValues.machine_problem;
 
-          } else if (cf.fieldtype === 'Select' || cf.fieldtype === 'Link' || cf.fieldname === 'machine_problem' || cf.fieldname === 'machine_brand') {
+} else if (cf.fieldtype === 'Select' || cf.fieldtype === 'Link' || cf.fieldname === 'machine_brand') {
             ctrl = el('select', 'tk-control');
             ctrl.dataset.cfname = cf.fieldname;
             ctrl.innerHTML = `<option value="" disabled selected>Select ${cf.label}</option>`;
@@ -785,16 +887,15 @@
         rows.forEach(tr => {
           const rowObj = {};
           const inputs = tr.querySelectorAll('[data-cfname]');
-          inputs.forEach(input => {
-            const key = input.dataset.cfname;
-            if (key) {
-              rowObj[key] = input.value ? input.value.trim() : '';
-              if (key === 'machine_type' && input.options && input.selectedIndex >= 0) {
-                const selectedOpt = input.options[input.selectedIndex];
-                rowObj['machine_name'] = selectedOpt?.dataset?.itemName || selectedOpt?.textContent || rowObj[key];
-              }
-            }
-          });
+         inputs.forEach(input => {
+          const key = input.dataset.cfname;
+          if (!key) return;
+          const rawVal = input.dataset.value !== undefined ? input.dataset.value : input.value;
+          rowObj[key] = rawVal ? String(rawVal).trim() : '';
+          if (key === 'machine_type') {
+            rowObj['machine_name'] = input.dataset.itemName || rowObj[key];
+          }
+        });
           if (rowObj.machine_quantity) {
             rowObj.machine_quantity = parseInt(rowObj.machine_quantity, 10) || 1;
           }
@@ -1027,3 +1128,23 @@
     boot();
   }
 })();
+
+window.addEventListener('storage', (e) => {
+  if (e.key !== 'tk_new_doc_created' || !e.newValue) return;
+  const pending = window.__tkPendingCombo;
+  if (!pending) return;
+
+  let payload;
+  try { payload = JSON.parse(e.newValue); } catch (_) { return; }
+  if (payload.doctype !== pending.doctype) return;
+
+  const o = {
+    value: payload.name,
+    label: payload.item_name || payload.problem_name || payload.name,
+    itemName: payload.item_name || payload.problem_name || payload.name,
+    brand: payload.brand,
+    modelNo: payload.custom_model_no || payload.model_no
+  };
+  pending.selectOpt(o);
+  window.__tkPendingCombo = null;
+});

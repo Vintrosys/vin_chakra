@@ -19,6 +19,7 @@ class Machinetypelist(Document):
 		machine_problem: DF.Link
 		machine_quantity: DF.Int
 		machine_type: DF.Link
+		model_no: DF.Data | None
 		parent: DF.Data
 		parentfield: DF.Data
 		parenttype: DF.Data

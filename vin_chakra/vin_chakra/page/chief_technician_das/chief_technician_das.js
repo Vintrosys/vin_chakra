@@ -894,7 +894,14 @@ class ChiefTechnicianDashboard {
         if (!date_val) return null;
         return frappe.datetime.global_date_format(date_val);
     }
-    
+    get_resolved_by_formatted(t) {
+        let is_resolved = ["Resolved", "Closed", "Self-Completed"].includes(t.status);
+        if (!is_resolved) return null;
+        let assignees = [];
+        try { assignees = JSON.parse(t._assign || "[]"); } catch(e) { assignees = []; }
+        if (!assignees.length) return null;
+        return frappe.user.full_name(assignees[0]) || assignees[0];
+    }
     render_ticket_cards(tickets) {
         let self = this;
         let container = this.wrapper.find("#ct-tickets-container");
@@ -917,12 +924,14 @@ class ChiefTechnicianDashboard {
                 return `<div class="ct-assignee-avatar" title="${u}">${initial}</div>`;
             }).join("");
             
-            let status_badge = self.get_status_badge(t.status, t.name);
-            let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
-            let res_date = self.get_resolved_date_formatted(t);
-            let res_date_html = res_date 
-                ? `<div><i class="fa fa-check-circle" style="color: #10b981;"></i> <span>Resolved Date: <strong>${res_date}</strong></span></div>` 
-                : "";
+         let status_badge = self.get_status_badge(t.status, t.name);
+        let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
+        let res_date = self.get_resolved_date_formatted(t);
+        let resolved_by = self.get_resolved_by_formatted(t);
+        let res_date_html = res_date 
+            ? `<div><i class="fa fa-check-circle" style="color: #10b981;"></i> <span>Resolved Date: <strong>${res_date}</strong></span></div>
+            ${resolved_by ? `<div><i class="fa fa-user-o" style="color: #10b981;"></i> <span>Resolved by: <strong>${resolved_by}</strong></span></div>` : ""}` 
+            : "";
             
             return `
                 <div class="ct-ticket-card" onclick="window.location.href='/helpdesk/tickets/${t.name}'">
@@ -973,9 +982,11 @@ class ChiefTechnicianDashboard {
             
             let status_badge = self.get_status_badge(t.status, t.name);
             let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
-            let res_date = self.get_resolved_date_formatted(t);
+           let res_date = self.get_resolved_date_formatted(t);
+            let resolved_by = self.get_resolved_by_formatted(t);
             let res_date_html = res_date 
-                ? `<div style="color: #10b981;"><strong>Resolved:</strong> ${res_date}</div>` 
+                ? `<div><i class="fa fa-check-circle" style="color: #10b981;"></i> <span>Resolved Date: <strong>${res_date}</strong></span></div>
+                ${resolved_by ? `<div><i class="fa fa-user-o" style="color: #10b981;"></i> <span>Resolved by: <strong>${resolved_by}</strong></span></div>` : ""}` 
                 : "";
             
             return `

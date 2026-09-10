@@ -161,8 +161,10 @@ export_python_type_annotations = True
 require_type_annotated_api_methods = True
 
 doctype_js = {
-    "Quotation" : "public/js/quotation.js"
+    "Quotation" : "public/js/quotation.js",
+    "Item": "public/js/Item.js"
 }
+
 
 fixtures = [
     {
