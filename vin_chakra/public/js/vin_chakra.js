@@ -8,7 +8,8 @@
 		}
 
 		const params = new URLSearchParams(window.location.search);
-		const qeParam = params.get("quick_entry");
+		const hashParams = new URLSearchParams(window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+		const qeParam = params.get("quick_entry") || hashParams.get("quick_entry");
 		let targetDoctype = (target && target.doctype) || (qeParam && qeParam !== "1" ? qeParam : "Customer");
 
 		if (targetDoctype.toLowerCase() === "item" || targetDoctype.toLowerCase() === "machine") {
@@ -19,8 +20,6 @@
 			targetDoctype = "Customer";
 		}
 
-		const params = new URLSearchParams(window.location.search);
-		const qeParam = params.get("quick_entry");
 		const isQuickEntry = sessionStorage.getItem("tk_is_quick_entry") === "1" || Boolean(qeParam);
 		const fromSupport = sessionStorage.getItem("tk_return_to_ticket_support") === "1" || Boolean(qeParam);
 
@@ -34,6 +33,7 @@
 		}
 
 		if (!window.frappe || !frappe.ui || !frappe.ui.form || !frappe.ui.form.make_quick_entry) {
+			setTimeout(window.triggerQuickEntryFromSupport, 200);
 			return;
 		}
 
@@ -62,7 +62,7 @@
 							JSON.stringify({
 								name: doc.name,
 								customer_name: doc.customer_name || doc.name,
-								mobile_no: doc.mobile_no || doc.mobile_number || "",
+								mobile_no: doc.mobile_no || doc.mobile_number || doc.custom_secondary_phone || "",
 								email_id: doc.email_id || doc.email_address || "",
 								address_line1: doc.address_line1 || "",
 								city: doc.city || "",
@@ -108,23 +108,29 @@
 
 	window.triggerCustomerQuickEntry = window.triggerQuickEntryFromSupport;
 
-	$(document).on("app_ready", function () {
+	function checkAndTrigger() {
 		const params = new URLSearchParams(window.location.search);
-		const isQuickEntry = sessionStorage.getItem("tk_is_quick_entry") === "1" || Boolean(params.get("quick_entry"));
-		const fromSupport = sessionStorage.getItem("tk_return_to_ticket_support") === "1" || Boolean(params.get("quick_entry"));
-		if (fromSupport && isQuickEntry) {
-			setTimeout(window.triggerQuickEntryFromSupport, 250);
+		const hashParams = new URLSearchParams(window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
+		const qeParam = params.get("quick_entry") || hashParams.get("quick_entry");
+		const isQuickEntry = sessionStorage.getItem("tk_is_quick_entry") === "1" || Boolean(qeParam);
+		const fromSupport = sessionStorage.getItem("tk_return_to_ticket_support") === "1" || Boolean(qeParam);
+		if (fromSupport && isQuickEntry && !window.__tk_quick_entry_open) {
+			window.triggerQuickEntryFromSupport();
 		}
+	}
+
+	$(document).on("app_ready", function () {
+		setTimeout(checkAndTrigger, 200);
 	});
 
 	if (frappe.router && frappe.router.on) {
 		frappe.router.on("change", function () {
-			const params = new URLSearchParams(window.location.search);
-			const isQuickEntry = sessionStorage.getItem("tk_is_quick_entry") === "1" || Boolean(params.get("quick_entry"));
-			const fromSupport = sessionStorage.getItem("tk_return_to_ticket_support") === "1" || Boolean(params.get("quick_entry"));
-			if (fromSupport && isQuickEntry && !window.__tk_quick_entry_open) {
-				setTimeout(window.triggerQuickEntryFromSupport, 250);
-			}
+			setTimeout(checkAndTrigger, 200);
 		});
 	}
+
+	if (window.app_ready || document.readyState === "complete" || (window.frappe && frappe.boot)) {
+		setTimeout(checkAndTrigger, 300);
+	}
 })();
+
