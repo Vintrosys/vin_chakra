@@ -18,7 +18,7 @@ app_license = "mit"
 # ------------------
 
 # app_include_css = "/assets/vin_chakra/css/vin_chakra.css"
-# app_include_js = "/assets/vin_chakra/js/vin_chakra.js"
+app_include_js = "/assets/vin_chakra/js/vin_chakra.js"
 
 # web_include_css = "/assets/vin_chakra/css/vin_chakra.css"
 web_include_js = [
@@ -80,6 +80,9 @@ after_migrate = "vin_chakra.vin_chakra.setup.run_setup"
 # ---------------
 
 doc_events = {
+	"Customer": {
+		"on_update": "vin_chakra.vin_chakra.custom.customer.sync_secondary_phone_to_contact"
+	},
 	"HD Ticket": {
 		"before_validate": "vin_chakra.vin_chakra.custom.hd_ticket.fix_phone_numbers",
 		"after_insert": [
@@ -162,7 +165,13 @@ require_type_annotated_api_methods = True
 
 doctype_js = {
     "Quotation" : "public/js/quotation.js",
-    "Item": "public/js/Item.js"
+    "Item": "public/js/Item.js",
+    "Customer": "public/js/Customer.js",
+    "Machine Problem": "public/js/machine_problem.js",
+}
+
+doctype_list_js = {
+    "Customer": "public/js/customer_list.js",
 }
 
 
@@ -201,6 +210,7 @@ fixtures = [
         "dt": "Custom Field",
         "filters": [
             ["dt", "in", [
+                "Customer",
                 "HD Ticket",
                 "Employee Checkin",
                 "Support Form Template",
@@ -218,6 +228,7 @@ fixtures = [
         "dt": "Property Setter",
         "filters": [
             ["doc_type", "in", [
+                "Customer",
                 "HD Ticket",
                 "Employee Checkin",
                 "Quotation",
@@ -235,12 +246,6 @@ fixtures = [
         "dt": "Report",
         "filters": [
             ["name", "in", ["Age-wise Quotation Report"]]
-        ]
-    },
-    {
-        "dt": "DocType",
-        "filters": [
-            ["name", "in", ["Quotation"]]
         ]
     },
     {

@@ -939,10 +939,10 @@ class ChiefTechnicianDashboard {
                         <span class="ct-ticket-id">${t.name}</span>
                         <div class="ct-card-badges">${status_badge}${priority_badge}</div>
                     </div>
-                    <h3 class="ct-ticket-subject">${t.custom_customer_name || 'N/A'}</h3>
+                    <h3 class="ct-ticket-subject">${t.custom_customer_name || t.customer || 'N/A'}</h3>
                     
                     <div class="ct-card-meta">
-                        <div><i class="fa fa-user"></i> <span>Customer: <strong>${t.custom_customer_name || 'N/A'}</strong></span></div>
+                        <div><i class="fa fa-user"></i> <span>Customer: <strong>${t.custom_customer_name || t.customer || 'N/A'}</strong></span></div>
                         <div><i class="fa fa-cogs"></i> <span>Machine: ${t.custom_machine_name || 'N/A'}</span></div>
                         <div><i class="fa fa-calendar-o"></i> <span>Date: ${t.custom_date ? frappe.datetime.global_date_format(t.custom_date) : 'N/A'}</span></div>
                         ${res_date_html}
@@ -1000,7 +1000,7 @@ class ChiefTechnicianDashboard {
                         ${priority_badge}
                     </div>
                     <div class="ct-list-meta-col">
-                        <div><strong>Cust:</strong> ${t.custom_customer_name || 'N/A'}</div>
+                        <div><strong>Cust:</strong> ${t.custom_customer_name || t.customer || 'N/A'}</div>
                         <div><strong>Machine:</strong> ${t.custom_machine_name || 'N/A'}</div>
                         ${res_date_html}
                     </div>

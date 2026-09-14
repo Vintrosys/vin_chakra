@@ -2,6 +2,8 @@ import frappe
 from frappe import _
 import json
 
+from vin_chakra.technician_api import enrich_tickets_customer_details
+
 @frappe.whitelist()
 def get_portal_data(
     status: str = None,
@@ -31,7 +33,7 @@ def get_portal_data(
         values["priority"] = priority
     if search_query:
         search_escaped = f"%{search_query}%"
-        conditions.append("(name LIKE %(search)s OR subject LIKE %(search)s OR custom_customer_name LIKE %(search)s)")
+        conditions.append("(name LIKE %(search)s OR subject LIKE %(search)s OR custom_customer_name LIKE %(search)s OR customer LIKE %(search)s)")
         values["search"] = search_escaped
         
     where_clause = " AND ".join(conditions)
@@ -80,6 +82,7 @@ def get_portal_data(
             priority,
             custom_customer_name,
             custom_customer_mobile_number,
+            custom__secondary_phone_number,
             custom_address,
             custom_city__district_,
             custom_state,
@@ -88,7 +91,9 @@ def get_portal_data(
             custom_date,
             creation,
             modified,
-            _assign
+            _assign,
+            customer,
+            contact
         FROM `tabHD Ticket`
         WHERE {where_clause}
         ORDER BY creation DESC
@@ -99,6 +104,7 @@ def get_portal_data(
     values["limit_page_length"] = int(limit_page_length)
     
     tickets = frappe.db.sql(tickets_query, values, as_dict=True)
+    tickets = enrich_tickets_customer_details(tickets)
     
     if tickets:
         ticket_names = [t["name"] for t in tickets]

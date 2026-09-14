@@ -557,7 +557,7 @@ class TechnicianPortal {
         let html = tickets.map(t => {
             let status_badge = `<span class="tp-badge tp-badge-status-${t.status.replace(/\s+/g, '')}">${t.status}</span>`;
             let priority_badge = `<span class="tp-badge tp-badge-priority-${t.priority}">${t.priority}</span>`;
-            let customer = t.custom_customer_name || 'N/A';
+            let customer = t.custom_customer_name || t.customer || 'N/A';
             let address = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ') || 'N/A';
             let date_str = t.custom_date ? frappe.datetime.global_date_format(t.custom_date) : 'N/A';
             let machine_display = (t.custom_machine_type_list && t.custom_machine_type_list.length > 0)
@@ -601,7 +601,7 @@ class TechnicianPortal {
         let html = tickets.map(t => {
             let status_badge = `<span class="tp-badge tp-badge-status-${t.status.replace(/\s+/g, '')}">${t.status}</span>`;
             let priority_badge = `<span class="tp-badge tp-badge-priority-${t.priority}">${t.priority}</span>`;
-            let customer = t.custom_customer_name || 'N/A';
+            let customer = t.custom_customer_name || t.customer || 'N/A';
             let address = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ') || 'N/A';
             
             return `
@@ -851,7 +851,11 @@ class TechnicianPortal {
 
     show_ticket_detail_dialog(t) {
         let self = this;
-        let phone = t.custom_customer_mobile_number || '';
+        let primary_phone = t.primary_phone || t.custom_customer_mobile_number || '';
+        let sec_phones = t.secondary_phones || [];
+        if (!sec_phones.length && (t.custom__secondary_phone_number || t.custom_secondary_phone_number)) {
+            sec_phones = [t.custom__secondary_phone_number || t.custom_secondary_phone_number];
+        }
         let address = [t.custom_address, t.custom_city__district_, t.custom_state].filter(Boolean).join(', ') || '-';
         let date_str = t.custom_date ? frappe.datetime.global_date_format(t.custom_date) : '-';
         
@@ -942,18 +946,18 @@ class TechnicianPortal {
                 <div class="tp-modal-meta-grid">
                     <div class="tp-meta-item">
                         <span class="tp-meta-label">Customer Name</span>
-                        <span class="tp-meta-value">${t.custom_customer_name || '-'}</span>
+                        <span class="tp-meta-value">${t.custom_customer_name || t.customer || '-'}</span>
                     </div>
                     <div class="tp-meta-item">
-                        <span class="tp-meta-label">Mobile Number</span>
+                        <span class="tp-meta-label">Primary Mobile (Row 1)</span>
                         <span class="tp-meta-value">
-                            ${phone ? `<a href="tel:${phone.replace(/[^\d+]/g, '')}" style="color: var(--tp-primary); text-decoration: none; font-weight: 700;"><i class="fa fa-phone"></i> ${phone}</a>` : '-'}
+                            ${primary_phone ? `<a href="tel:${primary_phone.replace(/[^\d+]/g, '')}" style="color: var(--tp-primary); text-decoration: none; font-weight: 700;"><i class="fa fa-phone"></i> ${primary_phone}</a>` : '-'}
                         </span>
                     </div>
                     <div class="tp-meta-item">
                         <span class="tp-meta-label">Secondary Mobile</span>
                         <span class="tp-meta-value">
-                            ${t.custom__secondary_phone_number ? `<a href="tel:${t.custom__secondary_phone_number.replace(/[^\d+]/g, '')}" style="color: var(--tp-primary); text-decoration: none; font-weight: 700;"><i class="fa fa-phone"></i> ${t.custom__secondary_phone_number}</a>` : '-'}
+                            ${sec_phones.length > 0 ? sec_phones.map(p => `<a href="tel:${p.replace(/[^\d+]/g, '')}" style="color: var(--tp-primary); text-decoration: none; font-weight: 700;"><i class="fa fa-phone"></i> ${p}</a>`).join(', ') : '-'}
                         </span>
                     </div>
                     <div class="tp-meta-item">
@@ -1006,8 +1010,11 @@ class TechnicianPortal {
 
         // Helper to prompt Phone Selection and trigger Checkin or Resend OTP
         function trigger_checkin_flow(ticket_doc, is_resend = false) {
-            let primary_phone = ticket_doc.custom_customer_mobile_number || "";
-            let sec_phone = ticket_doc.custom__secondary_phone_number || ticket_doc.custom_secondary_phone_number || "";
+            let primary_phone = ticket_doc.primary_phone || ticket_doc.custom_customer_mobile_number || "";
+            let secondary_phones = ticket_doc.secondary_phones || [];
+            if (!secondary_phones.length && (ticket_doc.custom__secondary_phone_number || ticket_doc.custom_secondary_phone_number)) {
+                secondary_phones = [ticket_doc.custom__secondary_phone_number || ticket_doc.custom_secondary_phone_number];
+            }
 
             let title_text = is_resend ? `Resend Service OTP: ${ticket_doc.name}` : `Ticket Check-In & OTP Dispatch: ${ticket_doc.name}`;
             let prompt_text = is_resend ? `Select which mobile number to resend the Service OTP SMS to:` : `Select which mobile number to send the Service OTP SMS to upon check-in:`;
@@ -1026,7 +1033,16 @@ class TechnicianPortal {
                 checkin_dialog.$wrapper.remove();
             };
 
-            let default_is_secondary = !!sec_phone;
+            let secondary_cards_html = secondary_phones.map((phone_num, idx) => {
+                return `
+                    <div class="tp-phone-card" data-choice="secondary_list" data-phone="${phone_num}" style="margin-bottom: 10px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; cursor: pointer;">
+                        <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; margin: 0;">
+                            <input type="radio" name="otp_phone_choice" value="secondary_list" data-phone="${phone_num}">
+                            Secondary Mobile (Row ${idx + 2}): <span style="color: var(--tp-primary); font-weight: 700;">${phone_num}</span>
+                        </label>
+                    </div>
+                `;
+            }).join("");
 
             let modal_html = `
                 <div style="padding: 10px 0;">
@@ -1034,19 +1050,21 @@ class TechnicianPortal {
                         ${prompt_text}
                     </p>
                     
-                    <div class="tp-phone-card" data-choice="primary" style="margin-bottom: 12px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; cursor: pointer;">
+                    <div class="tp-phone-card" data-choice="primary" data-phone="${primary_phone}" style="margin-bottom: 10px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; cursor: pointer;">
                         <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; margin: 0;">
-                            <input type="radio" name="otp_phone_choice" value="primary" ${!default_is_secondary ? "checked" : ""}>
-                            Primary Mobile: <span style="color: var(--tp-primary); font-weight: 700;">${primary_phone || 'Not Set'}</span>
+                            <input type="radio" name="otp_phone_choice" value="primary" data-phone="${primary_phone}" checked>
+                            Primary Mobile (Row 1): <span style="color: var(--tp-primary); font-weight: 700;">${primary_phone || 'Not Set'}</span>
                         </label>
                     </div>
 
-                    <div class="tp-phone-card" data-choice="secondary" style="margin-bottom: 18px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; cursor: pointer;">
+                    ${secondary_cards_html}
+
+                    <div class="tp-phone-card" data-choice="secondary_custom" style="margin-bottom: 18px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; cursor: pointer;">
                         <label style="display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; margin-bottom: 8px;">
-                            <input type="radio" name="otp_phone_choice" value="secondary" ${default_is_secondary ? "checked" : ""}>
-                            Secondary Phone Number
+                            <input type="radio" name="otp_phone_choice" value="secondary_custom">
+                            Other Secondary Mobile Number
                         </label>
-                        <input type="text" id="tp-sec-phone-input" class="form-control" style="font-size: 13px; margin-top: 6px;" placeholder="Enter secondary mobile number (+91-...)" value="${sec_phone}">
+                        <input type="text" id="tp-sec-phone-input" class="form-control" style="font-size: 13px; margin-top: 6px;" placeholder="Enter secondary mobile number (+91-...)">
                     </div>
 
                     <button class="tp-btn tp-btn-success" id="tp-btn-confirm-checkin" style="width: 100%; justify-content: center; padding: 10px; font-size: 14px;">
@@ -1059,34 +1077,35 @@ class TechnicianPortal {
 
             let $dialog_wrap = checkin_dialog.$wrapper;
 
-            $dialog_wrap.find(".tp-phone-card[data-choice='primary']").on("click", function() {
-                $dialog_wrap.find("input[name='otp_phone_choice'][value='primary']").prop("checked", true);
-            });
-
-            $dialog_wrap.find(".tp-phone-card[data-choice='secondary']").on("click", function(e) {
-                $dialog_wrap.find("input[name='otp_phone_choice'][value='secondary']").prop("checked", true);
+            $dialog_wrap.find(".tp-phone-card").on("click", function(e) {
+                if ($(e.target).is("input[type='text']")) return;
+                $(this).find("input[name='otp_phone_choice']").prop("checked", true);
             });
 
             $dialog_wrap.find("#tp-sec-phone-input").on("focus input click change", function(e) {
                 e.stopPropagation();
-                $dialog_wrap.find("input[name='otp_phone_choice'][value='secondary']").prop("checked", true);
+                $dialog_wrap.find("input[name='otp_phone_choice'][value='secondary_custom']").prop("checked", true);
             });
 
             $dialog_wrap.find("#tp-btn-confirm-checkin").on("click", function() {
-                let selected_choice = $dialog_wrap.find("input[name='otp_phone_choice']:checked").val() || "primary";
-                let secondary_val = $dialog_wrap.find("#tp-sec-phone-input").val().trim();
+                let selected_radio = $dialog_wrap.find("input[name='otp_phone_choice']:checked");
+                let choice_val = selected_radio.val() || "primary";
+                let selected_phone_num = "";
+                let phone_type = "primary";
 
-                if (secondary_val && secondary_val !== sec_phone && selected_choice !== "secondary") {
-                    selected_choice = "secondary";
-                    $dialog_wrap.find("input[name='otp_phone_choice'][value='secondary']").prop("checked", true);
+                if (choice_val === "primary") {
+                    phone_type = "primary";
+                    selected_phone_num = selected_radio.data("phone") || primary_phone;
+                } else if (choice_val === "secondary_list") {
+                    phone_type = "secondary";
+                    selected_phone_num = selected_radio.data("phone");
+                } else if (choice_val === "secondary_custom") {
+                    phone_type = "secondary";
+                    selected_phone_num = $dialog_wrap.find("#tp-sec-phone-input").val().trim();
                 }
 
-                if (selected_choice === "secondary" && !secondary_val) {
-                    frappe.show_alert({message: __("Please enter a secondary mobile number."), indicator: "red"});
-                    return;
-                }
-                if (selected_choice === "primary" && !primary_phone) {
-                    frappe.show_alert({message: __("Primary mobile number is not set. Please select or enter secondary number."), indicator: "red"});
+                if (!selected_phone_num) {
+                    frappe.show_alert({message: __("Please select or enter a valid mobile number."), indicator: "red"});
                     return;
                 }
 
@@ -1098,8 +1117,9 @@ class TechnicianPortal {
                         method: "vin_chakra.technician_api.resend_otp",
                         args: {
                             ticket_name: ticket_doc.name,
-                            otp_phone_type: selected_choice,
-                            secondary_phone: secondary_val
+                            otp_phone_type: phone_type,
+                            secondary_phone: selected_phone_num,
+                            selected_phone: selected_phone_num
                         },
                         callback: function(res) {
                             btn.prop("disabled", false);
@@ -1125,8 +1145,9 @@ class TechnicianPortal {
                                 latitude: coords.lat,
                                 longitude: coords.lng,
                                 accuracy: coords.accuracy,
-                                otp_phone_type: selected_choice,
-                                secondary_phone: secondary_val
+                                otp_phone_type: phone_type,
+                                secondary_phone: selected_phone_num,
+                                selected_phone: selected_phone_num
                             },
                             callback: function(res) {
                                 btn.prop("disabled", false);

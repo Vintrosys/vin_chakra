@@ -15,6 +15,124 @@ def _is_technician(user=None):
 	return not ({"Agent Manager", "System Manager"} & set(roles))
 
 
+def enrich_tickets_customer_details(tickets: Union[List[dict], dict]) -> Union[List[dict], dict]:
+	"""
+	Enrich ticket dictionary/dictionaries with customer details.
+	If HD Ticket fields (custom_customer_name, custom_customer_mobile_number, custom_address, etc.)
+	are empty or blank, retrieve details from linked Customer, Contact, and Address doctypes.
+	"""
+	if not tickets:
+		return tickets
+
+	is_single = isinstance(tickets, dict)
+	ticket_list = [tickets] if is_single else tickets
+
+	# Gather customer and contact names for bulk fetching
+	customer_ids = list({t.get("customer") for t in ticket_list if t.get("customer")})
+	contact_ids = list({t.get("contact") for t in ticket_list if t.get("contact")})
+
+	cust_map = {}
+	if customer_ids:
+		cust_rows = frappe.get_all(
+			"Customer",
+			filters={"name": ["in", customer_ids]},
+			fields=["name", "customer_name", "mobile_no", "customer_primary_contact", "customer_primary_address", "custom_secondary_phone"]
+		)
+		for c in cust_rows:
+			cust_map[c.name] = c
+			if c.customer_primary_contact and c.customer_primary_contact not in contact_ids:
+				contact_ids.append(c.customer_primary_contact)
+
+	# Fetch primary addresses
+	address_ids = list({c.customer_primary_address for c in cust_map.values() if c.get("customer_primary_address")})
+	addr_map = {}
+	if address_ids:
+		addr_rows = frappe.get_all(
+			"Address",
+			filters={"name": ["in", address_ids]},
+			fields=["name", "address_line1", "city", "state"]
+		)
+		for a in addr_rows:
+			addr_map[a.name] = a
+
+	# Fetch address links for customers without customer_primary_address
+	missing_addr_cust_ids = [c_id for c_id, c in cust_map.items() if not c.get("customer_primary_address")]
+	dyn_link_map = {}
+	if missing_addr_cust_ids:
+		dyn_links = frappe.get_all(
+			"Dynamic Link",
+			filters={"link_doctype": "Customer", "link_name": ["in", missing_addr_cust_ids], "parenttype": "Address"},
+			fields=["link_name", "parent"]
+		)
+		extra_addr_ids = [d.parent for d in dyn_links if d.parent not in addr_map]
+		if extra_addr_ids:
+			extra_addrs = frappe.get_all(
+				"Address",
+				filters={"name": ["in", extra_addr_ids]},
+				fields=["name", "address_line1", "city", "state"]
+			)
+			for a in extra_addrs:
+				addr_map[a.name] = a
+		dyn_link_map = {d.link_name: d.parent for d in dyn_links}
+
+	# Fetch contact details
+	contact_map = {}
+	if contact_ids:
+		c_rows = frappe.get_all(
+			"Contact",
+			filters={"name": ["in", contact_ids]},
+			fields=["name", "first_name", "last_name", "mobile_no", "phone"]
+		)
+		for c in c_rows:
+			full_name = f"{c.first_name or ''} {c.last_name or ''}".strip()
+			contact_map[c.name] = {
+				"full_name": full_name,
+				"phone": c.mobile_no or c.phone or ""
+			}
+
+	# Enrich each ticket
+	for t in ticket_list:
+		c_id = t.get("customer")
+		cust_doc = cust_map.get(c_id) if c_id else None
+
+		# 1. Customer Name
+		if not t.get("custom_customer_name") or str(t.get("custom_customer_name")).strip() == "":
+			if cust_doc and cust_doc.get("customer_name"):
+				t["custom_customer_name"] = cust_doc.customer_name
+			elif t.get("contact") and contact_map.get(t.get("contact"), {}).get("full_name"):
+				t["custom_customer_name"] = contact_map[t.get("contact")]["full_name"]
+			elif c_id:
+				t["custom_customer_name"] = c_id
+
+		# 2. Customer Mobile Number
+		if not t.get("custom_customer_mobile_number") or str(t.get("custom_customer_mobile_number")).strip() == "":
+			if cust_doc and cust_doc.get("mobile_no"):
+				t["custom_customer_mobile_number"] = cust_doc.mobile_no
+			elif t.get("contact") and contact_map.get(t.get("contact"), {}).get("phone"):
+				t["custom_customer_mobile_number"] = contact_map[t.get("contact")]["phone"]
+
+		# 3. Address
+		if not t.get("custom_address") or str(t.get("custom_address")).strip() == "":
+			addr_obj = None
+			if cust_doc and cust_doc.get("customer_primary_address"):
+				addr_obj = addr_map.get(cust_doc.customer_primary_address)
+			elif c_id and dyn_link_map.get(c_id):
+				addr_obj = addr_map.get(dyn_link_map[c_id])
+			
+			if addr_obj:
+				t["custom_address"] = addr_obj.get("address_line1") or ""
+				if not t.get("custom_city__district_"):
+					t["custom_city__district_"] = addr_obj.get("city") or ""
+				if not t.get("custom_state"):
+					t["custom_state"] = addr_obj.get("state") or ""
+
+		# 4. Secondary phone
+		if not t.get("custom__secondary_phone_number") and cust_doc and cust_doc.get("custom_secondary_phone"):
+			t["custom__secondary_phone_number"] = cust_doc.custom_secondary_phone
+
+	return ticket_list[0] if is_single else ticket_list
+
+
 # ---------------------------------------------------------------------------
 # Called from the www page (requires login)
 # ---------------------------------------------------------------------------
@@ -36,6 +154,7 @@ def get_my_tickets() -> list:
 			priority,
 			custom_customer_name,
 			custom_customer_mobile_number,
+			custom__secondary_phone_number,
 			custom_address,
 			custom_city__district_,
 			custom_state,
@@ -43,14 +162,16 @@ def get_my_tickets() -> list:
 			custom_machine_problem,
 			custom_date,
 			creation,
-			modified
+			modified,
+			customer,
+			contact
 		FROM `tabHD Ticket`
 		WHERE JSON_SEARCH(`_assign`, 'one', {user}) IS NOT NULL
 		ORDER BY creation DESC
 		""".format(user=escaped_user),
 		as_dict=True,
 	)
-	return tickets
+	return enrich_tickets_customer_details(tickets)
 
 
 def _verify_day_attendance(user):
@@ -105,6 +226,97 @@ def _send_otp_sms(ticket, target_mobile_number):
 	return False
 
 
+def _get_ticket_phone_numbers(ticket):
+	"""
+	Fetch phone numbers for a ticket from:
+	1. Linked Contact's phone_nos child table (Row 1 / is_primary = Primary, subsequent rows = Secondary)
+	2. Linked Customer's phone_nos child table or custom_secondary_phone
+	3. Ticket's custom_customer_mobile_number & custom__secondary_phone_number
+	"""
+	phone_nos_list = []
+
+	customer_name = ticket.get("customer")
+	contact_name = ticket.get("contact")
+
+	if not contact_name and customer_name:
+		contact_name = frappe.db.get_value("Customer", customer_name, "customer_primary_contact")
+		if not contact_name:
+			c_names = frappe.get_all(
+				"Dynamic Link",
+				filters={"link_doctype": "Customer", "link_name": customer_name, "parenttype": "Contact"},
+				pluck="parent"
+			)
+			if c_names:
+				contact_name = c_names[0]
+
+	if contact_name and frappe.db.exists("Contact", contact_name):
+		c_doc = frappe.get_doc("Contact", contact_name)
+		if hasattr(c_doc, "phone_nos") and c_doc.phone_nos:
+			for idx, r in enumerate(c_doc.phone_nos):
+				p = (r.phone or "").strip()
+				if p:
+					is_prim = bool(r.is_primary_phone or r.is_primary_mobile_no or idx == 0)
+					if not any(item["phone"] == p for item in phone_nos_list):
+						phone_nos_list.append({
+							"phone": p,
+							"is_primary": is_prim,
+							"idx": len(phone_nos_list) + 1
+						})
+
+	if customer_name and frappe.db.exists("Customer", customer_name):
+		cust_doc = frappe.get_doc("Customer", customer_name)
+		if hasattr(cust_doc, "phone_nos") and cust_doc.phone_nos:
+			for idx, r in enumerate(cust_doc.phone_nos):
+				p = (r.phone or "").strip()
+				if p and not any(item["phone"] == p for item in phone_nos_list):
+					phone_nos_list.append({
+						"phone": p,
+						"is_primary": len(phone_nos_list) == 0,
+						"idx": len(phone_nos_list) + 1
+					})
+		cust_sec = getattr(cust_doc, "custom_secondary_phone", None)
+		if cust_sec and str(cust_sec).strip():
+			p = str(cust_sec).strip()
+			if not any(item["phone"] == p for item in phone_nos_list):
+				phone_nos_list.append({
+					"phone": p,
+					"is_primary": len(phone_nos_list) == 0,
+					"idx": len(phone_nos_list) + 1
+				})
+
+	t_primary = (ticket.custom_customer_mobile_number or "").strip()
+	if t_primary and not any(item["phone"] == t_primary for item in phone_nos_list):
+		if not any(item["is_primary"] for item in phone_nos_list):
+			phone_nos_list.insert(0, {"phone": t_primary, "is_primary": True, "idx": 1})
+		else:
+			phone_nos_list.append({"phone": t_primary, "is_primary": False, "idx": len(phone_nos_list) + 1})
+
+	t_sec = (ticket.get("custom__secondary_phone_number") or ticket.get("custom_secondary_phone_number") or "").strip()
+	if t_sec and not any(item["phone"] == t_sec for item in phone_nos_list):
+		phone_nos_list.append({"phone": t_sec, "is_primary": False, "idx": len(phone_nos_list) + 1})
+
+	primary_phone = ""
+	secondary_phones = []
+
+	for item in phone_nos_list:
+		if item["is_primary"] and not primary_phone:
+			primary_phone = item["phone"]
+
+	if not primary_phone and phone_nos_list:
+		primary_phone = phone_nos_list[0]["phone"]
+		phone_nos_list[0]["is_primary"] = True
+
+	for item in phone_nos_list:
+		if item["phone"] != primary_phone and item["phone"] not in secondary_phones:
+			secondary_phones.append(item["phone"])
+
+	return {
+		"primary_phone": primary_phone,
+		"secondary_phones": secondary_phones,
+		"phone_nos_list": phone_nos_list
+	}
+
+
 @frappe.whitelist()
 def get_ticket_detail(ticket_name: str) -> dict:
 	"""Return full ticket detail for the technician, including check log."""
@@ -146,7 +358,9 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		order_by="idx asc",
 	)
 
-	return {
+	phone_info = _get_ticket_phone_numbers(ticket)
+
+	t_dict = {
 		"name": ticket.name,
 		"subject": ticket.subject,
 		"description": ticket.description,
@@ -155,6 +369,9 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		"custom_customer_name": ticket.custom_customer_name,
 		"custom_customer_mobile_number": ticket.custom_customer_mobile_number,
 		"custom__secondary_phone_number": ticket.get("custom__secondary_phone_number") or ticket.get("custom_secondary_phone_number") or "",
+		"primary_phone": phone_info["primary_phone"],
+		"secondary_phones": phone_info["secondary_phones"],
+		"phone_nos_list": phone_info["phone_nos_list"],
 		"custom_address": ticket.custom_address,
 		"custom_city__district_": ticket.custom_city__district_,
 		"custom_state": ticket.custom_state,
@@ -167,7 +384,10 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		"pending_reason_options": pending_reason_options,
 		"mop_options": mop_options,
 		"gst_options": gst_options,
+		"customer": ticket.get("customer"),
+		"contact": ticket.get("contact"),
 	}
+	return enrich_tickets_customer_details(t_dict)
 
 
 @frappe.whitelist()
@@ -211,13 +431,13 @@ def check_active_ticket(current_ticket_name: str = None) -> dict:
 
 
 @frappe.whitelist()
-def technician_checkin(ticket_name: str, latitude: float, longitude: float, location_address: str = "", otp_phone_type: str = "primary", secondary_phone: str = "", skip_otp: Union[bool, int, str] = False, accuracy: float = None) -> dict:
+def technician_checkin(ticket_name: str, latitude: float, longitude: float, location_address: str = "", otp_phone_type: str = "primary", secondary_phone: str = "", selected_phone: str = "", skip_otp: Union[bool, int, str] = False, accuracy: float = None) -> dict:
 	"""
 	Record check-in for a ticket:
 	- Verifies day attendance is marked
 	- Updates custom__secondary_phone_number if provided
 	- Generates a fresh Service OTP (unless skip_otp is True or ticket status is Pending)
-	- Sends OTP SMS to chosen phone number (if not skipping OTP)
+	- Sends OTP SMS to chosen phone number (from phone_nos table or direct selection)
 	- Appends a 'Check-in' row to the child table
 	- Updates ticket status → 'Working'
 	"""
@@ -275,8 +495,9 @@ def technician_checkin(ticket_name: str, latitude: float, longitude: float, loca
 	should_skip_otp = bool(skip_otp) or (ticket.status == "Pending")
 
 	# Update secondary phone if provided
-	if secondary_phone:
-		sec_phone_clean = secondary_phone.strip()
+	eff_sec_phone = selected_phone or secondary_phone
+	if eff_sec_phone and str(otp_phone_type).lower() == "secondary":
+		sec_phone_clean = eff_sec_phone.strip()
 		if sec_phone_clean and not sec_phone_clean.startswith("+"):
 			sec_phone_clean = "+91-" + sec_phone_clean
 		ticket.custom__secondary_phone_number = sec_phone_clean
@@ -288,19 +509,20 @@ def technician_checkin(ticket_name: str, latitude: float, longitude: float, loca
 	target_phone = None
 
 	if not should_skip_otp:
-		# Determine target phone for OTP
-		if str(otp_phone_type).lower() == "secondary":
-			target_phone = ticket.get("custom__secondary_phone_number") or ticket.get("custom_secondary_phone_number") or secondary_phone
-			if target_phone:
-				target_phone = target_phone.strip()
-				if not target_phone.startswith("+"):
-					target_phone = "+91-" + target_phone
-			if not target_phone:
-				return {"status": "error", "message": _("Secondary phone number is empty. Please enter a secondary phone number.")}
+		phone_info = _get_ticket_phone_numbers(ticket)
+		if selected_phone and selected_phone.strip():
+			target_phone = selected_phone.strip()
+		elif str(otp_phone_type).lower() == "secondary":
+			target_phone = secondary_phone or (phone_info["secondary_phones"][0] if phone_info["secondary_phones"] else "")
 		else:
-			target_phone = ticket.custom_customer_mobile_number
-			if not target_phone:
-				return {"status": "error", "message": _("Customer mobile number is empty.")}
+			target_phone = phone_info["primary_phone"] or ticket.custom_customer_mobile_number
+
+		if target_phone:
+			target_phone = target_phone.strip()
+			if not target_phone.startswith("+"):
+				target_phone = "+91-" + target_phone
+		else:
+			return {"status": "error", "message": _("Target phone number is empty. Please select or enter a valid mobile number.")}
 
 		# Generate a random 4-digit Service OTP
 		import random
@@ -340,7 +562,7 @@ def technician_checkin(ticket_name: str, latitude: float, longitude: float, loca
 
 
 @frappe.whitelist()
-def resend_otp(ticket_name: str, otp_phone_type: str = "primary", secondary_phone: str = "") -> dict:
+def resend_otp(ticket_name: str, otp_phone_type: str = "primary", secondary_phone: str = "", selected_phone: str = "") -> dict:
 	"""Resend OTP SMS for an active ticket."""
 	user = frappe.session.user
 	if user == "Guest":
@@ -355,8 +577,9 @@ def resend_otp(ticket_name: str, otp_phone_type: str = "primary", secondary_phon
 		if not ({"Agent Manager", "System Manager"} & set(roles)):
 			frappe.throw(_("You are not assigned to this ticket."), frappe.PermissionError)
 
-	if secondary_phone:
-		sec_phone_clean = secondary_phone.strip()
+	eff_sec_phone = selected_phone or secondary_phone
+	if eff_sec_phone and str(otp_phone_type).lower() == "secondary":
+		sec_phone_clean = eff_sec_phone.strip()
 		if sec_phone_clean and not sec_phone_clean.startswith("+"):
 			sec_phone_clean = "+91-" + sec_phone_clean
 		ticket.custom__secondary_phone_number = sec_phone_clean
@@ -371,18 +594,20 @@ def resend_otp(ticket_name: str, otp_phone_type: str = "primary", secondary_phon
 	ticket.save(ignore_permissions=True)
 	frappe.db.commit()
 
-	if str(otp_phone_type).lower() == "secondary":
-		target_phone = ticket.get("custom__secondary_phone_number") or ticket.get("custom_secondary_phone_number") or secondary_phone
-		if target_phone:
-			target_phone = target_phone.strip()
-			if not target_phone.startswith("+"):
-				target_phone = "+91-" + target_phone
-		if not target_phone:
-			return {"status": "error", "message": _("Secondary phone number is empty.")}
+	phone_info = _get_ticket_phone_numbers(ticket)
+	if selected_phone and selected_phone.strip():
+		target_phone = selected_phone.strip()
+	elif str(otp_phone_type).lower() == "secondary":
+		target_phone = secondary_phone or (phone_info["secondary_phones"][0] if phone_info["secondary_phones"] else "")
 	else:
-		target_phone = ticket.custom_customer_mobile_number
-		if not target_phone:
-			return {"status": "error", "message": _("Customer mobile number is empty.")}
+		target_phone = phone_info["primary_phone"] or ticket.custom_customer_mobile_number
+
+	if target_phone:
+		target_phone = target_phone.strip()
+		if not target_phone.startswith("+"):
+			target_phone = "+91-" + target_phone
+	else:
+		return {"status": "error", "message": _("Mobile number is empty. Please select a phone number.")}
 
 	sms_sent = _send_otp_sms(ticket, target_phone)
 	if sms_sent:

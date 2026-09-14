@@ -1,4 +1,5 @@
 import frappe
+from vin_chakra.technician_api import enrich_tickets_customer_details
 
 @frappe.whitelist()
 def get_dashboard_data(
@@ -63,7 +64,7 @@ def get_dashboard_data(
         summary_values["priority"] = priority
     if search_query:
         search_escaped = f"%{search_query}%"
-        summary_conditions.append("(name LIKE %(search)s OR subject LIKE %(search)s OR custom_customer_name LIKE %(search)s)")
+        summary_conditions.append("(name LIKE %(search)s OR subject LIKE %(search)s OR custom_customer_name LIKE %(search)s OR customer LIKE %(search)s)")
         summary_values["search"] = search_escaped
 
     summary_where = " AND ".join(summary_conditions)
@@ -84,12 +85,13 @@ def get_dashboard_data(
         
         # Paginated tickets query
         tickets = frappe.db.sql(f"""
-            SELECT name, subject, status, priority, custom_customer_name, custom_machine_name, custom_date, resolution_date, modified, _assign
+            SELECT name, subject, status, priority, custom_customer_name, custom_customer_mobile_number, custom__secondary_phone_number, custom_address, custom_city__district_, custom_state, custom_machine_name, custom_date, resolution_date, modified, _assign, customer, contact
             FROM `tabHD Ticket`
             WHERE {ticket_where}
             ORDER BY creation DESC
             LIMIT {int(limit_start)}, {int(limit_page_length)}
         """, ticket_values, as_dict=True)
+        tickets = enrich_tickets_customer_details(tickets)
         
         # Total count query
         total_count_row = frappe.db.sql(f"""
@@ -258,13 +260,16 @@ def get_dashboard_data(
         movement = frappe.db.sql(f"""
             SELECT 
                 cl.name, cl.technician as user, cl.check_type, cl.latitude, cl.longitude, 
-                cl.timestamp as creation, cl.parent as ticket, cl.location_address, t.subject, t.custom_customer_name as customer
+                cl.timestamp as creation, cl.parent as ticket, cl.location_address, t.subject, t.custom_customer_name, t.customer, t.contact
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {movement_where}
             ORDER BY cl.timestamp DESC
             LIMIT {int(limit_start)}, {int(limit_page_length)}
         """, movement_values, as_dict=True)
+        movement = enrich_tickets_customer_details(movement)
+        for m in movement:
+            m["customer"] = m.get("custom_customer_name") or m.get("customer") or "N/A"
         
         movement_total_row = frappe.db.sql(f"""
             SELECT COUNT(cl.name) as count
@@ -278,12 +283,15 @@ def get_dashboard_data(
         map_points = frappe.db.sql(f"""
             SELECT 
                 cl.name, cl.technician as user, cl.check_type, cl.latitude, cl.longitude, 
-                cl.timestamp as creation, cl.parent as ticket, cl.location_address, t.subject, t.custom_customer_name as customer
+                cl.timestamp as creation, cl.parent as ticket, cl.location_address, t.subject, t.custom_customer_name, t.customer, t.contact
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {movement_where}
             ORDER BY cl.timestamp ASC
         """, movement_values, as_dict=True)
+        map_points = enrich_tickets_customer_details(map_points)
+        for mp in map_points:
+            mp["customer"] = mp.get("custom_customer_name") or mp.get("customer") or "N/A"
         
         result = {
             "movement": movement,
@@ -370,13 +378,16 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         query = f"""
             SELECT 
                 cl.name, cl.technician as user, cl.latitude, cl.longitude, cl.timestamp as creation, 
-                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name as customer
+                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name, t.customer, t.contact
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {where_clause}
             ORDER BY cl.timestamp DESC
         """
         all_logs = frappe.db.sql(query, values, as_dict=True)
+        all_logs = enrich_tickets_customer_details(all_logs)
+        for log in all_logs:
+            log["customer"] = log.get("custom_customer_name") or log.get("customer") or "N/A"
         
         # Keep only the latest log per technician
         seen_users = set()
@@ -397,7 +408,7 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         values = {"date": date_str, "technician": technician}
         
         if customer:
-            conditions.append("t.custom_customer_name = %(customer)s")
+            conditions.append("(t.custom_customer_name = %(customer)s OR t.customer = %(customer)s)")
             values["customer"] = customer
         
         if ticket_status:
@@ -415,12 +426,15 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         logs = frappe.db.sql(f"""
             SELECT 
                 cl.name, cl.check_type, cl.latitude, cl.longitude, cl.timestamp, 
-                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name as customer
+                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name, t.customer, t.contact
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {where_clause}
             ORDER BY cl.timestamp ASC
         """, values, as_dict=True)
+        logs = enrich_tickets_customer_details(logs)
+        for log in logs:
+            log["customer"] = log.get("custom_customer_name") or log.get("customer") or "N/A"
         
         tickets_map = {}
         for log in logs:

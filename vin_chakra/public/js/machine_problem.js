@@ -1,6 +1,3 @@
-// Copyright (c) 2026, harrishragavan and contributors
-// For license information, please see license.txt
-
 frappe.ui.form.on('Machine Problem', {
   after_save(frm) {
     if (sessionStorage.getItem("tk_return_to_ticket_support") === "1") {

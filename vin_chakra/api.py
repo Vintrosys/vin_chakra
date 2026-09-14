@@ -42,13 +42,25 @@ def get_form_schema() -> dict:
 					elif cdf.fieldtype == "Link" and cdf.options:
 						if cdf.options == "Item":
 							try:
-								items = frappe.get_all("Item", fields=["name", "item_name", "brand", "custom_model_no"], ignore_permissions=True, limit_page_length=500)
+								items = frappe.get_all("Item", fields=["name", "item_name", "brand", "custom_model_no"], ignore_permissions=True, limit_page_length=1000)
 								c_opts = [{"value": item.name, "label": item.item_name or item.name, "item_name": item.item_name or item.name, "brand": item.brand or "", "model_no": item.custom_model_no or ""} for item in items]
+							except Exception:
+								c_opts = []
+						elif cdf.options == "Machine Problem":
+							try:
+								problems = frappe.get_all("Machine Problem", fields=["name", "machine_problem"], ignore_permissions=True, limit_page_length=1000)
+								c_opts = [{"value": p.name, "label": p.machine_problem or p.name, "problem_name": p.machine_problem or p.name} for p in problems]
+							except Exception:
+								c_opts = []
+						elif cdf.options == "Customer":
+							try:
+								customers = frappe.get_all("Customer", fields=["name", "customer_name", "mobile_no"], ignore_permissions=True, limit_page_length=1000)
+								c_opts = [{"value": c.name, "label": f"{c.customer_name} ({c.name})" if c.customer_name and c.customer_name != c.name else (c.customer_name or c.name), "customer_name": c.customer_name or c.name, "mobile_no": c.mobile_no or ""} for c in customers]
 							except Exception:
 								c_opts = []
 						else:
 							try:
-								c_opts = frappe.get_all(cdf.options, pluck="name", ignore_permissions=True, limit_page_length=500)
+								c_opts = frappe.get_all(cdf.options, pluck="name", ignore_permissions=True, limit_page_length=1000)
 							except Exception:
 								c_opts = []
 														
@@ -65,10 +77,42 @@ def get_form_schema() -> dict:
 		elif df and df.fieldtype == "Select" and df.options:
 			options_list = [opt.strip() for opt in df.options.split("\n") if opt.strip()]
 		elif df and df.fieldtype == "Link" and df.options:
-			try:
-				options_list = frappe.get_all(df.options, pluck="name", ignore_permissions=True)
-			except Exception:
-				options_list = []
+			if df.options == "Customer":
+				try:
+					customers = frappe.get_all(
+						"Customer",
+						fields=["name", "customer_name", "mobile_no"],
+						ignore_permissions=True,
+						limit_page_length=1000
+					)
+					options_list = [
+						{
+							"value": c.name,
+							"label": f"{c.customer_name} ({c.name})" if c.customer_name and c.customer_name != c.name else (c.customer_name or c.name),
+							"customer_name": c.customer_name or c.name,
+							"mobile_no": c.mobile_no or ""
+						}
+						for c in customers
+					]
+				except Exception:
+					options_list = []
+			elif df.options == "Machine Problem":
+				try:
+					problems = frappe.get_all("Machine Problem", fields=["name", "machine_problem"], ignore_permissions=True, limit_page_length=1000)
+					options_list = [{"value": p.name, "label": p.machine_problem or p.name, "problem_name": p.machine_problem or p.name} for p in problems]
+				except Exception:
+					options_list = []
+			elif df.options == "Item":
+				try:
+					items = frappe.get_all("Item", fields=["name", "item_name", "brand", "custom_model_no"], ignore_permissions=True, limit_page_length=1000)
+					options_list = [{"value": item.name, "label": item.item_name or item.name, "item_name": item.item_name or item.name, "brand": item.brand or "", "model_no": item.custom_model_no or ""} for item in items]
+				except Exception:
+					options_list = []
+			else:
+				try:
+					options_list = frappe.get_all(df.options, pluck="name", ignore_permissions=True)
+				except Exception:
+					options_list = []
 
 		if row.fieldname == "custom_purchase_year" and not options_list:
 			options_list = [str(year) for year in range(2010, 2027)]
@@ -130,10 +174,17 @@ def _get_legacy_form_schema() -> dict:
 		if f.fieldtype == "Select" and f.options:
 			options_list = [opt.strip() for opt in f.options.split("\n") if opt.strip()]
 		elif f.fieldtype == "Link" and f.options:
-			try:
-				options_list = frappe.get_all(f.options, pluck="name", ignore_permissions=True)
-			except Exception:
-				options_list = []
+			if f.options == "Customer":
+				try:
+					customers = frappe.get_all("Customer", fields=["name", "customer_name", "mobile_no"], ignore_permissions=True, limit_page_length=1000)
+					options_list = [{"value": c.name, "label": f"{c.customer_name} ({c.name})" if c.customer_name and c.customer_name != c.name else (c.customer_name or c.name), "customer_name": c.customer_name or c.name, "mobile_no": c.mobile_no or ""} for c in customers]
+				except Exception:
+					options_list = []
+			else:
+				try:
+					options_list = frappe.get_all(f.options, pluck="name", ignore_permissions=True)
+				except Exception:
+					options_list = []
 
 		form_fields.append({
 			"fieldname": f.fieldname,
@@ -191,6 +242,8 @@ def submit_ticket(data: Union[dict, str]) -> dict:
 			allowed_fields.append("custom_purchase_year")
 		if "custom_machine_type_list" not in allowed_fields:
 			allowed_fields.append("custom_machine_type_list")
+		if "customer" not in allowed_fields:
+			allowed_fields.append("customer")
 
 		doc = frappe.new_doc("HD Ticket")
 		meta = frappe.get_meta("HD Ticket")
@@ -387,5 +440,78 @@ def update_ticket_info(ticket_name: str, values: Union[dict, str]) -> dict:
 		"ticket": doc.as_dict()
 	}
 
+
+@frappe.whitelist(allow_guest=True)
+def get_customer_details(customer: str) -> dict:
+	"""Fetch customer info including address and contact details for support form display."""
+	if not customer:
+		return {"status": "error", "message": "Customer required"}
+	try:
+		cust = frappe.get_doc("Customer", customer)
+		data = {
+			"name": cust.name,
+			"customer_name": cust.customer_name or cust.name,
+			"mobile_no": getattr(cust, "mobile_no", None) or getattr(cust, "mobile_number", None) or "",
+			"email_id": getattr(cust, "email_id", None) or getattr(cust, "email_address", None) or "",
+			"secondary_phone": "",
+			"address_line1": "",
+			"city": "",
+			"state": ""
+		}
+
+		sec_phones = []
+		cust_sec = getattr(cust, "custom_secondary_phone", None)
+		if cust_sec and str(cust_sec).strip():
+			sp = str(cust_sec).strip()
+			if sp not in sec_phones:
+				sec_phones.append(sp)
+
+		if hasattr(cust, "phone_nos") and cust.phone_nos:
+			for idx, r in enumerate(cust.phone_nos):
+				p = (r.phone or "").strip()
+				if p and p != data["mobile_no"] and p not in sec_phones:
+					sec_phones.append(p)
+
+		contact_name = getattr(cust, "customer_primary_contact", None)
+		if not contact_name:
+			c_names = frappe.get_all(
+				"Dynamic Link",
+				filters={"link_doctype": "Customer", "link_name": customer, "parenttype": "Contact"},
+				pluck="parent"
+			)
+			if c_names:
+				contact_name = c_names[0]
+
+		if contact_name and frappe.db.exists("Contact", contact_name):
+			c_doc = frappe.get_doc("Contact", contact_name)
+			if hasattr(c_doc, "phone_nos") and c_doc.phone_nos:
+				for idx, r in enumerate(c_doc.phone_nos):
+					p = (r.phone or "").strip()
+					if p and p != data["mobile_no"] and p not in sec_phones:
+						sec_phones.append(p)
+
+		data["secondary_phone"] = ", ".join(sec_phones)
+
+		primary_addr = getattr(cust, "customer_primary_address", None)
+		if primary_addr and frappe.db.exists("Address", primary_addr):
+			addr = frappe.get_doc("Address", primary_addr)
+			data["address_line1"] = addr.address_line1 or ""
+			data["city"] = addr.city or ""
+			data["state"] = addr.state or ""
+		else:
+			addr_link = frappe.db.get_value(
+				"Dynamic Link",
+				{"link_doctype": "Customer", "link_name": customer, "parenttype": "Address"},
+				"parent"
+			)
+			if addr_link and frappe.db.exists("Address", addr_link):
+				addr = frappe.get_doc("Address", addr_link)
+				data["address_line1"] = addr.address_line1 or ""
+				data["city"] = addr.city or ""
+				data["state"] = addr.state or ""
+
+		return {"status": "success", "customer": data}
+	except Exception as e:
+		return {"status": "error", "message": str(e), "customer": {"name": customer, "customer_name": customer}}
 
 
