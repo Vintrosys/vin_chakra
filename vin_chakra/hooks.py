@@ -139,6 +139,10 @@ permission_query_conditions = {
 # 	"frappe.desk.doctype.event.event.get_events": "vin_chakra.event.get_events"
 # 	"Task": "vin_chakra.task.get_dashboard_data"
 
+override_whitelisted_methods = {
+    "frappe.utils.print_format.download_pdf": "vin_chakra.utils.pdf_merger.custom_download_pdf"
+}
+
 
 # -----------------------------------------------------------
 
