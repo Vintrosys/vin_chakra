@@ -1,5 +1,8 @@
 // Inject a "Ticket Info (Popup)" button on Helpdesk Ticket detail pages
 // Allows viewing and editing all ticket info & custom fields in a modal popup.
+// Customer field behaves like the Ticket-Support widget: search combo plus
+// a read-only "Customer Details" card (name, ID, mobile, address). No
+// Create/Edit Customer buttons — view-only, kept simple.
 
 (function () {
     let activeTicketId = null;
@@ -167,6 +170,7 @@
                     0% { transform: rotate(0deg); }
                     100% { transform: rotate(360deg); }
                 }
+                .ct-combo-list-item:hover { background: #f1f5f9; }
             </style>
         `;
 
@@ -204,6 +208,133 @@
         }
     }
 
+    /* ── Customer combo + details card (mirrors the Ticket-Support widget) ── */
+
+    function renderCustomerDetailsCard(customerId, customerLabel, parentEl) {
+        if (!parentEl || !customerId) return;
+        let card = parentEl.querySelector('.ct-customer-details-card');
+        if (!card) {
+            card = document.createElement('div');
+            card.className = 'ct-customer-details-card';
+            Object.assign(card.style, {
+                marginTop: '10px',
+                padding: '14px 16px',
+                border: '1px solid #e5e7eb',
+                borderRadius: '10px',
+                background: '#ffffff',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+                fontSize: '13px',
+                lineHeight: '1.9'
+            });
+            parentEl.appendChild(card);
+        }
+        card.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px; padding-bottom:8px; margin-bottom:8px; border-bottom:1px dashed #e2e8f0;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <strong style="color:#1e293b; font-size:13px;">Customer Details</strong>
+            </div>
+            <div><strong style="color:#334155;">Name:</strong> <span class="ct-cust-name" style="color:#475569;">${escapeHtml(customerLabel)}</span></div>
+            <div><strong style="color:#334155;">ID:</strong> <span style="color:#475569;">${escapeHtml(customerId)}</span></div>
+            <div class="ct-cust-mobile-row" style="display:none;"><strong style="color:#334155;">Mobile:</strong> <span class="ct-cust-mobile" style="color:#475569;"></span></div>
+            <div class="ct-cust-sec-mobile-row" style="display:none;"><strong style="color:#334155;">Sec. Mobile:</strong> <span class="ct-cust-sec-mobile" style="color:#475569;"></span></div>
+            <div class="ct-cust-address-row" style="display:none;"><strong style="color:#334155;">Address:</strong> <span class="ct-cust-address" style="color:#475569;"></span></div>
+        `;
+
+        fetch(`/api/method/vin_chakra.api.get_customer_details?customer=${encodeURIComponent(customerId)}`)
+            .then(r => r.json())
+            .then(res => {
+                const c = res && res.message && res.message.status === 'success' && res.message.customer;
+                if (!c) return;
+                if (c.customer_name) card.querySelector('.ct-cust-name').textContent = c.customer_name;
+                if (c.mobile_no) {
+                    card.querySelector('.ct-cust-mobile').textContent = c.mobile_no;
+                    card.querySelector('.ct-cust-mobile-row').style.display = 'block';
+                }
+                if (c.secondary_phone) {
+                    card.querySelector('.ct-cust-sec-mobile').textContent = c.secondary_phone;
+                    card.querySelector('.ct-cust-sec-mobile-row').style.display = 'block';
+                }
+                const addr = [c.address_line1, c.city, c.state].filter(Boolean).join(', ');
+                if (addr) {
+                    card.querySelector('.ct-cust-address').textContent = addr;
+                    card.querySelector('.ct-cust-address-row').style.display = 'block';
+                }
+            })
+            .catch(err => console.warn('Could not fetch customer details:', err));
+    }
+
+    function initCustomerField(container, doc, rawOptions) {
+        const input = container.querySelector('[data-customer-input]');
+        if (!input) return;
+        const fieldItem = input.closest('.ct-modal-field-item');
+
+        const options = (rawOptions || []).map(o => typeof o === 'object'
+            ? {
+                value: o.value || o.name,
+                label: o.label || o.customer_name || o.value || o.name,
+                mobile_no: o.mobile_no || ''
+            }
+            : { value: o, label: o, mobile_no: '' });
+
+        input.dataset.value = doc.customer || '';
+
+        const list = document.createElement('div');
+        list.className = 'ct-combo-list';
+        Object.assign(list.style, {
+            position: 'fixed', zIndex: '100002', background: '#fff',
+            border: '1px solid #cbd5e1', borderRadius: '8px',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
+            maxHeight: '240px', overflowY: 'auto', display: 'none'
+        });
+        document.body.appendChild(list);
+
+        const positionList = () => {
+            const r = input.getBoundingClientRect();
+            list.style.left = r.left + 'px';
+            list.style.top = (r.bottom + 4) + 'px';
+            list.style.width = Math.max(r.width, 280) + 'px';
+        };
+        const openList = () => { positionList(); list.style.display = 'block'; };
+        const closeList = () => { list.style.display = 'none'; };
+
+        const renderList = (q) => {
+            q = (q || '').trim().toLowerCase();
+            list.innerHTML = '';
+
+            options
+                .filter(o => !q || o.label.toLowerCase().includes(q) || (o.mobile_no || '').toLowerCase().includes(q))
+                .forEach(o => {
+                    const item = document.createElement('div');
+                    item.className = 'ct-combo-list-item';
+                    item.textContent = o.label;
+                    Object.assign(item.style, { padding: '8px 12px', fontSize: '13px', cursor: 'pointer' });
+                    item.addEventListener('mousedown', e => {
+                        e.preventDefault();
+                        input.value = o.label;
+                        input.dataset.value = o.value;
+                        closeList();
+                        renderCustomerDetailsCard(o.value, o.label, fieldItem);
+                    });
+                    list.appendChild(item);
+                });
+        };
+
+        input.addEventListener('focus', () => { renderList(input.value); openList(); });
+        input.addEventListener('input', () => { delete input.dataset.value; renderList(input.value); openList(); });
+        input.addEventListener('blur', () => setTimeout(closeList, 150));
+
+        const reposition = () => { if (list.style.display === 'block') positionList(); };
+        window.addEventListener('scroll', reposition, true);
+        window.addEventListener('resize', reposition);
+
+        if (doc.customer) {
+            renderCustomerDetailsCard(doc.customer, doc.customer, fieldItem);
+        }
+    }
+
     function renderModalFields(ticketData) {
         const doc = ticketData.doc || {};
         const fields = ticketData.fields || [];
@@ -226,7 +357,27 @@
             }
         });
 
+        function createCustomerFieldHtml(f) {
+            const val = doc[f.fieldname] !== undefined && doc[f.fieldname] !== null ? doc[f.fieldname] : '';
+            return `
+                <div class="ct-modal-field-item" data-search="${escapeHtml((f.label + ' ' + f.fieldname).toLowerCase())}" style="display: flex; flex-direction: column; gap: 4px; position: relative;">
+                    <label style="font-size: 12px; font-weight: 600; color: #334155;">
+                        ${escapeHtml(f.label)} ${f.reqd ? '<span style="color: #ef4444;">*</span>' : ''}
+                    </label>
+                    <div class="ct-customer-combo-wrap" style="position: relative;">
+                        <input type="text" data-fieldname="${f.fieldname}" data-customer-input="1" autocomplete="off"
+                            value="${escapeHtml(val)}" placeholder="Search Customer..."
+                            style="width: 100%; padding: 7px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; box-sizing: border-box;">
+                    </div>
+                </div>
+            `;
+        }
+
         function createFieldHtml(f) {
+            if (f.fieldname === 'customer') {
+                return createCustomerFieldHtml(f);
+            }
+
             const val = doc[f.fieldname] !== undefined && doc[f.fieldname] !== null ? doc[f.fieldname] : '';
             const opts = optionsMap[f.fieldname] || [];
             const isReadOnly = f.read_only ? 'disabled' : '';
@@ -417,6 +568,9 @@
             ${tablesHtml}
         `;
 
+        // Wire up the customer search combo + Customer Details card
+        initCustomerField(bodyEl, doc, optionsMap.customer || []);
+
         // Initialize table rows with doc existing data
         tableGroup.forEach(tf => {
             const tbody = bodyEl.querySelector(`tbody.ct-modal-table-tbody[data-table="${tf.fieldname}"]`);
@@ -472,6 +626,10 @@
                 if (!input.disabled) {
                     if (input.type === 'checkbox') {
                         updatedValues[fn] = input.checked ? 1 : 0;
+                    } else if (fn === 'customer' && input.hasAttribute('data-customer-input')) {
+                        // The combo displays the customer name/label, but the
+                        // canonical Customer document name lives in dataset.value.
+                        updatedValues[fn] = input.dataset.value || input.value;
                     } else {
                         updatedValues[fn] = input.value;
                     }
