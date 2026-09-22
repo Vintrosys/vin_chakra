@@ -50,7 +50,7 @@
    "in_list_view": 1,
    "label": "Machine Problem",
    "options": "Machine Problem",
-   "reqd": 1
+   "reqd": 0
   },
   {
    "fieldname": "purchase_year",
@@ -58,7 +58,7 @@
    "in_list_view": 1,
    "label": "Purchase Year",
    "options": "2010\n2011\n2012\n2013\n2014\n2015\n2016\n2017\n2018\n2019\n2020\n2021\n2022\n2023\n2024\n2025\n2026",
-   "reqd": 1
+   "reqd": 0
   },
   {
    "fetch_from": "machine_type.brand",
@@ -74,7 +74,7 @@
    "in_list_view": 1,
    "label": "Purchased at SCS",
    "options": "\nYes\nNo",
-   "reqd": 1
+   "reqd": 0
   },
   {
    "fetch_from": "machine_type.custom_model_no",

@@ -815,7 +815,21 @@
       });
       input.addEventListener('blur', () => setTimeout(() => {
         closeList();
-        if (!input.dataset.value) input.value = '';
+        if (!input.dataset.value) {
+          const val = (input.value || '').trim().toLowerCase();
+          if (val) {
+            const match = options.find(o =>
+              (o.label || '').trim().toLowerCase() === val ||
+              (o.value || '').trim().toLowerCase() === val ||
+              (o.itemName || '').trim().toLowerCase() === val
+            );
+            if (match) {
+              selectOpt(match);
+              return;
+            }
+          }
+          input.value = '';
+        }
       }, 150));
 
       /* Keep it aligned if the table/page scrolls or resizes */
@@ -1101,7 +1115,12 @@
       ctrl.name = f.fieldname;
       if (f.reqd) ctrl.required = true;
       ctrl.addEventListener('input', () => this._clearError(ctrl, group));
-      ctrl.addEventListener('change', () => this._clearError(ctrl, group));
+      ctrl.addEventListener('change', () => {
+        this._clearError(ctrl, group);
+        if (f.fieldname === 'ticket_type') {
+          this._toggleChildTableFieldsForInstallation();
+        }
+      });
 
       const errMsg = el('div', 'tk-field-error');
       errMsg.innerHTML = `${ICONS.errSmall}<span>${f.label} is required</span>`;
@@ -1152,6 +1171,7 @@
 
       childFields.forEach(cf => {
         const th = el('th');
+        th.dataset.cfname = cf.fieldname;
         th.innerHTML = `${cf.label}${cf.reqd ? ' <span class="req">*</span>' : ''}`;
         headerTr.appendChild(th);
       });
@@ -1190,6 +1210,7 @@
         // Cells for child fields
         childFields.forEach(cf => {
           const td = el('td');
+          td.dataset.cfcell = cf.fieldname;
           let ctrl;
 
           if (cf.fieldname === 'machine_type') {
@@ -1197,12 +1218,50 @@
               doctype: 'Item',
               onSelect: (o, wrap) => {
                 const row = wrap.closest('tr');
-                if (row) {
-                  const brandCtrl = row.querySelector('[data-cfname="machine_brand"]');
-                  if (brandCtrl && o.brand) brandCtrl.value = o.brand;
+                if (!row) return;
 
-                  const modelCtrl = row.querySelector('[data-cfname="model_no"]');
-                  if (modelCtrl && o.modelNo) modelCtrl.value = o.modelNo;
+                const applyBrandAndModel = (bVal, mVal) => {
+                  const brandCtrl = row.querySelector('select[data-cfname="machine_brand"]') || row.querySelector('td[data-cfcell="machine_brand"] select');
+                  if (brandCtrl && bVal) {
+                    let matchedOpt = Array.from(brandCtrl.options).find(
+                      opt => opt.value.trim().toLowerCase() === bVal.trim().toLowerCase()
+                    );
+                    if (!matchedOpt) {
+                      matchedOpt = document.createElement('option');
+                      matchedOpt.value = bVal;
+                      matchedOpt.textContent = bVal;
+                      brandCtrl.appendChild(matchedOpt);
+                    }
+                    brandCtrl.value = matchedOpt.value;
+                    this._clearError(brandCtrl, row);
+                    brandCtrl.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+
+                  const modelCtrl = row.querySelector('input[data-cfname="model_no"]') || row.querySelector('td[data-cfcell="model_no"] input');
+                  if (modelCtrl) {
+                    if (mVal) modelCtrl.value = mVal;
+                    this._clearError(modelCtrl, row);
+                    modelCtrl.dispatchEvent(new Event('input', { bubbles: true }));
+                    modelCtrl.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+                };
+
+                const brandVal = (o.brand || o.machine_brand || '').trim();
+                const modelVal = (o.modelNo || o.model_no || o.custom_model_no || '').trim();
+                applyBrandAndModel(brandVal, modelVal);
+
+                const itemCode = o.value || o.itemName || o.label;
+                if (itemCode) {
+                  fetch(`/api/method/vin_chakra.api.get_item_details?item_code=${encodeURIComponent(itemCode)}`)
+                    .then(res => res.json())
+                    .then(res => {
+                      if (res && res.message && res.message.item_code) {
+                        const b = (res.message.brand || '').trim();
+                        const m = (res.message.model_no || '').trim();
+                        applyBrandAndModel(b, m);
+                      }
+                    })
+                    .catch(() => {});
                 }
               }
             });
@@ -1296,6 +1355,7 @@
         });
 
         this._updateTableIndices(tbody);
+        this._toggleChildTableFieldsForInstallation();
       };
 
       this._addRowToTable = addRow;
@@ -1309,6 +1369,7 @@
       addRow();
 
       this._tableWidgetGroup = group;
+      this._toggleChildTableFieldsForInstallation();
       return group;
     }
 
@@ -1563,11 +1624,55 @@
       if (submitBtn) submitBtn.style.display = (stepIndex === this.totalSteps - 1) ? 'block' : 'none';
 
       this.currentStep = stepIndex;
+      this._toggleChildTableFieldsForInstallation();
 
       // Scroll to top of card for better UX on mobile
       const card = this.root.querySelector('.tk-card');
       if (card) {
         card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    _toggleChildTableFieldsForInstallation() {
+      if (!this._form) return;
+      const ticketTypeSelect = this._form.querySelector('[name="ticket_type"]');
+      const val = ticketTypeSelect ? (ticketTypeSelect.value || '').trim().toLowerCase() : '';
+      const isInstallation = val === 'installation';
+      const hiddenFields = ['purchased_at_scs', 'purchased_at_sree_chakra_sewing_systems', 'purchase_year', 'machine_problem'];
+
+      if (this._tableWidgetGroup) {
+        // Toggle <th> headers
+        hiddenFields.forEach(fn => {
+          const th = this._tableWidgetGroup.querySelector(`th[data-cfname="${fn}"]`);
+          if (th) {
+            th.style.display = isInstallation ? 'none' : '';
+          }
+        });
+
+        // Toggle <td> row cells and input required status
+        const rows = this._tableWidgetGroup.querySelectorAll('tr.tk-table-row');
+        rows.forEach(tr => {
+          hiddenFields.forEach(fn => {
+            const td = tr.querySelector(`td[data-cfcell="${fn}"], td[data-cfname="${fn}"]`);
+            if (td) {
+              td.style.display = isInstallation ? 'none' : '';
+              const ctrl = td.querySelector('input, select');
+              if (ctrl) {
+                if (isInstallation) {
+                  ctrl.required = false;
+                  ctrl.classList.remove('tk-invalid');
+                } else {
+                  ctrl.required = true;
+                }
+              }
+            }
+          });
+        });
+
+        if (isInstallation) {
+          const widgetErr = this._tableWidgetGroup.querySelector('.tk-field-error');
+          if (widgetErr) widgetErr.style.display = 'none';
+        }
       }
     }
 

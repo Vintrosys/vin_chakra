@@ -1,60 +1,80 @@
-{
- "actions": [],
- "allow_rename": 1,
- "creation": "2026-08-28 12:00:00.000000",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "fields"
- ],
- "fields": [
-  {
-   "fieldname": "fields",
-   "fieldtype": "Table",
-   "label": "Support Form Template Fields",
-   "options": "Support Form Template Field"
-  }
- ],
- "index_web_pages_for_search": 1,
- "issingle": 1,
- "links": [],
- "modified": "2026-08-28 12:00:00.000000",
- "modified_by": "Administrator",
- "module": "vin_chakra",
- "name": "Support Form Template",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Agent Manager",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "read": 1,
-   "role": "Agent"
-  }
- ],
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": []
-}
+ {
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "field:template_name",
+  "creation": "2026-08-28 12:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+   "template_name",
+   "is_default",
+   "fields"
+  ],
+  "fields": [
+   {
+    "fieldname": "template_name",
+    "fieldtype": "Data",
+    "in_list_view": 1,
+    "label": "Template Name",
+    "reqd": 1,
+    "unique": 1
+   },
+   {
+    "default": "1",
+    "fieldname": "is_default",
+    "fieldtype": "Check",
+    "in_list_view": 1,
+    "label": "Is Default"
+   },
+   {
+    "fieldname": "fields",
+    "fieldtype": "Table",
+    "label": "Support Form Template Fields",
+    "options": "Support Form Template Field"
+   }
+  ],
+  "index_web_pages_for_search": 1,
+  "issingle": 0,
+  "links": [],
+  "modified": "2026-09-21 12:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "vin_chakra",
+  "name": "Support Form Template",
+  "naming_rule": "By fieldname",
+  "owner": "Administrator",
+  "permissions": [
+   {
+    "create": 1,
+    "delete": 1,
+    "email": 1,
+    "export": 1,
+    "print": 1,
+    "read": 1,
+    "report": 1,
+    "role": "System Manager",
+    "share": 1,
+    "write": 1
+   },
+   {
+    "create": 1,
+    "delete": 1,
+    "email": 1,
+    "export": 1,
+    "print": 1,
+    "read": 1,
+    "report": 1,
+    "role": "Agent Manager",
+    "share": 1,
+    "write": 1
+   },
+   {
+    "read": 1,
+    "role": "Agent"
+   }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": [],
+  "title_field": "template_name"
+ }

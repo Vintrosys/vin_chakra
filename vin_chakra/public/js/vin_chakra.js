@@ -1,6 +1,29 @@
 // vin_chakra.js - Global Desk enhancements
 (function () {
 	window.triggerQuickEntryFromSupport = function () {
+		const fromSupport = sessionStorage.getItem("tk_return_to_ticket_support") === "1";
+		const isQuickEntry = sessionStorage.getItem("tk_is_quick_entry") === "1";
+
+		// Strictly require BOTH flags from ticket-support to be present.
+		// If not coming from ticket support form, do absolutely nothing!
+		if (!fromSupport || !isQuickEntry) return;
+
+		// Consume tk_is_quick_entry IMMEDIATELY so any page refresh won't re-trigger!
+		sessionStorage.removeItem("tk_is_quick_entry");
+
+		// Clean quick_entry query parameter from browser URL if present
+		if (window.history && window.history.replaceState) {
+			try {
+				const url = new URL(window.location.href);
+				if (url.searchParams.has("quick_entry")) {
+					url.searchParams.delete("quick_entry");
+					window.history.replaceState({}, document.title, url.toString());
+				}
+			} catch (e) {}
+		}
+
+		if (window.__tk_quick_entry_open) return;
+
 		const targetJson = sessionStorage.getItem("tk_quick_entry_target");
 		let target = null;
 		if (targetJson) {
@@ -20,25 +43,20 @@
 			targetDoctype = "Customer";
 		}
 
-		const isQuickEntry = sessionStorage.getItem("tk_is_quick_entry") === "1" || Boolean(qeParam);
-		const fromSupport = sessionStorage.getItem("tk_return_to_ticket_support") === "1" || Boolean(qeParam);
-
-		if (!fromSupport || !isQuickEntry) return;
-		if (window.__tk_quick_entry_open) return;
-
 		// Check if user is on a Desk full form page (e.g. Form/Customer/...)
 		const route = (frappe.get_route_str && frappe.get_route_str()) || "";
-		if (route.startsWith("Form/") && !qeParam && sessionStorage.getItem("tk_is_quick_entry") !== "1") {
+		if (route.startsWith("Form/")) {
 			return;
 		}
 
 		if (!window.frappe || !frappe.ui || !frappe.ui.form || !frappe.ui.form.make_quick_entry) {
+			// Restore flag temporarily to retry when UI is ready
+			sessionStorage.setItem("tk_is_quick_entry", "1");
 			setTimeout(window.triggerQuickEntryFromSupport, 200);
 			return;
 		}
 
 		window.__tk_quick_entry_open = true;
-		sessionStorage.setItem("tk_return_to_ticket_support", "1");
 
 		frappe.ui.form
 			.make_quick_entry(
@@ -87,7 +105,6 @@
 							const cleanRouteTarget = targetDoctype.replace(/\s+/g, "");
 							if (curRoute.startsWith(`Form/${cleanRouteTarget}`) || curRoute.startsWith(`Form/${targetDoctype}`)) {
 								// User clicked 'Edit Full Form' - let Doctype JS handle after_save
-								sessionStorage.removeItem("tk_is_quick_entry");
 								return;
 							}
 							if (sessionStorage.getItem("tk_return_to_ticket_support") === "1") {
@@ -103,17 +120,17 @@
 			.catch((err) => {
 				console.error(`Failed to open ${targetDoctype} Quick Entry:`, err);
 				window.__tk_quick_entry_open = false;
+				sessionStorage.removeItem("tk_return_to_ticket_support");
+				sessionStorage.removeItem("tk_quick_entry_target");
+				sessionStorage.removeItem("tk_is_quick_entry");
 			});
 	};
 
 	window.triggerCustomerQuickEntry = window.triggerQuickEntryFromSupport;
 
 	function checkAndTrigger() {
-		const params = new URLSearchParams(window.location.search);
-		const hashParams = new URLSearchParams(window.location.hash.includes('?') ? window.location.hash.split('?')[1] : '');
-		const qeParam = params.get("quick_entry") || hashParams.get("quick_entry");
-		const isQuickEntry = sessionStorage.getItem("tk_is_quick_entry") === "1" || Boolean(qeParam);
-		const fromSupport = sessionStorage.getItem("tk_return_to_ticket_support") === "1" || Boolean(qeParam);
+		const fromSupport = sessionStorage.getItem("tk_return_to_ticket_support") === "1";
+		const isQuickEntry = sessionStorage.getItem("tk_is_quick_entry") === "1";
 		if (fromSupport && isQuickEntry && !window.__tk_quick_entry_open) {
 			window.triggerQuickEntryFromSupport();
 		}
@@ -133,4 +150,5 @@
 		setTimeout(checkAndTrigger, 300);
 	}
 })();
+
 

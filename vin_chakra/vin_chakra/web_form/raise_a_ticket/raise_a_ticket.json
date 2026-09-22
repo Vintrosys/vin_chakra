@@ -1,4 +1,5 @@
 {
+ "accept_payment": 0,
  "allow_comments": 0,
  "allow_delete": 0,
  "allow_edit": 0,
@@ -20,11 +21,7 @@
  "list_columns": [],
  "login_required": 0,
  "max_attachment_size": 0,
-
- "modified": "2026-09-14 13:32:18.418616",
-
- "modified": "2026-09-11 10:43:54.236063",
-
+ "modified": "2026-09-21 13:35:24.789285",
  "modified_by": "Administrator",
  "module": "vin_chakra",
  "name": "raise-a-ticket",
@@ -36,7 +33,6 @@
  "show_sidebar": 0,
  "success_message": "Your ticket has been raised successfully.",
  "title": "Raise a Ticket",
-
  "web_form_fields": [
   {
    "allow_read_on_all_link_options": 0,
@@ -49,7 +45,7 @@
    "options": "Customer",
    "precision": "",
    "read_only": 0,
-   "reqd": 0,
+   "reqd": 1,
    "show_in_filter": 0
   },
   {

@@ -10,8 +10,23 @@ class SupportFormTemplate(Document):
 			if row.fieldname and row.fieldname not in valid_fields:
 				frappe.throw(f"Field '{row.fieldname}' does not exist in HD Ticket doctype")
 
+		if self.is_default:
+			if self.name:
+				frappe.db.sql(
+					"UPDATE `tabSupport Form Template` SET is_default = 0 WHERE name != %s",
+					(self.name,)
+				)
+			else:
+				frappe.db.sql("UPDATE `tabSupport Form Template` SET is_default = 0")
+		else:
+			# If this is the only template, force it to be default
+			other_count = frappe.db.count("Support Form Template", filters={"name": ("!=", self.name or "")})
+			if other_count == 0:
+				self.is_default = 1
+
 	def on_update(self):
-		sync_web_form(self)
+		if getattr(self, "is_default", 0) or frappe.db.count("Support Form Template") == 1:
+			sync_web_form(self)
 
 
 

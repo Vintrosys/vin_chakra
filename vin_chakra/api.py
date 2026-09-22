@@ -5,10 +5,41 @@ from typing import Union
 
 
 @frappe.whitelist(allow_guest=True)
-def get_form_schema() -> dict:
+def get_item_details(item_code: str) -> dict:
+	"""Fetch Item brand and custom_model_no for support ticket form auto-fill."""
+	if not item_code:
+		return {}
+	item = frappe.db.get_value("Item", item_code, ["name", "item_name", "brand", "custom_model_no"], as_dict=True)
+	if not item:
+		# Search by item_name if name lookup fails
+		item_name_match = frappe.db.get_value("Item", {"item_name": item_code}, ["name", "item_name", "brand", "custom_model_no"], as_dict=True)
+		if item_name_match:
+			item = item_name_match
+		else:
+			return {}
+	return {
+		"item_code": item.name,
+		"item_name": item.item_name or item.name,
+		"brand": item.brand or "",
+		"model_no": item.custom_model_no or ""
+	}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_form_schema(template_name: str = None) -> dict:
 	"""Return the field schema grouped by steps and sections for dynamic form rendering."""
 	try:
-		template = frappe.get_single("Support Form Template")
+		if template_name and frappe.db.exists("Support Form Template", template_name):
+			template = frappe.get_doc("Support Form Template", template_name)
+		else:
+			default_name = frappe.db.get_value("Support Form Template", {"is_default": 1}, "name")
+			if not default_name:
+				default_name = frappe.db.get_value("Support Form Template", {}, "name")
+			if default_name:
+				template = frappe.get_doc("Support Form Template", default_name)
+			else:
+				return _get_legacy_form_schema()
+
 		if not template.fields:
 			return _get_legacy_form_schema()
 	except Exception:
@@ -254,13 +285,20 @@ def submit_ticket(data: Union[dict, str]) -> dict:
 				if key == "custom_machine_type_list" and isinstance(value, list):
 					for row in value:
 						if isinstance(row, dict):
-							doc.append("custom_machine_type_list", row)
-					if value and isinstance(value[0], dict):
-						first_row = value[0]
+							r_copy = dict(row)
+							if not r_copy.get("machine_problem"):
+								r_copy["machine_problem"] = "INSTALLATION"
+							if not r_copy.get("purchased_at_scs"):
+								r_copy["purchased_at_scs"] = "Yes"
+							if not r_copy.get("purchase_year"):
+								r_copy["purchase_year"] = "2026"
+							doc.append("custom_machine_type_list", r_copy)
+					if doc.custom_machine_type_list:
+						first_row = doc.custom_machine_type_list[0]
 						if first_row.get("machine_problem") and not doc.get("custom_machine_problem"):
 							doc.custom_machine_problem = first_row.get("machine_problem")
-						if first_row.get("purchased_at_sree_chakra_sewing_systems") and not doc.get("custom_purchased_at_sree_chakra_sewing_systems"):
-							doc.custom_purchased_at_sree_chakra_sewing_systems = first_row.get("purchased_at_sree_chakra_sewing_systems")
+						if first_row.get("purchased_at_scs") and not doc.get("custom_purchased_at_sree_chakra_sewing_systems"):
+							doc.custom_purchased_at_sree_chakra_sewing_systems = first_row.get("purchased_at_scs")
 						if first_row.get("purchase_year") and not doc.get("custom_purchase_year"):
 							doc.custom_purchase_year = first_row.get("purchase_year")
 				else:
@@ -268,6 +306,13 @@ def submit_ticket(data: Union[dict, str]) -> dict:
 					if key in phone_fields and value and not value.startswith("+"):
 						value = "+91-" + value
 					doc.set(key, value)
+
+		if not doc.get("custom_machine_problem"):
+			doc.custom_machine_problem = "INSTALLATION"
+		if not doc.get("custom_purchased_at_sree_chakra_sewing_systems"):
+			doc.custom_purchased_at_sree_chakra_sewing_systems = "Yes"
+		if not doc.get("custom_purchase_year"):
+			doc.custom_purchase_year = "2026"
 
 		doc.insert(ignore_permissions=True)
 		# Suppress Frappe's auto-assignment "Already in ToDo list" msgprint
