@@ -21,7 +21,7 @@
  "list_columns": [],
  "login_required": 0,
  "max_attachment_size": 0,
- "modified": "2026-09-21 13:35:24.789285",
+ "modified": "2026-09-25 15:47:50.729579",
  "modified_by": "Administrator",
  "module": "vin_chakra",
  "name": "raise-a-ticket",
@@ -72,7 +72,7 @@
    "options": "HD Ticket Type",
    "precision": "",
    "read_only": 0,
-   "reqd": 1,
+   "reqd": 0,
    "show_in_filter": 0
   },
   {
@@ -85,7 +85,7 @@
    "max_value": 0,
    "precision": "",
    "read_only": 0,
-   "reqd": 1,
+   "reqd": 0,
    "show_in_filter": 0
   },
   {
@@ -97,6 +97,19 @@
    "max_length": 0,
    "max_value": 0,
    "options": "Machine type list",
+   "precision": "",
+   "read_only": 0,
+   "reqd": 0,
+   "show_in_filter": 0
+  },
+  {
+   "allow_read_on_all_link_options": 0,
+   "fieldname": "custom_required_spares",
+   "fieldtype": "Data",
+   "hidden": 0,
+   "label": "Required Spares",
+   "max_length": 0,
+   "max_value": 0,
    "precision": "",
    "read_only": 0,
    "reqd": 1,

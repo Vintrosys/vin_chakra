@@ -40,12 +40,20 @@
     "icon": "ticket",
     "label": null,
     "reqd": 0,
-    "section": "Customer & Location Info",
+    "section": "Machine & Issue Details",
+    "step": 2
+   },
+   {
+    "fieldname": "custom_required_spares",
+    "icon": "wrench",
+    "label": null,
+    "reqd": 1,
+    "section": "Machine & Issue Details",
     "step": 2
    }
   ],
   "is_default": 1,
-  "modified": "2026-09-22 12:14:04.309251",
+  "modified": "2026-09-25 15:47:50.702446",
   "name": "Default",
   "template_name": "Default"
  }
