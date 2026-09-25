@@ -1517,6 +1517,17 @@
    "translatable": 0,
    "unique": 0,
    "width": null
+  },
+  {
+   "dt": "HD Ticket",
+   "fieldname": "custom_required_spares",
+   "fieldtype": "Data",
+   "label": "Required Spares",
+   "insert_after": "custom_date",
+   "name": "HD Ticket-custom_required_spares",
+   "reqd": 0,
+   "modified": "2026-09-25 18:00:00.000000",
+   "doctype": "Custom Field"
   }
  ],
  "custom_perms": [],
