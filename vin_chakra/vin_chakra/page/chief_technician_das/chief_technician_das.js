@@ -552,6 +552,8 @@ class ChiefTechnicianDashboard {
         });
         
         // Search input debounce
+
+
         this.wrapper.on("input", "#ct-ticket-search", function() {
             clearTimeout(self.debounce_timer);
             self.debounce_timer = setTimeout(() => {
@@ -982,7 +984,7 @@ class ChiefTechnicianDashboard {
             
             let status_badge = self.get_status_badge(t.status, t.name);
             let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
-           let res_date = self.get_resolved_date_formatted(t);
+            let res_date = self.get_resolved_date_formatted(t);
             let resolved_by = self.get_resolved_by_formatted(t);
             let res_date_html = res_date 
                 ? `<div><i class="fa fa-check-circle" style="color: #10b981;"></i> <span>Resolved Date: <strong>${res_date}</strong></span></div>
@@ -1071,7 +1073,7 @@ class ChiefTechnicianDashboard {
                 let tickets_html = day_tickets.map(t => {
                     let res_date = self.get_resolved_date_formatted(t);
                     let resolved_by = self.get_resolved_by_formatted(t);
-                    let is_resolved = !!res_date;
+                    let is_resolved = t.status === 'Resolved' || !!res_date;
                     let bg_color = is_resolved ? "rgba(16, 185, 129, 0.12)" : "var(--ct-primary-light)";
                     let text_color = is_resolved ? "#15803d" : "var(--ct-primary)";
                     let border_color = is_resolved ? "rgba(16, 185, 129, 0.3)" : "rgba(99, 102, 241, 0.2)";
@@ -1081,7 +1083,6 @@ class ChiefTechnicianDashboard {
                              style="background: ${bg_color}; color: ${text_color}; padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-bottom: 4px; cursor: pointer; border: 1px solid ${border_color}; font-weight:600;" 
                              title="${tooltip}">
                             <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.subject}</div>
-                          
                             ${res_date ? `<div style="font-size: 9px; font-weight: 700; color: #15803d; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><i class="fa fa-check-circle" style="font-size: 8px;"></i> ${res_date}</div>${resolved_by ? `<div style="font-size: 9px; font-weight: 600; color: #64748b; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Resolved by ${resolved_by}</div>` : ""}` : ""}
                         </div>
                     `;

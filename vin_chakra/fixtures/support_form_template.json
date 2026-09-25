@@ -1,0 +1,52 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Support Form Template",
+  "fields": [
+   {
+    "fieldname": "customer",
+    "icon": "user",
+    "label": null,
+    "reqd": 1,
+    "section": "Customer & Location Info",
+    "step": 1
+   },
+   {
+    "fieldname": "custom_date",
+    "icon": "calendar",
+    "label": null,
+    "reqd": 1,
+    "section": "Customer & Location Info",
+    "step": 1
+   },
+   {
+    "fieldname": "ticket_type",
+    "icon": "ticket",
+    "label": null,
+    "reqd": 0,
+    "section": "Customer & Location Info",
+    "step": 1
+   },
+   {
+    "fieldname": "subject",
+    "icon": "tag",
+    "label": null,
+    "reqd": 0,
+    "section": "Customer & Location Info",
+    "step": 2
+   },
+   {
+    "fieldname": "custom_machine_type_list",
+    "icon": "ticket",
+    "label": null,
+    "reqd": 0,
+    "section": "Customer & Location Info",
+    "step": 2
+   }
+  ],
+  "is_default": 1,
+  "modified": "2026-09-22 12:14:04.309251",
+  "name": "Default",
+  "template_name": "Default"
+ }
+]

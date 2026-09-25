@@ -20,6 +20,7 @@ def enrich_tickets_customer_details(tickets: Union[List[dict], dict]) -> Union[L
 	Enrich ticket dictionary/dictionaries with customer details.
 	If HD Ticket fields (custom_customer_name, custom_customer_mobile_number, custom_address, etc.)
 	are empty or blank, retrieve details from linked Customer, Contact, and Address doctypes.
+	Also resolves the valid Customer docname (Link ID) if customer field is missing or unlinked.
 	"""
 	if not tickets:
 		return tickets
@@ -30,6 +31,10 @@ def enrich_tickets_customer_details(tickets: Union[List[dict], dict]) -> Union[L
 	# Gather customer and contact names for bulk fetching
 	customer_ids = list({t.get("customer") for t in ticket_list if t.get("customer")})
 	contact_ids = list({t.get("contact") for t in ticket_list if t.get("contact")})
+
+	# Gather missing customer names & phones for secondary lookup
+	missing_names = list({t.get("custom_customer_name") for t in ticket_list if t.get("custom_customer_name") and not t.get("customer")})
+	missing_phones = list({t.get("custom_customer_mobile_number") for t in ticket_list if t.get("custom_customer_mobile_number") and not t.get("customer")})
 
 	cust_map = {}
 	if customer_ids:
@@ -43,8 +48,28 @@ def enrich_tickets_customer_details(tickets: Union[List[dict], dict]) -> Union[L
 			if c.customer_primary_contact and c.customer_primary_contact not in contact_ids:
 				contact_ids.append(c.customer_primary_contact)
 
+	if missing_names:
+		name_rows = frappe.get_all(
+			"Customer",
+			filters={"customer_name": ["in", missing_names]},
+			fields=["name", "customer_name", "mobile_no", "customer_primary_contact", "customer_primary_address", "custom_secondary_phone"]
+		)
+		for c in name_rows:
+			if c.customer_name not in cust_map:
+				cust_map[c.customer_name] = c
+
+	if missing_phones:
+		phone_rows = frappe.get_all(
+			"Customer",
+			filters={"mobile_no": ["in", missing_phones]},
+			fields=["name", "customer_name", "mobile_no", "customer_primary_contact", "customer_primary_address", "custom_secondary_phone"]
+		)
+		for c in phone_rows:
+			if c.mobile_no not in cust_map:
+				cust_map[c.mobile_no] = c
+
 	# Fetch primary addresses
-	address_ids = list({c.customer_primary_address for c in cust_map.values() if c.get("customer_primary_address")})
+	address_ids = list({c.customer_primary_address for c in cust_map.values() if isinstance(c, dict) and c.get("customer_primary_address")})
 	addr_map = {}
 	if address_ids:
 		addr_rows = frappe.get_all(
@@ -56,7 +81,7 @@ def enrich_tickets_customer_details(tickets: Union[List[dict], dict]) -> Union[L
 			addr_map[a.name] = a
 
 	# Fetch address links for customers without customer_primary_address
-	missing_addr_cust_ids = [c_id for c_id, c in cust_map.items() if not c.get("customer_primary_address")]
+	missing_addr_cust_ids = [c_id for c_id, c in cust_map.items() if isinstance(c, dict) and not c.get("customer_primary_address")]
 	dyn_link_map = {}
 	if missing_addr_cust_ids:
 		dyn_links = frappe.get_all(
@@ -93,7 +118,16 @@ def enrich_tickets_customer_details(tickets: Union[List[dict], dict]) -> Union[L
 	# Enrich each ticket
 	for t in ticket_list:
 		c_id = t.get("customer")
-		cust_doc = cust_map.get(c_id) if c_id else None
+		cust_doc = None
+		if c_id and c_id in cust_map:
+			cust_doc = cust_map[c_id]
+		elif t.get("custom_customer_name") and t.get("custom_customer_name") in cust_map:
+			cust_doc = cust_map[t.get("custom_customer_name")]
+		elif t.get("custom_customer_mobile_number") and t.get("custom_customer_mobile_number") in cust_map:
+			cust_doc = cust_map[t.get("custom_customer_mobile_number")]
+
+		if cust_doc:
+			t["customer"] = cust_doc.get("name")
 
 		# 1. Customer Name
 		if not t.get("custom_customer_name") or str(t.get("custom_customer_name")).strip() == "":
@@ -116,8 +150,8 @@ def enrich_tickets_customer_details(tickets: Union[List[dict], dict]) -> Union[L
 			addr_obj = None
 			if cust_doc and cust_doc.get("customer_primary_address"):
 				addr_obj = addr_map.get(cust_doc.customer_primary_address)
-			elif c_id and dyn_link_map.get(c_id):
-				addr_obj = addr_map.get(dyn_link_map[c_id])
+			elif cust_doc and dyn_link_map.get(cust_doc.get("name")):
+				addr_obj = addr_map.get(dyn_link_map[cust_doc.get("name")])
 			
 			if addr_obj:
 				t["custom_address"] = addr_obj.get("address_line1") or ""
@@ -131,6 +165,56 @@ def enrich_tickets_customer_details(tickets: Union[List[dict], dict]) -> Union[L
 			t["custom__secondary_phone_number"] = cust_doc.custom_secondary_phone
 
 	return ticket_list[0] if is_single else ticket_list
+
+
+@frappe.whitelist()
+def get_invoice_init_details(ticket_name: str = None, customer: str = None, phone: str = None) -> dict:
+	"""
+	Helper method to resolve valid Customer Link ID, Phone number, and Machine Type List before creating a Sales Invoice.
+	"""
+	customer_id = ""
+	customer_name = ""
+	phone_num = (phone or "").strip()
+	if phone_num == "N/A":
+		phone_num = ""
+
+	machines = []
+
+	if ticket_name and frappe.db.exists("HD Ticket", ticket_name):
+		t_dict = get_ticket_detail(ticket_name)
+		customer_id = t_dict.get("customer") or ""
+		customer_name = t_dict.get("custom_customer_name") or ""
+		if not phone_num:
+			phone_num = t_dict.get("primary_phone") or t_dict.get("custom_customer_mobile_number") or ""
+		machines = t_dict.get("custom_machine_type_list") or []
+
+	if customer and customer != "N/A":
+		cust_str = str(customer).strip()
+		if frappe.db.exists("Customer", cust_str):
+			customer_id = cust_str
+			customer_name = frappe.db.get_value("Customer", cust_str, "customer_name") or cust_str
+		else:
+			cust_by_name = frappe.db.get_value(
+				"Customer",
+				{"customer_name": cust_str},
+				["name", "customer_name", "mobile_no"],
+				as_dict=True
+			)
+			if cust_by_name:
+				customer_id = cust_by_name.name
+				customer_name = cust_by_name.customer_name
+				if not phone_num and cust_by_name.mobile_no:
+					phone_num = cust_by_name.mobile_no
+
+	if customer_id and not phone_num:
+		phone_num = frappe.db.get_value("Customer", customer_id, "mobile_no") or ""
+
+	return {
+		"customer_id": customer_id,
+		"customer_name": customer_name,
+		"phone": phone_num,
+		"machines": machines
+	}
 
 
 # ---------------------------------------------------------------------------
@@ -354,7 +438,7 @@ def get_ticket_detail(ticket_name: str) -> dict:
 	machine_type_list = frappe.get_all(
 		"Machine type list",
 		filters={"parent": ticket_name, "parenttype": "HD Ticket"},
-		fields=["machine_type", "machine_name", "machine_brand", "machine_quantity", "machine_problem", "purchased_at_scs", "purchase_year"],
+		fields=["machine_type", "machine_name", "machine_brand", "machine_quantity", "machine_problem", "purchased_at_scs", "purchase_year", "model_no"],
 		order_by="idx asc",
 	)
 

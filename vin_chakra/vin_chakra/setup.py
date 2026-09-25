@@ -29,15 +29,7 @@ def create_web_form():
 		doc.allow_incomplete = 0
 		doc.success_message = 'Your ticket has been raised successfully.'
 		fields = [
-			{'fieldname': 'custom_customer_name', 'fieldtype': 'Data', 'label': 'Customer Name', 'reqd': 1},
-			{'fieldname': 'custom_customer_mobile_number', 'fieldtype': 'Phone', 'label': 'Customer Mobile Number', 'reqd': 1},
-			{'fieldname': 'custom_state', 'fieldtype': 'Data', 'label': 'State', 'reqd': 1},
-			{'fieldname': 'custom_city__district_', 'fieldtype': 'Data', 'label': 'City / District', 'reqd': 1},
-			{'fieldname': 'custom_address', 'fieldtype': 'Small Text', 'label': 'Address', 'reqd': 1},
 			{'fieldname': 'custom_date', 'fieldtype': 'Date', 'label': 'Date', 'reqd': 1},
-			{'fieldname': 'custom_machine_problem', 'fieldtype': 'Link', 'options': 'Machine Problem', 'label': 'Machine Problem', 'reqd': 1, 'allow_read_on_all_link_options': 1},
-			{'fieldname': 'custom_purchased_at_sree_chakra_sewing_systems', 'fieldtype': 'Select', 'options': 'Yes\nNo', 'label': 'Purchased at Sree Chakra Sewing Systems'},
-			{'fieldname': 'custom_purchase_year', 'fieldtype': 'Select', 'label': 'Purchase Year', 'options': '2010\n2011\n2012\n2013\n2014\n2015\n2016\n2017\n2018\n2019\n2020\n2021\n2022\n2023\n2024\n2025\n2026', 'reqd': 0},
 			{'fieldname': 'subject', 'fieldtype': 'Data', 'label': 'Subject', 'reqd': 1}
 		]
 		for f in fields:

@@ -172,6 +172,7 @@ doctype_js = {
     "Item": "public/js/Item.js",
     "Customer": "public/js/Customer.js",
     "Machine Problem": "public/js/machine_problem.js",
+    "Sales Invoice": "public/js/sales_invoice.js"
 }
 
 doctype_list_js = {
@@ -205,10 +206,10 @@ fixtures = [
         ]
     },
     {
-        "dt": "HD Ticket Status",
-        "filters": [
-            ["name", "in", ["Pending", "Working", "Self-Completed"]]
-        ]
+        "dt": "HD Ticket Template"
+    },
+    {
+        "dt": "Support Form Template"
     },
     {
         "dt": "Custom Field",

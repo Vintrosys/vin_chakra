@@ -255,9 +255,14 @@ class TechnicianPortal {
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
                         <span class="badge" style="background: rgba(255,255,255,0.2); color:white; font-size:11px; font-weight:700; padding:6px 12px; border-radius:30px;"><i class="fa fa-circle text-success" style="margin-right:6px;"></i>Active Status</span>
-                        <button id="tp-day-attendance-btn" class="btn btn-sm" style="background: white; color: var(--tp-primary); font-weight: bold; border-radius: 20px; padding: 4px 12px; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: none;">
-                            <i class="fa fa-sign-in"></i> Day Check-in
-                        </button>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button id="tp-hrms-btn" class="btn btn-sm" style="background: white; color: var(--tp-primary); font-weight: bold; border-radius: 20px; padding: 4px 12px; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer;">
+                                <i class="fa fa-users" style="margin-right: 4px;"></i> HRMS
+                            </button>
+                            <button id="tp-day-attendance-btn" class="btn btn-sm" style="background: white; color: var(--tp-primary); font-weight: bold; border-radius: 20px; padding: 4px 12px; display: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border: none;">
+                                <i class="fa fa-sign-in"></i> Day Check-in
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
@@ -364,6 +369,11 @@ class TechnicianPortal {
     bind_events() {
         let self = this;
         
+        // HRMS Redirect
+        this.wrapper.on("click", "#tp-hrms-btn", function() {
+            window.location.href = "/hrms";
+        });
+        
         // Day Attendance
         this.wrapper.on("click", "#tp-day-attendance-btn", function() {
             self.handle_day_attendance_click();
@@ -436,11 +446,24 @@ class TechnicianPortal {
         });
         
         // Clicking Ticket cards/rows
-        this.wrapper.on("click", ".tp-ticket-card, .tp-ticket-list-row", function() {
+        this.wrapper.on("click", ".tp-ticket-card, .tp-ticket-list-row", function(e) {
+            if ($(e.target).closest(".tp-btn-create-invoice").length) {
+                return;
+            }
             let ticket_name = $(this).data("name");
             if (ticket_name) {
                 self.open_ticket_details(ticket_name);
             }
+        });
+        
+        // Create Invoice Button Click
+        this.wrapper.on("click", ".tp-btn-create-invoice", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            let ticket_name = $(this).data("name");
+            let customer = $(this).data("customer");
+            let phone = $(this).data("phone");
+            self.create_invoice(ticket_name, customer, phone);
         });
         
         // Quick filter pill remove
@@ -564,6 +587,16 @@ class TechnicianPortal {
                 ? t.custom_machine_type_list.map(m => m.machine_name || m.machine_type).filter(Boolean).join(', ')
                 : (t.custom_machine_name || 'N/A');
             
+            let is_resolved = t.status && t.status.trim().toLowerCase() === 'resolved';
+            let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
+            let invoice_btn = is_resolved ? `
+                <div style="margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px;">
+                    <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="width: 100%; border-radius: 6px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; background-color: #10b981; border-color: #10b981; color: white;">
+                        <i class="fa fa-file-text-o"></i> Create Invoice
+                    </button>
+                </div>
+            ` : '';
+            
             return `
                 <div class="tp-ticket-card" data-name="${t.name}">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -578,6 +611,7 @@ class TechnicianPortal {
                         <div><i class="fa fa-cogs"></i> <span>Machine: ${machine_display}</span></div>
                         <div><i class="fa fa-calendar"></i> <span>Date: ${date_str}</span></div>
                     </div>
+                    ${invoice_btn}
                 </div>
             `;
         }).join("");
@@ -603,6 +637,15 @@ class TechnicianPortal {
             let priority_badge = `<span class="tp-badge tp-badge-priority-${t.priority}">${t.priority}</span>`;
             let customer = t.custom_customer_name || t.customer || 'N/A';
             let address = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ') || 'N/A';
+            let is_resolved = t.status && t.status.trim().toLowerCase() === 'resolved';
+            let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
+            let invoice_btn = is_resolved ? `
+                <div class="tp-list-action-col" style="flex-shrink:0;">
+                    <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:6px; font-weight:700; display: flex; align-items: center; gap: 4px; padding: 5px 10px; background-color: #10b981; border-color: #10b981; color: white;">
+                        <i class="fa fa-file-text-o"></i> Create Invoice
+                    </button>
+                </div>
+            ` : '';
             
             return `
                 <div class="tp-ticket-list-row" data-name="${t.name}">
@@ -618,6 +661,7 @@ class TechnicianPortal {
                         <div><strong>Cust:</strong> ${customer}</div>
                         <div><strong>Loc:</strong> <span style="display:inline-block; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom;">${address}</span></div>
                     </div>
+                    ${invoice_btn}
                 </div>
             `;
         }).join("");
@@ -679,10 +723,20 @@ class TechnicianPortal {
                 let currentDay = d;
                 let day_tickets = ticketsByDate[currentDay] || [];
                 let tickets_html = day_tickets.map(t => {
+                    let is_res = t.status && t.status.trim().toLowerCase() === 'resolved';
+                    let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
+                    let cal_inv_btn = is_res ? `
+                        <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="font-size: 10px; padding: 1px 4px; margin-top: 2px; width: 100%; border-radius: 3px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 3px; background-color: #10b981; border-color: #10b981; color: white;" title="Create Invoice">
+                            <i class="fa fa-file-text-o"></i> Create Invoice
+                        </button>
+                    ` : '';
                     return `
                         <div class="tp-cal-event" data-name="${t.name}" 
-                             style="background: var(--tp-primary-light); color: var(--tp-primary); padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-bottom: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 1px solid rgba(99, 102, 241, 0.2); font-weight:600;" 
-                             title="${t.subject}">${t.subject}</div>
+                             style="background: ${is_res ? '#f0fdf4' : 'var(--tp-primary-light)'}; color: ${is_res ? 'var(--tp-success)' : 'var(--tp-primary)'}; padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-bottom: 4px; cursor: pointer; border: 1px solid ${is_res ? 'rgba(21, 128, 61, 0.3)' : 'rgba(99, 102, 241, 0.2)'}; font-weight:600;" 
+                             title="${t.subject}">
+                            <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.subject}</div>
+                            ${cal_inv_btn}
+                        </div>
                     `;
                 }).join("");
                 
@@ -702,6 +756,9 @@ class TechnicianPortal {
         // Calendar Event Click
         let self = this;
         container.find(".tp-cal-event").on("click", function(e) {
+            if ($(e.target).closest(".tp-btn-create-invoice").length) {
+                return;
+            }
             e.stopPropagation();
             let name = $(this).data("name");
             if (name) {
@@ -780,6 +837,11 @@ class TechnicianPortal {
         let machine_display = (t.custom_machine_type_list && t.custom_machine_type_list.length > 0)
             ? t.custom_machine_type_list.map(m => m.machine_name || m.machine_type).filter(Boolean).join(', ')
             : (t.custom_machine_name || '');
+        let is_res = t.status && t.status.trim().toLowerCase() === 'resolved';
+        let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
+        let invoice_btn = is_res 
+            ? `<button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:4px; font-weight:700; background-color: #10b981; border-color: #10b981; color: white;"><i class="fa fa-file-text-o"></i> Create Invoice</button>`
+            : '-';
         return `
             <tr>
                 <td>
@@ -792,6 +854,7 @@ class TechnicianPortal {
                 <td>${location}</td>
                 <td>${t.custom_date || ''}</td>
                 <td>${t.status}</td>
+                <td>${invoice_btn}</td>
             </tr>
         `;
     }).join("");
@@ -806,17 +869,27 @@ class TechnicianPortal {
         <table class="table table-bordered" id="tp-today-table" style="width:100%;">
             <thead>
                 <tr>
-                    <th>Ticket No</th><th>Machine</th><th>Customer</th><th>Location</th><th>Date</th><th>Status</th>
+                    <th>Ticket No</th><th>Machine</th><th>Customer</th><th>Location</th><th>Date</th><th>Status</th><th>Action</th>
                 </tr>
             </thead>
             <tbody>
-                ${rows || `<tr><td colspan="6" style="text-align:center;">No tickets found for today</td></tr>`}
+                ${rows || `<tr><td colspan="7" style="text-align:center;">No tickets found for today</td></tr>`}
             </tbody>
         </table>
         </div>
     `;
 
     dialog.get_field("today_tickets_html").$wrapper.html(html);
+
+    dialog.$wrapper.on("click", ".tp-btn-create-invoice", function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        let ticket_name = $(this).data("name");
+        let customer = $(this).data("customer");
+        let phone = $(this).data("phone");
+        dialog.hide();
+        self.create_invoice(ticket_name, customer, phone);
+    });
 
     dialog.$wrapper.find("#tp-btn-share-excel").on("click", function() {
         self.export_table_to_excel("tp-today-table", "today_tickets");
@@ -1212,10 +1285,21 @@ class TechnicianPortal {
             let last_log = ticket.check_log && ticket.check_log.length > 0 ? ticket.check_log[ticket.check_log.length - 1] : null;
             let has_active_check_in = last_log && last_log.check_type === 'Check-in';
             
-            if (ticket.status === 'Resolved' || ticket.status === 'Closed') {
+            let is_resolved = ticket.status && ticket.status.trim().toLowerCase() === 'resolved';
+            let is_closed = ticket.status && ticket.status.trim().toLowerCase() === 'closed';
+            
+            if (is_resolved || is_closed) {
+                let phone = ticket.primary_phone || ticket.custom_customer_mobile_number || ticket.custom__secondary_phone_number || '';
                 box.html(`
-                    <div style="color: var(--tp-success); font-weight: 700; font-size: 15px; padding: 8px;">
-                        <i class="fa fa-check-circle" style="font-size:18px; margin-right:6px; vertical-align:middle;"></i> Service Completed & Checked Out
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding: 8px;">
+                        <div style="color: var(--tp-success); font-weight: 700; font-size: 15px;">
+                            <i class="fa fa-check-circle" style="font-size:18px; margin-right:6px; vertical-align:middle;"></i> Service Completed & Checked Out
+                        </div>
+                        ${is_resolved ? `
+                            <button class="btn btn-sm btn-success tp-btn-create-invoice" data-name="${ticket.name}" data-customer="${ticket.customer || ticket.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:6px; font-weight:700; display:inline-flex; align-items:center; gap:6px; background-color: #10b981; border-color: #10b981; color: white;">
+                                <i class="fa fa-file-text-o"></i> Create Invoice
+                            </button>
+                        ` : ''}
                     </div>
                 `);
             } else if (has_active_check_in || ticket.status === 'Working') {
@@ -1502,5 +1586,45 @@ class TechnicianPortal {
         render_timeline_logs(t.check_log);
         
         dialog.show();
+    }
+
+    create_invoice(ticket_name, customer, phone) {
+        let cust = (customer && customer !== 'N/A') ? customer : "";
+        let ph = (phone && phone !== 'N/A') ? phone : "";
+
+        frappe.call({
+            method: "vin_chakra.technician_api.get_invoice_init_details",
+            args: {
+                ticket_name: ticket_name || "",
+                customer: cust,
+                phone: ph
+            },
+            callback: function(r) {
+                let res = r.message || {};
+                let cust_id = res.customer_id || (cust && cust !== 'N/A' ? cust : "");
+                let phone_num = res.phone || (ph && ph !== 'N/A' ? ph : "");
+
+                if (cust_id) {
+                    sessionStorage.setItem("tp_invoice_customer", cust_id);
+                }
+                if (phone_num) {
+                    sessionStorage.setItem("tp_invoice_phone", phone_num);
+                }
+                if (ticket_name) {
+                    sessionStorage.setItem("tp_invoice_ticket", ticket_name);
+                }
+                if (res.machines && res.machines.length) {
+                    sessionStorage.setItem("tp_invoice_machines", JSON.stringify(res.machines));
+                } else {
+                    sessionStorage.removeItem("tp_invoice_machines");
+                }
+
+                let opts = {};
+                if (cust_id) opts.customer = cust_id;
+                if (phone_num) opts.custom_customer_phone = phone_num;
+
+                frappe.new_doc("Sales Invoice", opts);
+            }
+        });
     }
 }
