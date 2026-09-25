@@ -252,19 +252,5 @@ fixtures = [
         "filters": [
             ["name", "in", ["Age-wise Quotation Report"]]
         ]
-    },
-    {
-        "dt": "Custom Field",
-        "filters": [
-            [
-                "name",
-                "in",
-                [
-                    "Quotation-custom_terms_and_conditions",
-                    "Quotation-custom_sales_person",
-                    "Quotation-custom_terms_and_conditions_table"
-                ]
-            ]
-        ]
     }
 ]
