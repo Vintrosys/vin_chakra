@@ -2,13 +2,13 @@ frappe.ui.form.on("Sales Invoice", {
 	setup(frm) {
 		if (frappe.route_options) {
 			let cust = frappe.route_options.customer;
-			let phone = frappe.route_options.custom_customer_phone;
+			let mop = frappe.route_options.custom_mode_of_payment;
 			let ticket = frappe.route_options.ticket_name;
 			if (cust) {
 				sessionStorage.setItem("tp_invoice_customer", cust);
 			}
-			if (phone) {
-				sessionStorage.setItem("tp_invoice_phone", phone);
+			if (mop) {
+				sessionStorage.setItem("tp_invoice_mode_of_payment", mop);
 			}
 			if (ticket) {
 				sessionStorage.setItem("tp_invoice_ticket", ticket);
@@ -20,8 +20,8 @@ frappe.ui.form.on("Sales Invoice", {
 		if (frm.is_new()) {
 			let cust = (frappe.route_options && frappe.route_options.customer)
 				|| sessionStorage.getItem("tp_invoice_customer");
-			let phone = (frappe.route_options && frappe.route_options.custom_customer_phone)
-				|| sessionStorage.getItem("tp_invoice_phone");
+			let mop = (frappe.route_options && frappe.route_options.custom_mode_of_payment)
+				|| sessionStorage.getItem("tp_invoice_mode_of_payment");
 			let ticket = (frappe.route_options && frappe.route_options.ticket_name)
 				|| sessionStorage.getItem("tp_invoice_ticket");
 
@@ -31,10 +31,11 @@ frappe.ui.form.on("Sales Invoice", {
 					frm.set_value("customer", cust);
 				}
 			}
-			if (phone) {
-				sessionStorage.setItem("tp_invoice_phone", phone);
-				if (!frm.doc.custom_customer_phone || frm.doc.custom_customer_phone !== phone) {
-					frm.set_value("custom_customer_phone", phone);
+
+			if (mop) {
+				sessionStorage.setItem("tp_invoice_mode_of_payment", mop);
+				if (!frm.doc.custom_mode_of_payment || frm.doc.custom_mode_of_payment !== mop) {
+					frm.set_value("custom_mode_of_payment", mop);
 				}
 			}
 
@@ -46,8 +47,8 @@ frappe.ui.form.on("Sales Invoice", {
 		if (frm.is_new()) {
 			let cust = (frappe.route_options && frappe.route_options.customer)
 				|| sessionStorage.getItem("tp_invoice_customer");
-			let phone = (frappe.route_options && frappe.route_options.custom_customer_phone)
-				|| sessionStorage.getItem("tp_invoice_phone");
+			let mop = (frappe.route_options && frappe.route_options.custom_mode_of_payment)
+				|| sessionStorage.getItem("tp_invoice_mode_of_payment");
 			let ticket = (frappe.route_options && frappe.route_options.ticket_name)
 				|| sessionStorage.getItem("tp_invoice_ticket");
 
@@ -57,10 +58,11 @@ frappe.ui.form.on("Sales Invoice", {
 					frm.set_value("customer", cust);
 				}
 			}
-			if (phone) {
-				sessionStorage.setItem("tp_invoice_phone", phone);
-				if (!frm.doc.custom_customer_phone || frm.doc.custom_customer_phone !== phone) {
-					frm.set_value("custom_customer_phone", phone);
+
+			if (mop) {
+				sessionStorage.setItem("tp_invoice_mode_of_payment", mop);
+				if (!frm.doc.custom_mode_of_payment || frm.doc.custom_mode_of_payment !== mop) {
+					frm.set_value("custom_mode_of_payment", mop);
 				}
 			}
 
@@ -75,37 +77,6 @@ frappe.ui.form.on("Sales Invoice", {
 		toggle_service_charges(frm);
 	},
 
-	customer(frm) {
-		if (!frm.is_new()) return;
-
-		let phone = (frappe.route_options && frappe.route_options.custom_customer_phone)
-			|| sessionStorage.getItem("tp_invoice_phone");
-
-		if (phone) {
-			// When customer field changes or fetches details asynchronously via get_party_details,
-			// ensure custom_customer_phone is preserved
-			const restore_phone = () => {
-				if (!frm.doc.custom_customer_phone || frm.doc.custom_customer_phone !== phone) {
-					frm.set_value("custom_customer_phone", phone);
-				}
-			};
-			restore_phone();
-			setTimeout(restore_phone, 200);
-			setTimeout(restore_phone, 600);
-			setTimeout(restore_phone, 1200);
-		} else if (frm.doc.customer) {
-			// Auto-fill phone from Customer document if not provided via portal/session
-			frappe.db.get_value("Customer", frm.doc.customer, ["mobile_no", "custom_secondary_phone"], (r) => {
-				if (r) {
-					let mob = r.mobile_no || r.custom_secondary_phone || "";
-					if (mob && !frm.doc.custom_customer_phone) {
-						frm.set_value("custom_customer_phone", mob);
-					}
-				}
-			});
-		}
-	},
-
 	after_save(frm) {
 		clear_invoice_session();
 	},
@@ -117,7 +88,7 @@ frappe.ui.form.on("Sales Invoice", {
 
 function clear_invoice_session() {
 	sessionStorage.removeItem("tp_invoice_customer");
-	sessionStorage.removeItem("tp_invoice_phone");
+	sessionStorage.removeItem("tp_invoice_mode_of_payment");
 	sessionStorage.removeItem("tp_invoice_ticket");
 	sessionStorage.removeItem("tp_invoice_machines");
 }
@@ -125,45 +96,19 @@ function clear_invoice_session() {
 function populate_hd_ticket_machines(frm, ticket_name) {
 	if (!frm.is_new()) return;
 
-	// If table custom_hd_ticket_machine_ already has rows, skip
-	if (frm.doc.custom_hd_ticket_machine_ && frm.doc.custom_hd_ticket_machine_.length > 0) {
-		return;
+	let stored_mop = sessionStorage.getItem("tp_invoice_mode_of_payment");
+	if (stored_mop && (!frm.doc.custom_mode_of_payment || frm.doc.custom_mode_of_payment !== stored_mop)) {
+		frm.set_value("custom_mode_of_payment", stored_mop);
 	}
 
 	let stored_machines_str = sessionStorage.getItem("tp_invoice_machines");
+	let has_machines = false;
 	if (stored_machines_str) {
 		try {
 			let machines = JSON.parse(stored_machines_str);
 			if (Array.isArray(machines) && machines.length > 0) {
-				frm.clear_table("custom_hd_ticket_machine_");
-				machines.forEach((m) => {
-					let row = frm.add_child("custom_hd_ticket_machine_");
-					row.machine_type = m.machine_type;
-					row.machine_name = m.machine_name;
-					row.machine_brand = m.machine_brand;
-					row.machine_quantity = m.machine_quantity || 1;
-					row.machine_problem = m.machine_problem;
-					row.purchased_at_scs = m.purchased_at_scs;
-					row.purchase_year = m.purchase_year;
-					row.model_no = m.model_no;
-				});
-				frm.refresh_field("custom_hd_ticket_machine_");
-				return;
-			}
-		} catch (e) {
-			console.error("Error parsing stored machines:", e);
-		}
-	}
-
-	if (ticket_name) {
-		frappe.call({
-			method: "vin_chakra.technician_api.get_invoice_init_details",
-			args: { ticket_name: ticket_name },
-			callback: function(r) {
-				let res = r.message || {};
-				let machines = res.machines || [];
-				if (machines && machines.length > 0) {
-					sessionStorage.setItem("tp_invoice_machines", JSON.stringify(machines));
+				has_machines = true;
+				if (!frm.doc.custom_hd_ticket_machine_ || frm.doc.custom_hd_ticket_machine_.length === 0) {
 					frm.clear_table("custom_hd_ticket_machine_");
 					machines.forEach((m) => {
 						let row = frm.add_child("custom_hd_ticket_machine_");
@@ -177,6 +122,45 @@ function populate_hd_ticket_machines(frm, ticket_name) {
 						row.model_no = m.model_no;
 					});
 					frm.refresh_field("custom_hd_ticket_machine_");
+				}
+			}
+		} catch (e) {
+			console.error("Error parsing stored machines:", e);
+		}
+	}
+
+	if (ticket_name) {
+		frappe.call({
+			method: "vin_chakra.technician_api.get_invoice_init_details",
+			args: { ticket_name: ticket_name },
+			callback: function(r) {
+				let res = r.message || {};
+				let mode_of_payment = res.mode_of_payment || res.custom_mode_of_payment || "";
+				if (mode_of_payment) {
+					sessionStorage.setItem("tp_invoice_mode_of_payment", mode_of_payment);
+					if (!frm.doc.custom_mode_of_payment || frm.doc.custom_mode_of_payment !== mode_of_payment) {
+						frm.set_value("custom_mode_of_payment", mode_of_payment);
+					}
+				}
+
+				if (!has_machines && (!frm.doc.custom_hd_ticket_machine_ || frm.doc.custom_hd_ticket_machine_.length === 0)) {
+					let machines = res.machines || [];
+					if (machines && machines.length > 0) {
+						sessionStorage.setItem("tp_invoice_machines", JSON.stringify(machines));
+						frm.clear_table("custom_hd_ticket_machine_");
+						machines.forEach((m) => {
+							let row = frm.add_child("custom_hd_ticket_machine_");
+							row.machine_type = m.machine_type;
+							row.machine_name = m.machine_name;
+							row.machine_brand = m.machine_brand;
+							row.machine_quantity = m.machine_quantity || 1;
+							row.machine_problem = m.machine_problem;
+							row.purchased_at_scs = m.purchased_at_scs;
+							row.purchase_year = m.purchase_year;
+							row.model_no = m.model_no;
+						});
+						frm.refresh_field("custom_hd_ticket_machine_");
+					}
 				}
 			}
 		});

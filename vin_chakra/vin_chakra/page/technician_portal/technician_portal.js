@@ -1590,25 +1590,23 @@ class TechnicianPortal {
 
     create_invoice(ticket_name, customer, phone) {
         let cust = (customer && customer !== 'N/A') ? customer : "";
-        let ph = (phone && phone !== 'N/A') ? phone : "";
 
         frappe.call({
             method: "vin_chakra.technician_api.get_invoice_init_details",
             args: {
                 ticket_name: ticket_name || "",
-                customer: cust,
-                phone: ph
+                customer: cust
             },
             callback: function(r) {
                 let res = r.message || {};
                 let cust_id = res.customer_id || (cust && cust !== 'N/A' ? cust : "");
-                let phone_num = res.phone || (ph && ph !== 'N/A' ? ph : "");
+                let mop = res.mode_of_payment || res.custom_mode_of_payment || "";
 
                 if (cust_id) {
                     sessionStorage.setItem("tp_invoice_customer", cust_id);
                 }
-                if (phone_num) {
-                    sessionStorage.setItem("tp_invoice_phone", phone_num);
+                if (mop) {
+                    sessionStorage.setItem("tp_invoice_mode_of_payment", mop);
                 }
                 if (ticket_name) {
                     sessionStorage.setItem("tp_invoice_ticket", ticket_name);
@@ -1621,7 +1619,8 @@ class TechnicianPortal {
 
                 let opts = {};
                 if (cust_id) opts.customer = cust_id;
-                if (phone_num) opts.custom_customer_phone = phone_num;
+                if (mop) opts.custom_mode_of_payment = mop;
+                if (ticket_name) opts.ticket_name = ticket_name;
 
                 frappe.new_doc("Sales Invoice", opts);
             }

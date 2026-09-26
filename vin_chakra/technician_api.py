@@ -179,6 +179,7 @@ def get_invoice_init_details(ticket_name: str = None, customer: str = None, phon
 		phone_num = ""
 
 	machines = []
+	mode_of_payment = ""
 
 	if ticket_name and frappe.db.exists("HD Ticket", ticket_name):
 		t_dict = get_ticket_detail(ticket_name)
@@ -187,6 +188,7 @@ def get_invoice_init_details(ticket_name: str = None, customer: str = None, phon
 		if not phone_num:
 			phone_num = t_dict.get("primary_phone") or t_dict.get("custom_customer_mobile_number") or ""
 		machines = t_dict.get("custom_machine_type_list") or []
+		mode_of_payment = t_dict.get("custom_mode_of_payment") or frappe.db.get_value("HD Ticket", ticket_name, "custom_mode_of_payment") or ""
 
 	if customer and customer != "N/A":
 		cust_str = str(customer).strip()
@@ -213,7 +215,8 @@ def get_invoice_init_details(ticket_name: str = None, customer: str = None, phon
 		"customer_id": customer_id,
 		"customer_name": customer_name,
 		"phone": phone_num,
-		"machines": machines
+		"machines": machines,
+		"mode_of_payment": mode_of_payment
 	}
 
 
@@ -463,6 +466,7 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		"custom_machine_problem": ticket.custom_machine_problem,
 		"custom_date": str(ticket.custom_date) if ticket.custom_date else "",
 		"custom_service_otp": ticket.custom_service_otp,
+		"custom_mode_of_payment": ticket.get("custom_mode_of_payment") or "",
 		"custom_machine_type_list": machine_type_list,
 		"check_log": check_log,
 		"pending_reason_options": pending_reason_options,
