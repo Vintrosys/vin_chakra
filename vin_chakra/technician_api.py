@@ -945,3 +945,24 @@ def mark_day_attendance(log_type: str, latitude: float = None, longitude: float 
 	except Exception as e:
 		frappe.log_error("Day Attendance Checkin Failed", str(e))
 		return {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist()
+def get_machine_service_charges(item_codes=None):
+	"""Fetch custom_service_charge from Item master for given item codes."""
+	if isinstance(item_codes, str):
+		item_codes = frappe.parse_json(item_codes)
+	if not item_codes:
+		return {}
+
+	rates = {}
+	items = frappe.get_all(
+		"Item",
+		filters={"name": ["in", item_codes]},
+		fields=["name", "custom_service_charge", "standard_rate", "valuation_rate"]
+	)
+	for it in items:
+		charge = frappe.utils.flt(it.get("custom_service_charge")) or frappe.utils.flt(it.get("standard_rate")) or frappe.utils.flt(it.get("valuation_rate")) or 0
+		rates[it.name] = charge
+	return rates
+
