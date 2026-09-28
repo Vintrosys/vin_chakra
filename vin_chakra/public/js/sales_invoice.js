@@ -148,16 +148,32 @@ function update_service_charges_from_machines(frm) {
 	let show_charges = val === "service" || val === "servicing";
 	if (!show_charges) return;
 
-	if (!frm.doc.custom_hd_ticket_machine_ || frm.doc.custom_hd_ticket_machine_.length === 0) {
-		return;
+	let machine_items = [];
+	let machine_rows = [];
+
+	if (frm.doc.custom_hd_ticket_machine_ && frm.doc.custom_hd_ticket_machine_.length > 0) {
+		frm.doc.custom_hd_ticket_machine_.forEach((row) => {
+			let identifier = row.machine_type || row.machine_name || row.model_no;
+			if (identifier) {
+				machine_items.push(identifier);
+				machine_rows.push({
+					identifier: identifier,
+					qty: flt(row.machine_quantity) || 1
+				});
+			}
+		});
 	}
 
-	let machine_items = [];
-	frm.doc.custom_hd_ticket_machine_.forEach((row) => {
-		if (row.machine_type) {
-			machine_items.push(row.machine_type);
+	if (machine_items.length === 0) {
+		let single_m = frm.doc.custom_machine_type || frm.doc.custom_machine_model || frm.doc.custom_machine_name;
+		if (single_m) {
+			machine_items.push(single_m);
+			machine_rows.push({
+				identifier: single_m,
+				qty: 1
+			});
 		}
-	});
+	}
 
 	if (machine_items.length === 0) return;
 
@@ -168,10 +184,9 @@ function update_service_charges_from_machines(frm) {
 			let rate_map = r.message || {};
 			let total_amount = 0;
 
-			frm.doc.custom_hd_ticket_machine_.forEach((row) => {
-				let qty = flt(row.machine_quantity) || 1;
-				let rate = flt(rate_map[row.machine_type]) || 0;
-				total_amount += (qty * rate);
+			machine_rows.forEach((row) => {
+				let rate = flt(rate_map[row.identifier]) || 0;
+				total_amount += (row.qty * rate);
 			});
 
 			total_amount = Math.round(total_amount * 100) / 100;
@@ -183,6 +198,7 @@ function update_service_charges_from_machines(frm) {
 		}
 	});
 }
+
 
 function apply_service_charges_to_items(frm) {
 	if (!frm || !frm.doc) return;

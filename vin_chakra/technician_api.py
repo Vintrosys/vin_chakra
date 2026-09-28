@@ -949,20 +949,41 @@ def mark_day_attendance(log_type: str, latitude: float = None, longitude: float 
 
 @frappe.whitelist()
 def get_machine_service_charges(item_codes=None):
-	"""Fetch custom_service_charge from Item master for given item codes."""
+	"""Fetch custom_service_charge from Item master for given item codes or names."""
 	if isinstance(item_codes, str):
 		item_codes = frappe.parse_json(item_codes)
 	if not item_codes:
 		return {}
 
+	if not isinstance(item_codes, list):
+		item_codes = [item_codes]
+
+	clean_codes = [str(x).strip() for x in item_codes if x and str(x).strip()]
+	if not clean_codes:
+		return {}
+
 	rates = {}
-	items = frappe.get_all(
-		"Item",
-		filters={"name": ["in", item_codes]},
-		fields=["name", "custom_service_charge", "standard_rate", "valuation_rate"]
+	items = frappe.db.sql(
+		"""
+		SELECT name, item_code, item_name, custom_service_charge, standard_rate, valuation_rate
+		FROM `tabItem`
+		WHERE name IN (%s) OR item_code IN (%s) OR item_name IN (%s)
+		""" % (
+			", ".join([frappe.db.escape(x) for x in clean_codes]),
+			", ".join([frappe.db.escape(x) for x in clean_codes]),
+			", ".join([frappe.db.escape(x) for x in clean_codes]),
+		),
+		as_dict=True
 	)
+
 	for it in items:
 		charge = frappe.utils.flt(it.get("custom_service_charge")) or frappe.utils.flt(it.get("standard_rate")) or frappe.utils.flt(it.get("valuation_rate")) or 0
 		rates[it.name] = charge
+		if it.item_code:
+			rates[it.item_code] = charge
+		if it.item_name:
+			rates[it.item_name] = charge
+
 	return rates
+
 

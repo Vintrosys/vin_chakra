@@ -1,0 +1,436 @@
+<style>
+	@import url('https://fonts.googleapis.com/css2?family=Playpen+Sans:wght@400;500;600;700&family=Comic+Neue:wght@400;700&family=Inter:wght@400;500;600;700&display=swap');
+
+	.print-format {
+		font-family: 'Playpen Sans', 'Comic Neue', 'Comic Sans MS', cursive, sans-serif;
+		color: #111111;
+		background: #ffffff;
+		font-size: 14px;
+		line-height: 1.4;
+		padding: 0 15px;
+		max-width: 850px;
+		margin: 0 auto;
+	}
+
+	/* Header Image / Letterhead */
+	.pf-header-banner {
+		width: 100%;
+		margin-bottom: 12px;
+		text-align: center;
+	}
+
+	.pf-header-banner img {
+		width: 100%;
+		height: auto;
+		display: block;
+		margin: 0 auto;
+	}
+
+	/* Metadata Section */
+	.doc-id-row {
+		display: flex;
+		justify-content: space-between;
+		font-size: 15px;
+		margin-bottom: 12px;
+		margin-top: 5px;
+	}
+
+	.meta-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px 30px;
+		margin-bottom: 15px;
+	}
+
+	.meta-row {
+		display: flex;
+		justify-content: flex-start;
+		align-items: baseline;
+		font-size: 14px;
+	}
+
+	.meta-label {
+		width: 120px;
+		color: #111111;
+		flex-shrink: 0;
+	}
+
+	.meta-value {
+		color: #111111;
+		font-weight: 500;
+	}
+
+	/* Table Styling */
+	.pf-table {
+		width: 100%;
+		border-collapse: collapse;
+		margin-bottom: 15px;
+		font-size: 14px;
+	}
+
+	.pf-table th, .pf-table td {
+		border: 1px solid #444444;
+		padding: 5px 8px;
+		color: #111111;
+		vertical-align: middle;
+	}
+
+	.pf-table th {
+		font-weight: 600;
+		background-color: #ffffff;
+		text-align: left;
+	}
+
+	.section-title {
+		font-size: 16px;
+		font-weight: 700;
+		margin: 15px 0 8px 0;
+		color: #111111;
+	}
+
+	.text-center { text-align: center; }
+	.text-right { text-align: right; }
+	.font-bold { font-weight: 700; }
+
+	/* Totals Section */
+	.totals-container {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		margin-top: 10px;
+		margin-bottom: 25px;
+	}
+
+	.totals-row {
+		display: flex;
+		justify-content: space-between;
+		width: 340px;
+		padding: 4px 0;
+		font-size: 14px;
+	}
+
+	.totals-row.grand-total {
+		font-size: 18px;
+		font-weight: 700;
+		padding-top: 6px;
+		margin-top: 4px;
+	}
+
+	.totals-divider {
+		width: 340px;
+		height: 1px;
+		background-color: #8b0000;
+		margin: 4px 0;
+	}
+
+	/* Signatures */
+	.signature-container {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-end;
+		margin-top: 50px;
+		margin-bottom: 35px;
+		padding: 0 20px;
+	}
+
+	.sig-box {
+		font-size: 14px;
+		font-weight: 600;
+		text-align: center;
+		min-width: 220px;
+	}
+
+	.sig-space {
+		height: 55px;
+		border-bottom: 1px dashed #777777;
+		margin-bottom: 8px;
+	}
+
+	/* Footers */
+	.custom-footer {
+		margin-top: 25px;
+		width: 100%;
+		text-align: center;
+	}
+
+	.footer-thankyou {
+		text-align: center;
+		font-size: 14px;
+		color: #555555;
+		margin-bottom: 15px;
+		font-family: 'Playpen Sans', 'Comic Neue', cursive, sans-serif;
+	}
+
+	.showroom-bar {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 18px;
+		font-size: 11px;
+		font-weight: 700;
+		color: #111111;
+		font-family: 'Inter', sans-serif;
+		text-transform: uppercase;
+		margin-bottom: 15px;
+	}
+
+	.showroom-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		line-height: 1.25;
+	}
+
+	.showroom-label {
+		font-size: 10px;
+		font-weight: 700;
+		color: #111111;
+		letter-spacing: 0.5px;
+	}
+
+	.showroom-val {
+		font-size: 13px;
+		font-weight: 700;
+		color: #111111;
+	}
+
+	.showroom-divider {
+		color: #b0b0b0;
+		font-weight: 300;
+		font-size: 20px;
+	}
+
+	.red-dot {
+		color: #8b0000;
+		font-size: 10px;
+		margin: 0 2px;
+	}
+
+	.bottom-red-bar {
+		width: 100%;
+		height: 22px;
+		background-color: #8b0000;
+		border-top-left-radius: 12px;
+		border-top-right-radius: 12px;
+		margin-top: 10px;
+	}
+
+	.pf-footer-banner {
+		width: 100%;
+		margin-top: 20px;
+		text-align: center;
+	}
+
+	.pf-footer-banner img {
+		width: 100%;
+		height: auto;
+		display: block;
+		margin: 0 auto;
+	}
+
+	@media print {
+		.print-format { padding: 0; }
+		.pf-table th, .pf-table td { border-color: #111111 !important; }
+	}
+</style>
+
+<div class="print-format">
+	<!-- DYNAMIC LETTER HEAD HEADER FROM FILE / LETTER HEAD DOCTYPE -->
+	{% set lh_name = doc.letter_head if (doc.letter_head and doc.letter_head != "Company Letterhead - Grey" and doc.letter_head != "Company Letterhead") else "Quotation header" %}
+	{% set lh_doc = frappe.get_doc("Letter Head", lh_name) if lh_name and frappe.db.exists("Letter Head", lh_name) else None %}
+
+	<div class="pf-header-banner">
+		{% if lh_doc and lh_doc.content %}
+			{{ lh_doc.content | safe }}
+		{% elif doc.header_image %}
+			<img src="{{ doc.header_image }}" alt="Header" />
+		{% else %}
+			<img src="/files/Header.jpg.jpeg" alt="Sree Chakra Sewing Systems Header" />
+		{% endif %}
+	</div>
+
+	<!-- DOCUMENT ID ROW -->
+	<div class="doc-id-row">
+		<div>
+			<strong>{% if doc.doctype == "Sales Invoice" %}Invoice ID:{% else %}Ticket ID:{% endif %}</strong> {{ doc.name }}
+		</div>
+		<div>
+			<strong>Date:</strong> {{ doc.custom_date or doc.get_formatted('creation') or doc.creation or '-' }}
+		</div>
+	</div>
+
+	<!-- DYNAMIC CUSTOMER DETAILS GRID -->
+	{% set cust_phone = doc.custom_customer_mobile_number or doc.custom_customer_phone or doc.custom_phone_number or doc.contact_mobile or doc.custom__secondary_phone_number or (frappe.db.get_value("Customer", doc.customer, "mobile_no") if doc.customer else None) or (frappe.db.get_value("Contact", doc.contact_person, "mobile_no") if doc.contact_person else None) or "-" %}
+
+	{% set raw_address = doc.custom_address or doc.address_display or doc.customer_address or doc.custom_city__district_ or (frappe.db.get_value("Address", doc.customer_address, "address_line1") if doc.customer_address else None) or "-" %}
+	{% set cust_address = raw_address | replace("<br>", "\n") | striptags %}
+
+	<div class="meta-grid">
+		<div class="meta-row">
+			<span class="meta-label">Customer Name:</span>
+			<span class="meta-value">{{ doc.custom_customer_name or doc.customer or '-' }}</span>
+		</div>
+		<div class="meta-row">
+			<span class="meta-label">Nature of Job:</span>
+			<span class="meta-value">{{ doc.issue_type or doc.custom_nature_of_job or 'Servicing' }}</span>
+		</div>
+
+		<div class="meta-row">
+			<span class="meta-label">Phone:</span>
+			<span class="meta-value">{{ cust_phone }}</span>
+		</div>
+		<div class="meta-row">
+			<span class="meta-label">Billing Type:</span>
+			<span class="meta-value">{{ doc.custom_billing_type or doc.custom_mode_of_payment or 'Spare' }}</span>
+		</div>
+
+		<div class="meta-row">
+			<span class="meta-label">Address:</span>
+			<span class="meta-value" style="white-space: pre-line;">{{ cust_address }}</span>
+		</div>
+		<div class="meta-row">
+			<span class="meta-label">Rectification:</span>
+			<span class="meta-value">{{ doc.custom_rectification or doc.custom_machine_problem or doc.subject or '-' }}</span>
+		</div>
+	</div>
+
+	<!-- TABLE 1: MACHINE TABLE -->
+	{% set machines = doc.custom_machine_type_list or doc.custom_hd_ticket_machine_ or [] %}
+	<table class="pf-table">
+		<thead>
+			<tr>
+				<th style="width: 30%;">Machine</th>
+				<th style="width: 35%;">Name</th>
+				<th style="width: 35%;">Machine Problem</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% if machines and machines|length > 0 %}
+				{% for m in machines %}
+					<tr>
+						<td>{{ m.machine_type or m.machine_model or '-' }}</td>
+						<td>{{ m.machine_name or (frappe.db.get_value("Item", m.machine_type, "item_name") if m.machine_type else None) or '-' }}</td>
+						<td>{{ m.machine_problem or '-' }}</td>
+					</tr>
+				{% endfor %}
+			{% else %}
+				<tr>
+					<td>{{ doc.custom_machine_type or doc.custom_machine_model or doc.custom_machine_brand or '-' }}</td>
+					<td>{{ doc.custom_machine_name or '-' }}</td>
+					<td>{{ doc.custom_machine_problem or doc.custom_rectification or '-' }}</td>
+				</tr>
+			{% endif %}
+		</tbody>
+	</table>
+
+	<!-- TABLE 2: SPARES AND SERVICES -->
+	<div class="section-title">Spares and Services</div>
+	{% set items = doc.items or [] %}
+	<table class="pf-table">
+		<thead>
+			<tr>
+				<th style="width: 14%;">Item No</th>
+				<th style="width: 8%;" class="text-center">S.No</th>
+				<th style="width: 32%;">Name and Description</th>
+				<th style="width: 16%;" class="text-center">Spare HSN Code</th>
+				<th style="width: 10%;" class="text-center">Quantity</th>
+				<th style="width: 8%;" class="text-center">UOM</th>
+				<th style="width: 12%;" class="text-right">Rate</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% if items and items|length > 0 %}
+				{% for item in items %}
+					<tr>
+						<td>{{ item.item_code or ("SP-%03d" % loop.index) }}</td>
+						<td class="text-center">{{ loop.index }}</td>
+						<td>{{ item.item_name or item.item_code }}</td>
+						<td class="text-center">{{ item.gst_hsn_code or item.hsn_code or "-" }}</td>
+						<td class="text-center">{{ item.qty or 1 }}</td>
+						<td class="text-center">{{ item.uom or item.stock_uom or "Nos" }}</td>
+						<td class="text-right">{{ doc.get_formatted("rate", item) or ("₹" ~ (item.rate or "0.00")) }}</td>
+					</tr>
+				{% endfor %}
+			{% elif doc.custom_required_spares %}
+				<tr>
+					<td>SP-001</td>
+					<td class="text-center">1</td>
+					<td>{{ doc.custom_required_spares }}</td>
+					<td class="text-center">-</td>
+					<td class="text-center">1</td>
+					<td class="text-center">Nos</td>
+					<td class="text-right">₹0.00</td>
+				</tr>
+			{% else %}
+				<tr>
+					<td colspan="7" class="text-center" style="color: #666; font-style: italic;">
+						No items / spares listed.
+					</td>
+				</tr>
+			{% endif %}
+		</tbody>
+	</table>
+
+	<!-- TOTALS SECTION -->
+	<div class="totals-container">
+		<div class="totals-row">
+			<span>Service Charge / Ticket Service Charge</span>
+			<span>{{ doc.get_formatted("custom_service_charges") or ("₹" ~ (doc.custom_service_charges or "400.00")) }}</span>
+		</div>
+		<div class="totals-row">
+			<span>GST</span>
+			<span>{{ doc.get_formatted("total_taxes_and_charges") or ("₹" ~ (doc.total_taxes_and_charges or "0.00")) }}</span>
+		</div>
+		<div class="totals-divider"></div>
+		<div class="totals-row grand-total">
+			<span>Grand Total</span>
+			<span>{{ doc.get_formatted("grand_total") or ("₹" ~ (doc.grand_total or doc.total or "400.00")) }}</span>
+		</div>
+	</div>
+
+	<!-- SIGNATURES SECTION -->
+	<div class="signature-container">
+		<div class="sig-box">
+			<div class="sig-space"></div>
+			<div>Customer Signature</div>
+		</div>
+		<div class="sig-box">
+			<div class="sig-space"></div>
+			<div>Sales Technician Signature</div>
+		</div>
+	</div>
+
+	<!-- FOOTER SECTION -->
+	<div class="custom-footer">
+		<div class="footer-thankyou">
+			Thank you for your business! &nbsp;|&nbsp; This is a system-generated invoice.
+		</div>
+
+		<div class="showroom-bar">
+			<span class="red-dot">●</span>
+			<div class="showroom-item">
+				<span class="showroom-label">SHOWROOM</span>
+				<span class="showroom-val">0452-4355705</span>
+			</div>
+			<span class="showroom-divider">|</span>
+			<div class="showroom-item">
+				<span class="showroom-label">CHENNAI</span>
+				<span class="showroom-val">044-43561804</span>
+			</div>
+			<span class="showroom-divider">|</span>
+			<div class="showroom-item">
+				<span class="showroom-label">COCHIN</span>
+				<span class="showroom-val">95855 23743</span>
+			</div>
+			<span class="showroom-divider">|</span>
+			<div class="showroom-item">
+				<span class="showroom-label">DHALAVAIPURAM</span>
+				<span class="showroom-val">04563-245745</span>
+			</div>
+			<span class="red-dot">●</span>
+		</div>
+
+		<div class="bottom-red-bar"></div>
+	</div>
+</div>
