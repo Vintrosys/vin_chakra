@@ -2,13 +2,9 @@ frappe.ui.form.on("Sales Invoice", {
 	setup(frm) {
 		if (frappe.route_options) {
 			let cust = frappe.route_options.customer;
-			let phone = frappe.route_options.custom_customer_phone;
 			let ticket = frappe.route_options.ticket_name;
 			if (cust) {
 				sessionStorage.setItem("tp_invoice_customer", cust);
-			}
-			if (phone) {
-				sessionStorage.setItem("tp_invoice_phone", phone);
 			}
 			if (ticket) {
 				sessionStorage.setItem("tp_invoice_ticket", ticket);
@@ -20,8 +16,6 @@ frappe.ui.form.on("Sales Invoice", {
 		if (frm.is_new()) {
 			let cust = (frappe.route_options && frappe.route_options.customer)
 				|| sessionStorage.getItem("tp_invoice_customer");
-			let phone = (frappe.route_options && frappe.route_options.custom_customer_phone)
-				|| sessionStorage.getItem("tp_invoice_phone");
 			let ticket = (frappe.route_options && frappe.route_options.ticket_name)
 				|| sessionStorage.getItem("tp_invoice_ticket");
 
@@ -29,12 +23,6 @@ frappe.ui.form.on("Sales Invoice", {
 				sessionStorage.setItem("tp_invoice_customer", cust);
 				if (!frm.doc.customer || frm.doc.customer !== cust) {
 					frm.set_value("customer", cust);
-				}
-			}
-			if (phone) {
-				sessionStorage.setItem("tp_invoice_phone", phone);
-				if (!frm.doc.custom_customer_phone || frm.doc.custom_customer_phone !== phone) {
-					frm.set_value("custom_customer_phone", phone);
 				}
 			}
 
@@ -46,8 +34,6 @@ frappe.ui.form.on("Sales Invoice", {
 		if (frm.is_new()) {
 			let cust = (frappe.route_options && frappe.route_options.customer)
 				|| sessionStorage.getItem("tp_invoice_customer");
-			let phone = (frappe.route_options && frappe.route_options.custom_customer_phone)
-				|| sessionStorage.getItem("tp_invoice_phone");
 			let ticket = (frappe.route_options && frappe.route_options.ticket_name)
 				|| sessionStorage.getItem("tp_invoice_ticket");
 
@@ -55,12 +41,6 @@ frappe.ui.form.on("Sales Invoice", {
 				sessionStorage.setItem("tp_invoice_customer", cust);
 				if (!frm.doc.customer || frm.doc.customer !== cust) {
 					frm.set_value("customer", cust);
-				}
-			}
-			if (phone) {
-				sessionStorage.setItem("tp_invoice_phone", phone);
-				if (!frm.doc.custom_customer_phone || frm.doc.custom_customer_phone !== phone) {
-					frm.set_value("custom_customer_phone", phone);
 				}
 			}
 
@@ -87,34 +67,6 @@ frappe.ui.form.on("Sales Invoice", {
 		toggle_service_charges(frm);
 		render_apply_button(frm);
 		update_service_charges_from_machines(frm);
-	},
-
-	customer(frm) {
-		if (!frm.is_new()) return;
-
-		let phone = (frappe.route_options && frappe.route_options.custom_customer_phone)
-			|| sessionStorage.getItem("tp_invoice_phone");
-
-		if (phone) {
-			const restore_phone = () => {
-				if (!frm.doc.custom_customer_phone || frm.doc.custom_customer_phone !== phone) {
-					frm.set_value("custom_customer_phone", phone);
-				}
-			};
-			restore_phone();
-			setTimeout(restore_phone, 200);
-			setTimeout(restore_phone, 600);
-			setTimeout(restore_phone, 1200);
-		} else if (frm.doc.customer) {
-			frappe.db.get_value("Customer", frm.doc.customer, ["mobile_no", "custom_secondary_phone"], (r) => {
-				if (r) {
-					let mob = r.mobile_no || r.custom_secondary_phone || "";
-					if (mob && !frm.doc.custom_customer_phone) {
-						frm.set_value("custom_customer_phone", mob);
-					}
-				}
-			});
-		}
 	},
 
 	after_save(frm) {

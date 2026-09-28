@@ -609,6 +609,7 @@ class TechnicianPortal {
                         <div><i class="fa fa-user"></i> <span>Customer: <strong>${customer}</strong></span></div>
                         <div><i class="fa fa-map-marker"></i> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85%;" title="${address}">Loc: ${address}</span></div>
                         <div><i class="fa fa-cogs"></i> <span>Machine: ${machine_display}</span></div>
+                        ${t.custom_required_spares ? `<div><i class="fa fa-wrench"></i> <span>Required Spares: ${t.custom_required_spares}</span></div>` : ''}
                         <div><i class="fa fa-calendar"></i> <span>Date: ${date_str}</span></div>
                     </div>
                     ${invoice_btn}
@@ -660,6 +661,7 @@ class TechnicianPortal {
                     <div class="tp-list-meta-col">
                         <div><strong>Cust:</strong> ${customer}</div>
                         <div><strong>Loc:</strong> <span style="display:inline-block; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom;">${address}</span></div>
+                        ${t.custom_required_spares ? `<div><strong>Spares:</strong> ${t.custom_required_spares}</div>` : ''}
                     </div>
                     ${invoice_btn}
                 </div>
@@ -851,6 +853,7 @@ class TechnicianPortal {
                 </td>
                 <td>${machine_display}</td>
                 <td>${t.custom_customer_name || ''}</td>
+                <td>${t.custom_required_spares || '-'}</td>
                 <td>${location}</td>
                 <td>${t.custom_date || ''}</td>
                 <td>${t.status}</td>
@@ -869,11 +872,11 @@ class TechnicianPortal {
         <table class="table table-bordered" id="tp-today-table" style="width:100%;">
             <thead>
                 <tr>
-                    <th>Ticket No</th><th>Machine</th><th>Customer</th><th>Location</th><th>Date</th><th>Status</th><th>Action</th>
+                    <th>Ticket No</th><th>Machine</th><th>Customer</th><th>Required Spares</th><th>Location</th><th>Date</th><th>Status</th><th>Action</th>
                 </tr>
             </thead>
             <tbody>
-                ${rows || `<tr><td colspan="7" style="text-align:center;">No tickets found for today</td></tr>`}
+                ${rows || `<tr><td colspan="8" style="text-align:center;">No tickets found for today</td></tr>`}
             </tbody>
         </table>
         </div>
@@ -1015,7 +1018,7 @@ class TechnicianPortal {
             </div>
             
             <div class="tp-modal-section">
-                <h4>Customer & Machine Information</h4>
+                <h4>Customer Information</h4>
                 <div class="tp-modal-meta-grid">
                     <div class="tp-meta-item">
                         <span class="tp-meta-label">Customer Name</span>
@@ -1038,12 +1041,8 @@ class TechnicianPortal {
                         <span class="tp-meta-value">${address}</span>
                     </div>
                     <div class="tp-meta-item">
-                        <span class="tp-meta-label">Machine / Asset</span>
-                        <span class="tp-meta-value">${t.custom_machine_name || '-'}</span>
-                    </div>
-                    <div class="tp-meta-item">
-                        <span class="tp-meta-label">Machine Problem</span>
-                        <span class="tp-meta-value">${t.custom_machine_problem || '-'}</span>
+                        <span class="tp-meta-label">Required Spares</span>
+                        <span class="tp-meta-value">${t.custom_required_spares || '-'}</span>
                     </div>
                     <div class="tp-meta-item">
                         <span class="tp-meta-label">Scheduled Date</span>

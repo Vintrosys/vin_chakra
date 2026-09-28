@@ -88,6 +88,7 @@ def get_portal_data(
             custom_state,
             custom_machine_name,
             custom_machine_problem,
+            custom_required_spares,
             custom_date,
             creation,
             modified,
