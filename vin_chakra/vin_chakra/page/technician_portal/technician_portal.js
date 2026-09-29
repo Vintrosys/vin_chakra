@@ -1616,7 +1616,7 @@ class TechnicianPortal {
                     sessionStorage.removeItem("tp_invoice_machines");
                 }
 
-                let opts = {};
+                let opts = { from_technician_portal: 1 };
                 if (cust_id) opts.customer = cust_id;
                 if (mop) opts.custom_mode_of_payment = mop;
                 if (ticket_name) opts.ticket_name = ticket_name;

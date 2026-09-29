@@ -3,48 +3,33 @@ frappe.ui.form.on("Sales Invoice", {
 		if (frappe.route_options) {
 			let cust = frappe.route_options.customer;
 			let ticket = frappe.route_options.ticket_name;
+			let mop = frappe.route_options.custom_mode_of_payment;
+			let from_tp = frappe.route_options.from_technician_portal;
+
+			if (from_tp || ticket) {
+				sessionStorage.setItem("tp_invoice_active", "1");
+			}
 			if (cust) {
 				sessionStorage.setItem("tp_invoice_customer", cust);
 			}
 			if (ticket) {
 				sessionStorage.setItem("tp_invoice_ticket", ticket);
 			}
+			if (mop) {
+				sessionStorage.setItem("tp_invoice_mode_of_payment", mop);
+			}
 		}
 	},
 
 	onload(frm) {
 		if (frm.is_new()) {
-			let cust = (frappe.route_options && frappe.route_options.customer)
-				|| sessionStorage.getItem("tp_invoice_customer");
-			let ticket = (frappe.route_options && frappe.route_options.ticket_name)
-				|| sessionStorage.getItem("tp_invoice_ticket");
-
-			if (cust) {
-				sessionStorage.setItem("tp_invoice_customer", cust);
-				if (!frm.doc.customer || frm.doc.customer !== cust) {
-					frm.set_value("customer", cust);
-				}
-			}
-
-			populate_hd_ticket_machines(frm, ticket);
+			apply_invoice_portal_details(frm);
 		}
 	},
 
 	refresh(frm) {
 		if (frm.is_new()) {
-			let cust = (frappe.route_options && frappe.route_options.customer)
-				|| sessionStorage.getItem("tp_invoice_customer");
-			let ticket = (frappe.route_options && frappe.route_options.ticket_name)
-				|| sessionStorage.getItem("tp_invoice_ticket");
-
-			if (cust) {
-				sessionStorage.setItem("tp_invoice_customer", cust);
-				if (!frm.doc.customer || frm.doc.customer !== cust) {
-					frm.set_value("customer", cust);
-				}
-			}
-
-			populate_hd_ticket_machines(frm, ticket);
+			apply_invoice_portal_details(frm);
 		} else {
 			clear_invoice_session();
 		}
@@ -69,6 +54,14 @@ frappe.ui.form.on("Sales Invoice", {
 		update_service_charges_from_machines(frm);
 	},
 
+	before_save(frm) {
+		remove_empty_item_rows(frm);
+	},
+
+	validate(frm) {
+		remove_empty_item_rows(frm);
+	},
+
 	after_save(frm) {
 		clear_invoice_session();
 	},
@@ -77,6 +70,51 @@ frappe.ui.form.on("Sales Invoice", {
 		clear_invoice_session();
 	}
 });
+
+function apply_invoice_portal_details(frm) {
+	let is_portal = frappe.route_options && (frappe.route_options.from_technician_portal || frappe.route_options.ticket_name);
+	let is_active = sessionStorage.getItem("tp_invoice_active") === "1";
+
+	if (is_portal || is_active) {
+		let cust = (frappe.route_options && frappe.route_options.customer)
+			|| sessionStorage.getItem("tp_invoice_customer");
+		let ticket = (frappe.route_options && frappe.route_options.ticket_name)
+			|| sessionStorage.getItem("tp_invoice_ticket");
+		let mop = (frappe.route_options && frappe.route_options.custom_mode_of_payment)
+			|| sessionStorage.getItem("tp_invoice_mode_of_payment");
+
+		if (cust) {
+			sessionStorage.setItem("tp_invoice_customer", cust);
+			if (!frm.doc.customer || frm.doc.customer !== cust) {
+				frm.set_value("customer", cust);
+			}
+		}
+
+		if (mop) {
+			sessionStorage.setItem("tp_invoice_mode_of_payment", mop);
+			if (!frm.doc.custom_mode_of_payment || frm.doc.custom_mode_of_payment !== mop) {
+				frm.set_value("custom_mode_of_payment", mop);
+			}
+		}
+
+		if (ticket) {
+			sessionStorage.setItem("tp_invoice_ticket", ticket);
+			populate_hd_ticket_machines(frm, ticket);
+		}
+	} else {
+		clear_invoice_session();
+	}
+}
+
+function remove_empty_item_rows(frm) {
+	if (frm.doc && frm.doc.items && frm.doc.items.length > 0) {
+		let initial_len = frm.doc.items.length;
+		frm.doc.items = frm.doc.items.filter(row => row.item_code && String(row.item_code).trim() !== "");
+		if (frm.doc.items.length !== initial_len) {
+			frm.refresh_field("items");
+		}
+	}
+}
 
 frappe.ui.form.on("Machine type list", {
 	machine_type(frm) {
@@ -151,7 +189,6 @@ function update_service_charges_from_machines(frm) {
 	});
 }
 
-
 function apply_service_charges_to_items(frm) {
 	if (!frm || !frm.doc) return;
 
@@ -216,7 +253,9 @@ function render_apply_button(frm) {
 }
 
 function clear_invoice_session() {
+	sessionStorage.removeItem("tp_invoice_active");
 	sessionStorage.removeItem("tp_invoice_customer");
+	sessionStorage.removeItem("tp_invoice_mode_of_payment");
 	sessionStorage.removeItem("tp_invoice_phone");
 	sessionStorage.removeItem("tp_invoice_ticket");
 	sessionStorage.removeItem("tp_invoice_machines");
@@ -225,9 +264,31 @@ function clear_invoice_session() {
 function populate_hd_ticket_machines(frm, ticket_name) {
 	if (!frm.is_new()) return;
 
-	if (frm.doc.custom_hd_ticket_machine_ && frm.doc.custom_hd_ticket_machine_.length > 0) {
+	// Check if rows actually have machine content (ignore Frappe's empty default row)
+	let has_real_rows = (frm.doc.custom_hd_ticket_machine_ || []).some(
+		row => row.machine_type && String(row.machine_type).trim() !== ""
+	);
+	if (has_real_rows) {
 		update_service_charges_from_machines(frm);
 		return;
+	}
+
+	function render_machines(machines) {
+		if (!Array.isArray(machines) || machines.length === 0) return;
+		frm.clear_table("custom_hd_ticket_machine_");
+		machines.forEach((m) => {
+			let row = frm.add_child("custom_hd_ticket_machine_");
+			row.machine_type = m.machine_type || "";
+			row.machine_name = m.machine_name || "";
+			row.machine_brand = m.machine_brand || "";
+			row.machine_quantity = m.machine_quantity || 1;
+			row.machine_problem = m.machine_problem || "";
+			row.purchased_at_scs = m.purchased_at_scs || "";
+			row.purchase_year = m.purchase_year || "";
+			row.model_no = m.model_no || "";
+		});
+		frm.refresh_field("custom_hd_ticket_machine_");
+		update_service_charges_from_machines(frm);
 	}
 
 	let stored_machines_str = sessionStorage.getItem("tp_invoice_machines");
@@ -235,20 +296,7 @@ function populate_hd_ticket_machines(frm, ticket_name) {
 		try {
 			let machines = JSON.parse(stored_machines_str);
 			if (Array.isArray(machines) && machines.length > 0) {
-				frm.clear_table("custom_hd_ticket_machine_");
-				machines.forEach((m) => {
-					let row = frm.add_child("custom_hd_ticket_machine_");
-					row.machine_type = m.machine_type;
-					row.machine_name = m.machine_name;
-					row.machine_brand = m.machine_brand;
-					row.machine_quantity = m.machine_quantity || 1;
-					row.machine_problem = m.machine_problem;
-					row.purchased_at_scs = m.purchased_at_scs;
-					row.purchase_year = m.purchase_year;
-					row.model_no = m.model_no;
-				});
-				frm.refresh_field("custom_hd_ticket_machine_");
-				update_service_charges_from_machines(frm);
+				render_machines(machines);
 				return;
 			}
 		} catch (e) {
@@ -265,20 +313,7 @@ function populate_hd_ticket_machines(frm, ticket_name) {
 				let machines = res.machines || [];
 				if (machines && machines.length > 0) {
 					sessionStorage.setItem("tp_invoice_machines", JSON.stringify(machines));
-					frm.clear_table("custom_hd_ticket_machine_");
-					machines.forEach((m) => {
-						let row = frm.add_child("custom_hd_ticket_machine_");
-						row.machine_type = m.machine_type;
-						row.machine_name = m.machine_name;
-						row.machine_brand = m.machine_brand;
-						row.machine_quantity = m.machine_quantity || 1;
-						row.machine_problem = m.machine_problem;
-						row.purchased_at_scs = m.purchased_at_scs;
-						row.purchase_year = m.purchase_year;
-						row.model_no = m.model_no;
-					});
-					frm.refresh_field("custom_hd_ticket_machine_");
-					update_service_charges_from_machines(frm);
+					render_machines(machines);
 				}
 			}
 		});

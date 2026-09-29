@@ -109,6 +109,9 @@ doc_events = {
 	},
 	"Support Form Template": {
 		"on_update": "vin_chakra.vin_chakra.doctype.support_form_template.support_form_template.sync_web_form"
+	},
+	"Sales Invoice": {
+		"before_validate": "vin_chakra.vin_chakra.custom.sales_invoice.remove_empty_items"
 	}
 }
 
