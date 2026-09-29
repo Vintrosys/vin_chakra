@@ -8,6 +8,7 @@ def get_dashboard_data(
     technician: str = None,
     status: str = None,
     priority: str = None,
+    ticket_type: str = None,
     search_query: str = None,
     limit_start: int = 0,
     limit_page_length: int = 10,
@@ -22,6 +23,7 @@ def get_dashboard_data(
     technician = technician if technician not in (None, "", "None", "null", "undefined") else None
     status = status if status not in (None, "", "None", "null", "undefined") else None
     priority = priority if priority not in (None, "", "None", "null", "undefined") else None
+    ticket_type = ticket_type if ticket_type not in (None, "", "None", "null", "undefined") else None
     search_query = search_query if search_query not in (None, "", "None", "null", "undefined") else None
 
         
@@ -62,6 +64,9 @@ def get_dashboard_data(
     if priority:
         summary_conditions.append("priority = %(priority)s")
         summary_values["priority"] = priority
+    if ticket_type:
+        summary_conditions.append("ticket_type = %(ticket_type)s")
+        summary_values["ticket_type"] = ticket_type
     if search_query:
         search_escaped = f"%{search_query}%"
         summary_conditions.append("(name LIKE %(search)s OR subject LIKE %(search)s OR custom_customer_name LIKE %(search)s OR customer LIKE %(search)s)")
@@ -378,7 +383,8 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         query = f"""
             SELECT 
                 cl.name, cl.technician as user, cl.latitude, cl.longitude, cl.timestamp as creation, 
-                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name, t.customer, t.contact
+                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name, t.customer, t.contact,
+                t.custom_address
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {where_clause}
@@ -388,6 +394,12 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         all_logs = enrich_tickets_customer_details(all_logs)
         for log in all_logs:
             log["customer"] = log.get("custom_customer_name") or log.get("customer") or "N/A"
+            # Priority: Customer doctype address (enriched) → HD Ticket custom_address → GPS location_address
+            log["display_address"] = (
+                log.get("custom_address") or
+                log.get("location_address") or
+                ""
+            )
         
         # Keep only the latest log per technician
         seen_users = set()
@@ -426,7 +438,8 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         logs = frappe.db.sql(f"""
             SELECT 
                 cl.name, cl.check_type, cl.latitude, cl.longitude, cl.timestamp, 
-                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name, t.customer, t.contact
+                cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name, t.customer, t.contact,
+                t.custom_address
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {where_clause}
@@ -435,6 +448,12 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         logs = enrich_tickets_customer_details(logs)
         for log in logs:
             log["customer"] = log.get("custom_customer_name") or log.get("customer") or "N/A"
+            # Priority: Customer doctype address (enriched) → HD Ticket custom_address → GPS location_address
+            log["display_address"] = (
+                log.get("custom_address") or
+                log.get("location_address") or
+                ""
+            )
         
         tickets_map = {}
         for log in logs:
@@ -455,13 +474,13 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
                 tickets_map[t_id]["check_in"] = log.timestamp
                 tickets_map[t_id]["latitude"] = log.latitude
                 tickets_map[t_id]["longitude"] = log.longitude
-                tickets_map[t_id]["address"] = log.location_address
+                tickets_map[t_id]["address"] = log.display_address
             elif log.check_type == "Check-out":
                 tickets_map[t_id]["check_out"] = log.timestamp
                 if not tickets_map[t_id]["latitude"]:
                     tickets_map[t_id]["latitude"] = log.latitude
                     tickets_map[t_id]["longitude"] = log.longitude
-                    tickets_map[t_id]["address"] = log.location_address
+                    tickets_map[t_id]["address"] = log.display_address
                     
         visits = []
         for t_id, data in tickets_map.items():

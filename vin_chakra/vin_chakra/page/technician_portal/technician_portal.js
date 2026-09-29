@@ -1597,29 +1597,21 @@ class TechnicianPortal {
                 customer: cust
             },
             callback: function(r) {
-                let res = r.message || {};
-                let cust_id = res.customer_id || (cust && cust !== 'N/A' ? cust : "");
-                let mop = res.mode_of_payment || res.custom_mode_of_payment || "";
+                let res     = r.message || {};
+                let cust_id = res.customer_id || cust || "";
+                let mop     = res.mode_of_payment || "";
 
-                if (cust_id) {
-                    sessionStorage.setItem("tp_invoice_customer", cust_id);
-                }
-                if (mop) {
-                    sessionStorage.setItem("tp_invoice_mode_of_payment", mop);
-                }
-                if (ticket_name) {
-                    sessionStorage.setItem("tp_invoice_ticket", ticket_name);
-                }
-                if (res.machines && res.machines.length) {
-                    sessionStorage.setItem("tp_invoice_machines", JSON.stringify(res.machines));
-                } else {
-                    sessionStorage.removeItem("tp_invoice_machines");
-                }
+                // Store only scalar values — machines are fetched fresh by the invoice form
+                if (cust_id)     sessionStorage.setItem("tp_inv_customer", cust_id);
+                if (mop)         sessionStorage.setItem("tp_inv_mop", mop);
+                if (ticket_name) sessionStorage.setItem("tp_inv_ticket", ticket_name);
+                sessionStorage.setItem("tp_inv_active", "1");
 
+                // Pass same keys via route_options so setup() can also capture them
                 let opts = { from_technician_portal: 1 };
-                if (cust_id) opts.customer = cust_id;
-                if (mop) opts.custom_mode_of_payment = mop;
-                if (ticket_name) opts.ticket_name = ticket_name;
+                if (cust_id)     opts.customer               = cust_id;
+                if (mop)         opts.custom_mode_of_payment = mop;
+                if (ticket_name) opts.ticket_name            = ticket_name;
 
                 frappe.new_doc("Sales Invoice", opts);
             }

@@ -39,7 +39,8 @@ class ChiefTechnicianDashboard {
             date_to: "",
             technician: "",
             status: "",
-            priority: ""
+            priority: "",
+            ticket_type: ""
         };
         this.search_query = "";
         this.debounce_timer = null;
@@ -58,6 +59,7 @@ class ChiefTechnicianDashboard {
         this.map = null;
         this.markers_layer = null;
         this.tech_control = null;
+        this.ticket_type_control = null;
         
         // Map specific state
         this.map_filters = {
@@ -120,6 +122,7 @@ class ChiefTechnicianDashboard {
         this.filters.technician = params.get("technician") || "";
         this.filters.status = params.get("status") || "";
         this.filters.priority = params.get("priority") || "";
+        this.filters.ticket_type = params.get("ticket_type") || "";
         this.search_query = params.get("search") || "";
     }
 
@@ -149,6 +152,7 @@ class ChiefTechnicianDashboard {
         if (this.filters.technician) params.set("technician", this.filters.technician); else params.delete("technician");
         if (this.filters.status) params.set("status", this.filters.status); else params.delete("status");
         if (this.filters.priority) params.set("priority", this.filters.priority); else params.delete("priority");
+        if (this.filters.ticket_type) params.set("ticket_type", this.filters.ticket_type); else params.delete("ticket_type");
         if (this.search_query) params.set("search", this.search_query); else params.delete("search");
         
         let queryString = params.toString();
@@ -176,6 +180,9 @@ class ChiefTechnicianDashboard {
 
         if (this.tech_control && this.filters.technician) {
             this.tech_control.set_value(this.filters.technician);
+        }
+        if (this.ticket_type_control && this.filters.ticket_type) {
+            this.ticket_type_control.set_value(this.filters.ticket_type);
         }
     }
 
@@ -267,6 +274,10 @@ class ChiefTechnicianDashboard {
                             <option value="Urgent">Urgent</option>
                         </select>
                     </div>
+                    <div class="ct-filter-item" id="ct-filter-ticket-type-wrap">
+                        <label>Ticket Type</label>
+                        <div id="ct-filter-ticket-type-control"></div>
+                    </div>
                 </div>
                 
                 <!-- Active Filters Area -->
@@ -282,6 +293,7 @@ class ChiefTechnicianDashboard {
         `);
         
         this.render_tech_filter_control();
+        this.render_ticket_type_filter_control();
         this.render_view_structure();
     }
     
@@ -318,6 +330,49 @@ class ChiefTechnicianDashboard {
         }, 100);
     }
     
+    render_ticket_type_filter_control() {
+        let self = this;
+        this.ticket_type_control = frappe.ui.form.make_control({
+            df: {
+                fieldtype: "Link",
+                options: "HD Ticket Type",
+                placeholder: "All Ticket Types",
+                onchange: () => {
+                    self.filters.ticket_type = self.ticket_type_control.get_value();
+                    self.reset_pagination();
+                    self.load_data();
+                }
+            },
+            parent: this.wrapper.find("#ct-filter-ticket-type-control"),
+            render_input: true
+        });
+        
+        setTimeout(() => {
+            this.ticket_type_control.$wrapper.find('.form-group').css({'margin': '0'});
+            this.ticket_type_control.$wrapper.find('.clearfix').hide();
+            this.ticket_type_control.$input.css({
+                'background': '#fff', 
+                'border': '1px solid #e2e8f0', 
+                'border-radius': '6px', 
+                'height': '36px', 
+                'padding': '0 12px',
+                'box-shadow': 'none'
+            });
+            this.ticket_type_control.$wrapper.css({'background': 'transparent'});
+
+            // Fallback: bind a change event directly on the input in case df.onchange
+            // doesn't fire reliably in page context (Link controls outside forms)
+            this.ticket_type_control.$input.off('change.ct_type').on('change.ct_type', () => {
+                let val = this.ticket_type_control.get_value();
+                if (val !== this.filters.ticket_type) {
+                    this.filters.ticket_type = val;
+                    this.reset_pagination();
+                    this.load_data();
+                }
+            });
+        }, 100);
+    }
+    
     render_view_structure() {
         if (this.map) {
             try {
@@ -329,9 +384,9 @@ class ChiefTechnicianDashboard {
             this.markers_layer = null;
         }
 
-        // Status/Priority filters only apply to the ticket list — hide them
+        // Status/Priority/TicketType filters only apply to the ticket list — hide them
         // on the map tab and attendance tab so it's clear they have no effect there.
-        this.wrapper.find("#ct-filter-status-wrap, #ct-filter-priority-wrap")
+        this.wrapper.find("#ct-filter-status-wrap, #ct-filter-priority-wrap, #ct-filter-ticket-type-wrap")
             .toggle(this.current_tab !== "movement" && this.current_tab !== "attendance");
 
         // The quick time filter dropdown should only show for analytics and attendance
@@ -762,6 +817,7 @@ class ChiefTechnicianDashboard {
                 technician: this.filters.technician,
                 status: this.filters.status,
                 priority: this.filters.priority,
+                ticket_type: this.filters.ticket_type,
                 search_query: this.search_query,
                 limit_start: limit_start,
                 limit_page_length: limit_len,
@@ -945,7 +1001,6 @@ class ChiefTechnicianDashboard {
                     
                     <div class="ct-card-meta">
                         <div><i class="fa fa-user"></i> <span>Customer: <strong>${t.custom_customer_name || t.customer || 'N/A'}</strong></span></div>
-                        <div><i class="fa fa-cogs"></i> <span>Machine: ${t.custom_machine_name || 'N/A'}</span></div>
                         <div><i class="fa fa-calendar-o"></i> <span>Date: ${t.custom_date ? frappe.datetime.global_date_format(t.custom_date) : 'N/A'}</span></div>
                         ${res_date_html}
                     </div>
@@ -1003,7 +1058,6 @@ class ChiefTechnicianDashboard {
                     </div>
                     <div class="ct-list-meta-col">
                         <div><strong>Cust:</strong> ${t.custom_customer_name || t.customer || 'N/A'}</div>
-                        <div><strong>Machine:</strong> ${t.custom_machine_name || 'N/A'}</div>
                         ${res_date_html}
                     </div>
                     <div class="ct-list-assignees-col">
@@ -1278,7 +1332,7 @@ class ChiefTechnicianDashboard {
                         <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary); font-weight: 700;">${log.ticket}</a><br>
                         <strong>Customer:</strong> ${log.customer || 'N/A'}<br>
                         <strong>Status:</strong> ${log.status || 'N/A'}<br>
-                        <strong>Address:</strong> <span style="color: #475569;">${log.location_address || 'N/A'}</span>
+                        <strong>Address:</strong> <span style="color: #475569;">${log.display_address || 'N/A'}</span>
                     </div>
                 </div>
             `;
@@ -1520,6 +1574,7 @@ class ChiefTechnicianDashboard {
         }
         if (this.filters.status) pills_html += `<span class="ct-filter-pill">Status: ${this.filters.status} <i class="fa fa-times ct-filter-remove" data-key="status"></i></span>`;
         if (this.filters.priority) pills_html += `<span class="ct-filter-pill">Priority: ${this.filters.priority} <i class="fa fa-times ct-filter-remove" data-key="priority"></i></span>`;
+        if (this.filters.ticket_type) pills_html += `<span class="ct-filter-pill">Type: ${this.filters.ticket_type} <i class="fa fa-times ct-filter-remove" data-key="ticket_type"></i></span>`;
         if (this.search_query) pills_html += `<span class="ct-filter-pill">Search: ${this.search_query} <i class="fa fa-times ct-filter-remove" data-key="search"></i></span>`;
         
         container.html(pills_html);
@@ -1531,6 +1586,10 @@ class ChiefTechnicianDashboard {
             if (key === "technician") {
                 self.tech_control.set_value("");
                 return; // tech_control.set_value("") triggers onchange, which handles pagination reset and load_data
+            }
+            if (key === "ticket_type") {
+                self.ticket_type_control.set_value("");
+                return; // triggers onchange → reset_pagination + load_data
             }
             if (key === "search") {
                 self.search_query = "";
