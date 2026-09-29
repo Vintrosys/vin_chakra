@@ -148,16 +148,6 @@ def get_form_schema(template_name: str = None) -> dict:
 		if row.fieldname == "custom_purchase_year" and not options_list:
 			options_list = [str(year) for year in range(2010, 2027)]
 
-		field_info = {
-			"fieldname": row.fieldname,
-			"fieldtype": fieldtype,
-			"label": row.label or default_label,
-			"reqd": int(row.reqd) if row.reqd is not None else int(default_reqd or 0),
-			"options": df.options if (df and df.fieldtype == "Table") else options_list,
-			"child_fields": child_fields,
-			"icon": row.icon or "tag"
-		}
-
 		if step_num not in steps_map:
 			steps_map[step_num] = []
 
@@ -166,6 +156,18 @@ def get_form_schema(template_name: str = None) -> dict:
 		if not sec_obj:
 			sec_obj = {"label": sec_label, "fields": []}
 			sections_in_step.append(sec_obj)
+
+		from vin_chakra.vin_chakra.doctype.support_form_template.support_form_template import get_display_label
+
+		field_info = {
+			"fieldname": row.fieldname,
+			"fieldtype": fieldtype,
+			"label": get_display_label(row, df),
+			"reqd": int(row.reqd) if row.reqd is not None else int(default_reqd or 0),
+			"options": df.options if (df and df.fieldtype == "Table") else options_list,
+			"child_fields": child_fields,
+			"icon": row.icon or "tag"
+		}
 
 		sec_obj["fields"].append(field_info)
 
@@ -382,6 +384,7 @@ def get_ticket_info(ticket_name: str) -> dict:
 		if df.fieldtype in ignored_fieldtypes or df.fieldname in ignored_fieldnames:
 			continue
 
+		
 		field_info = {
 			"fieldname": df.fieldname,
 			"label": df.label or df.fieldname,

@@ -34,40 +34,44 @@ $(`<style>
 </style>`).appendTo('head');
 
 frappe.ui.form.on('Quotation', {
-    onload: function (frm) {
-        if (frm.is_new() && !frm.doc.custom_sales_person) {
+	onload: function (frm) {
+		if (frm.is_new() && !frm.doc.custom_sales_person) {
 
-            // Get Employee linked to current logged-in user
-            frappe.db.get_value(
-                'Employee',
-                { user_id: frappe.session.user },
-                'name'
-            ).then(r => {
+			// Get Employee linked to current logged-in user
+			frappe.db.get_value(
+				'Employee',
+				{ user_id: frappe.session.user },
+				'name'
+			).then(r => {
 
-                if (!r.message || !r.message.name) {
-                    return;
-                }
+				if (!r.message || !r.message.name) {
+					return;
+				}
 
-                // Get Sales Person linked to that Employee
-                frappe.db.get_value(
-                    'Sales Person',
-                    { employee: r.message.name },
-                    'name'
-                ).then(sp => {
+				// Get Sales Person linked to that Employee
+				frappe.db.get_value(
+					'Sales Person',
+					{ employee: r.message.name },
+					'name'
+				).then(sp => {
 
-                    if (sp.message && sp.message.name) {
-                        frm.set_value(
-                            'custom_sales_person',
-                            sp.message.name
-                        );
-                    }
+					if (sp.message && sp.message.name) {
+						frm.set_value(
+							'custom_sales_person',
+							sp.message.name
+						);
+					}
 
-                });
-            });
-        }
-    },
+				});
+			});
+		}
+	},
 
+	custom_sales_person: function (frm) {
+		console.log("SALES PERSON SELECTED:", frm.doc.custom_sales_person);
 
+		update_sales_person_phone(frm);
+	},
 
 	refresh: function (frm) {
 		// On form load, inject buttons for all existing rows that already have an item
@@ -100,6 +104,50 @@ frappe.ui.form.on('Quotation', {
 		}
 	}
 });
+
+function update_sales_person_phone(frm) {
+	console.log("Updating sales person phone...");
+
+	if (!frm.doc.custom_sales_person) {
+		frm.set_value("custom_sales_person_phone", "");
+		return;
+	}
+
+	frappe.db.get_value(
+		"Sales Person",
+		frm.doc.custom_sales_person,
+		"employee"
+	).then(r => {
+		console.log("Sales Person result:", r);
+
+		const employee = r.message && r.message.employee;
+
+		if (!employee) {
+			console.log("No employee linked");
+			frm.set_value("custom_sales_person_phone", "");
+			return;
+		}
+
+		console.log("Employee:", employee);
+
+		return frappe.db.get_value(
+			"Employee",
+			employee,
+			"cell_number"
+		);
+	}).then(r => {
+		if (!r) return;
+
+		console.log("Employee phone result:", r);
+
+		const phone = r.message ? r.message.cell_number : "";
+
+		frm.set_value(
+			"custom_sales_person_phone",
+			phone || ""
+		);
+	});
+}
 
 frappe.ui.form.on('Quotation Item', {
 	item_code: function (frm, cdt, cdn) {
