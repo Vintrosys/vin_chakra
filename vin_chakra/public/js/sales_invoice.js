@@ -10,6 +10,12 @@ frappe.ui.form.on("Sales Invoice", {
 			if (ro.customer)              sessionStorage.setItem("tp_inv_customer", ro.customer);
 			if (ro.ticket_name)           sessionStorage.setItem("tp_inv_ticket",   ro.ticket_name);
 			if (ro.custom_mode_of_payment) sessionStorage.setItem("tp_inv_mop",    ro.custom_mode_of_payment);
+			if (ro.custom_nature_of_job || ro.nature_of_job || ro.ticket_type) {
+				sessionStorage.setItem("tp_inv_noj", ro.custom_nature_of_job || ro.nature_of_job || ro.ticket_type);
+			}
+			if (ro.custom_gst_bill_required !== undefined) {
+				sessionStorage.setItem("tp_inv_gst", String(ro.custom_gst_bill_required));
+			}
 			// Mark this form session as portal-originated
 			sessionStorage.setItem("tp_inv_active", "1");
 		}
@@ -19,6 +25,8 @@ frappe.ui.form.on("Sales Invoice", {
 	// Fires once when the form is first loaded. Best place for one-time async
 	// operations on a new doc (frm.is_new() is reliable here).
 	onload(frm) {
+		_sync_nature_of_job_options(frm);
+
 		if (!frm.is_new()) return;
 
 		let is_portal = sessionStorage.getItem("tp_inv_active") === "1";
@@ -27,6 +35,8 @@ frappe.ui.form.on("Sales Invoice", {
 		let customer   = sessionStorage.getItem("tp_inv_customer") || "";
 		let ticket     = sessionStorage.getItem("tp_inv_ticket")   || "";
 		let mop        = sessionStorage.getItem("tp_inv_mop")      || "";
+		let noj        = sessionStorage.getItem("tp_inv_noj")      || "";
+		let gst_str    = sessionStorage.getItem("tp_inv_gst");
 
 		// Set scalar fields immediately
 		if (customer && frm.doc.customer !== customer) {
@@ -35,16 +45,47 @@ frappe.ui.form.on("Sales Invoice", {
 		if (mop && frm.doc.custom_mode_of_payment !== mop) {
 			frm.set_value("custom_mode_of_payment", mop);
 		}
+		if (noj && frm.doc.custom_nature_of_job !== noj) {
+			frm.set_value("custom_nature_of_job", noj);
+		}
+		if (gst_str !== null && gst_str !== undefined && gst_str !== "") {
+			let gst_val = (gst_str === "1" || gst_str === "true" || gst_str === "Yes") ? 1 : 0;
+			if (frm.doc.custom_gst_bill_required !== gst_val) {
+				frm.set_value("custom_gst_bill_required", gst_val);
+			}
+		}
 
-		// Fetch machines directly from the ticket — no sessionStorage for machines
+		// Fetch machines & ticket details directly from the ticket — no sessionStorage for machines
 		if (ticket) {
 			frappe.call({
 				method: "vin_chakra.technician_api.get_invoice_init_details",
 				args: { ticket_name: ticket },
 				freeze: false,
 				callback(r) {
-					let machines = (r.message || {}).machines || [];
+					let res = r.message || {};
+					let machines = res.machines || [];
 					_populate_machine_table(frm, machines);
+
+					let ticket_noj = res.ticket_type || res.nature_of_job || "";
+					if (ticket_noj && (!frm.doc.custom_nature_of_job || frm.doc.custom_nature_of_job !== ticket_noj)) {
+						frm.set_value("custom_nature_of_job", ticket_noj);
+					}
+
+					let ticket_mop = res.mode_of_payment || "";
+					if (ticket_mop && (!frm.doc.custom_mode_of_payment || frm.doc.custom_mode_of_payment !== ticket_mop)) {
+						frm.set_value("custom_mode_of_payment", ticket_mop);
+					}
+
+					if (res.gst_bill_required !== undefined || res.custom_gst_bill_required !== undefined) {
+						let ticket_gst = (res.gst_bill_required === 1 || res.custom_gst_bill_required === 1) ? 1 : 0;
+						if (frm.doc.custom_gst_bill_required !== ticket_gst) {
+							frm.set_value("custom_gst_bill_required", ticket_gst);
+						}
+						// Always apply GST taxes based on authoritative backend value
+						frappe.after_ajax(function () { apply_gst_taxes(frm); });
+					}
+
+					toggle_service_charges(frm);
 				}
 			});
 		}
@@ -78,6 +119,10 @@ frappe.ui.form.on("Sales Invoice", {
 		toggle_service_charges(frm);
 		render_apply_button(frm);
 		update_service_charges_from_machines(frm);
+	},
+
+	custom_gst_bill_required(frm) {
+		apply_gst_taxes(frm);
 	},
 
 	// ─── SAVE / SUBMIT ─────────────────────────────────────────────────────────
@@ -160,9 +205,85 @@ function _populate_machine_table(frm, machines) {
 
 /** Clear all session keys set by the technician portal invoice flow. */
 function _clear_tp_session() {
-	["tp_inv_active", "tp_inv_customer", "tp_inv_ticket", "tp_inv_mop"].forEach(function (k) {
+	["tp_inv_active", "tp_inv_customer", "tp_inv_ticket", "tp_inv_mop", "tp_inv_noj", "tp_inv_gst"].forEach(function (k) {
 		sessionStorage.removeItem(k);
 	});
+}
+
+/** Synchronize custom_nature_of_job select options with HD Ticket Type records. */
+function _sync_nature_of_job_options(frm) {
+	if (!frm || !frm.set_df_property || !frm.fields_dict.custom_nature_of_job) return;
+	frappe.call({
+		method: "frappe.client.get_list",
+		args: {
+			doctype: "HD Ticket Type",
+			fields: ["name"],
+			limit_page_length: 100
+		},
+		callback: function (r) {
+			if (r.message && Array.isArray(r.message)) {
+				let df = frm.fields_dict.custom_nature_of_job.df || {};
+				let existing_options = (df.options || "").split("\n").map(x => x.trim()).filter(Boolean);
+				let db_options = r.message.map(d => (d.name || "").trim()).filter(Boolean);
+				let combined = Array.from(new Set([...existing_options, ...db_options]));
+				let options_str = ["", ...combined].join("\n");
+				if (df.options !== options_str) {
+					frm.set_df_property("custom_nature_of_job", "options", options_str);
+				}
+			}
+		}
+	});
+}
+
+/**
+ * Apply or clear GST taxes on the Sales Invoice based on custom_gst_bill_required.
+ *
+ * GST enabled  → find the company's GST in-state template and set
+ *                taxes_and_charges (Frappe fetches the child rows automatically).
+ * GST disabled → clear taxes_and_charges and wipe the taxes child table so
+ *                effective tax is 0%.
+ */
+function apply_gst_taxes(frm) {
+	if (!frm || !frm.doc) return;
+
+	let gst_enabled = frm.doc.custom_gst_bill_required;
+
+	if (gst_enabled) {
+		let company = frm.doc.company || "";
+		frappe.call({
+			method: "frappe.client.get_list",
+			args: {
+				doctype: "Sales Taxes and Charges Template",
+				filters: { company: company },
+				fields: ["name"],
+				limit_page_length: 20
+			},
+			callback: function (r) {
+				let templates = r.message || [];
+				// Prefer the In-state template; fall back to first available
+				let preferred = templates.find(function (t) { return /in.?state/i.test(t.name); });
+				let template  = preferred || templates[0];
+				if (template) {
+					if (frm.doc.taxes_and_charges !== template.name) {
+						frm.set_value("taxes_and_charges", template.name);
+					}
+					// Trigger Frappe's built-in handler to load tax rows into the child table
+					frm.script_manager.trigger("taxes_and_charges", frm.doc.doctype, frm.doc.name);
+				}
+			}
+		});
+	} else {
+		// Clear all taxes → 0% effective GST
+		if (frm.doc.taxes_and_charges) {
+			frm.set_value("taxes_and_charges", "");
+		}
+		frm.clear_table("taxes");
+		frm.refresh_field("taxes");
+		if (frm.cscript && frm.cscript.calculate_taxes_and_totals) {
+			frm.cscript.calculate_taxes_and_totals(frm.doc);
+		}
+		frappe.show_alert({ message: __("GST not required — taxes cleared (0%)"), indicator: "blue" });
+	}
 }
 
 function remove_empty_item_rows(frm) {

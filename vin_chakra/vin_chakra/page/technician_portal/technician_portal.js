@@ -1288,17 +1288,11 @@ class TechnicianPortal {
             let is_closed = ticket.status && ticket.status.trim().toLowerCase() === 'closed';
             
             if (is_resolved || is_closed) {
-                let phone = ticket.primary_phone || ticket.custom_customer_mobile_number || ticket.custom__secondary_phone_number || '';
                 box.html(`
-                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding: 8px;">
+                    <div style="display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:10px; padding: 8px;">
                         <div style="color: var(--tp-success); font-weight: 700; font-size: 15px;">
-                            <i class="fa fa-check-circle" style="font-size:18px; margin-right:6px; vertical-align:middle;"></i> Service Completed & Checked Out
+                            <i class="fa fa-check-circle" style="font-size:18px; margin-right:6px; vertical-align:middle;"></i> Service Completed &amp; Checked Out
                         </div>
-                        ${is_resolved ? `
-                            <button class="btn btn-sm btn-success tp-btn-create-invoice" data-name="${ticket.name}" data-customer="${ticket.customer || ticket.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:6px; font-weight:700; display:inline-flex; align-items:center; gap:6px; background-color: #10b981; border-color: #10b981; color: white;">
-                                <i class="fa fa-file-text-o"></i> Create Invoice
-                            </button>
-                        ` : ''}
                     </div>
                 `);
             } else if (has_active_check_in || ticket.status === 'Working') {
@@ -1600,18 +1594,24 @@ class TechnicianPortal {
                 let res     = r.message || {};
                 let cust_id = res.customer_id || cust || "";
                 let mop     = res.mode_of_payment || "";
+                let noj     = res.ticket_type || res.nature_of_job || "";
+                let gst_req = (res.gst_bill_required === 1 || res.custom_gst_bill_required === 1) ? 1 : 0;
 
-                // Store only scalar values — machines are fetched fresh by the invoice form
+                // Store scalar values — machines are fetched fresh by the invoice form
                 if (cust_id)     sessionStorage.setItem("tp_inv_customer", cust_id);
                 if (mop)         sessionStorage.setItem("tp_inv_mop", mop);
+                if (noj)         sessionStorage.setItem("tp_inv_noj", noj);
+                sessionStorage.setItem("tp_inv_gst", String(gst_req));
                 if (ticket_name) sessionStorage.setItem("tp_inv_ticket", ticket_name);
                 sessionStorage.setItem("tp_inv_active", "1");
 
                 // Pass same keys via route_options so setup() can also capture them
                 let opts = { from_technician_portal: 1 };
-                if (cust_id)     opts.customer               = cust_id;
-                if (mop)         opts.custom_mode_of_payment = mop;
-                if (ticket_name) opts.ticket_name            = ticket_name;
+                if (cust_id)     opts.customer                  = cust_id;
+                if (mop)         opts.custom_mode_of_payment    = mop;
+                if (noj)         opts.custom_nature_of_job      = noj;
+                opts.custom_gst_bill_required                   = gst_req;
+                if (ticket_name) opts.ticket_name               = ticket_name;
 
                 frappe.new_doc("Sales Invoice", opts);
             }

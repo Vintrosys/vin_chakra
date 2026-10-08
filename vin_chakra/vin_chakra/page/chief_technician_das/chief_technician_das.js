@@ -56,8 +56,14 @@ class ChiefTechnicianDashboard {
         this.attendance_total = 0;
         
         this.calendar_date = new Date();
+        this.map_provider = localStorage.getItem("ct_map_provider") || "google";
         this.map = null;
-        this.markers_layer = null;
+        this.leaflet_map = null;
+        this.gm_markers = [];
+        this.gm_polylines = [];
+        this.leaflet_markers = [];
+        this.leaflet_polylines = [];
+        this._open_info_window = null;
         this.tech_control = null;
         this.ticket_type_control = null;
         
@@ -75,13 +81,6 @@ class ChiefTechnicianDashboard {
     }
     
     init() {
-        if (!document.getElementById("leaflet-style-link")) {
-            let link = document.createElement("link");
-            link.id = "leaflet-style-link";
-            link.rel = "stylesheet";
-            link.href = "/assets/vin_chakra/js/lib/leaflet/leaflet.css";
-            document.head.appendChild(link);
-        }
         this.read_url_params();
         this.render_skeleton();
         this.sync_ui_from_state();
@@ -373,16 +372,75 @@ class ChiefTechnicianDashboard {
         }, 100);
     }
     
-    render_view_structure() {
+    destroy_maps() {
         if (this.map) {
-            try {
-                this.map.remove();
-            } catch(e) {
-                console.error("Error removing Leaflet map:", e);
+            if (window.google && window.google.maps) {
+                google.maps.event.clearInstanceListeners(this.map);
             }
             this.map = null;
-            this.markers_layer = null;
         }
+        if (this.leaflet_map) {
+            try { this.leaflet_map.remove(); } catch(e){}
+            this.leaflet_map = null;
+        }
+        (this.gm_markers || []).forEach(m => { if(m && m.setMap) m.setMap(null); });
+        (this.gm_polylines || []).forEach(p => { if(p && p.setMap) p.setMap(null); });
+        (this.leaflet_markers || []).forEach(m => { if(m && m.remove) m.remove(); });
+        (this.leaflet_polylines || []).forEach(p => { if(p && p.remove) p.remove(); });
+        this.gm_markers = [];
+        this.gm_polylines = [];
+        this.leaflet_markers = [];
+        this.leaflet_polylines = [];
+        if (this._open_info_window) { 
+            if (this._open_info_window.close) this._open_info_window.close(); 
+            this._open_info_window = null; 
+        }
+        this.wrapper.find("#ct-movement-map").empty();
+    }
+
+    _load_leaflet(callback) {
+        if (window.L) {
+            callback();
+            return;
+        }
+        if (!document.getElementById("vc-leaflet-css")) {
+            let link = document.createElement("link");
+            link.id = "vc-leaflet-css";
+            link.rel = "stylesheet";
+            link.href = "/assets/vin_chakra/js/lib/leaflet/leaflet.css";
+            link.onerror = () => {
+                link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+            };
+            document.head.appendChild(link);
+        }
+        if (document.getElementById("vc-leaflet-script")) {
+            let wait = setInterval(() => {
+                if (window.L) {
+                    clearInterval(wait);
+                    callback();
+                }
+            }, 100);
+            return;
+        }
+        let script = document.createElement("script");
+        script.id = "vc-leaflet-script";
+        script.src = "/assets/vin_chakra/js/lib/leaflet/leaflet.js";
+        script.onload = () => { callback(); };
+        script.onerror = () => {
+            let cdn = document.createElement("script");
+            cdn.id = "vc-leaflet-script-cdn";
+            cdn.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+            cdn.onload = () => { callback(); };
+            cdn.onerror = () => {
+                frappe.msgprint(__("Failed to load OpenStreetMap library. Please check your network connection."));
+            };
+            document.head.appendChild(cdn);
+        };
+        document.head.appendChild(script);
+    }
+
+    render_view_structure() {
+        this.destroy_maps();
 
         // Status/Priority/TicketType filters only apply to the ticket list — hide them
         // on the map tab and attendance tab so it's clear they have no effect there.
@@ -457,19 +515,26 @@ class ChiefTechnicianDashboard {
 
             content.html(`
                 <div class="ct-movement-filters" style="background: white; border: 1px solid var(--ct-border); border-radius: var(--ct-radius); padding: 15px; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap; box-shadow: var(--ct-shadow-sm); align-items: center;">
-                    <div class="ct-filter-item" style="margin: 0; min-width: 150px;">
+                    <div class="ct-filter-item" style="margin: 0; min-width: 140px;">
+                        <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Map View</label>
+                        <select id="ct-map-filter-provider" style="width: 100%; height: 36px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 10px; font-size: 13px; background: white;">
+                            <option value="google" ${this.map_provider === 'google' ? 'selected' : ''}>Google Maps</option>
+                            <option value="osm" ${this.map_provider === 'osm' ? 'selected' : ''}>OpenStreetMap</option>
+                        </select>
+                    </div>
+                    <div class="ct-filter-item" style="margin: 0; min-width: 140px;">
                         <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Date (Mandatory)</label>
                         <input type="date" id="ct-map-filter-date" value="${this.map_filters.date}" style="width: 100%; height: 36px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 10px; font-size: 13px;">
                     </div>
-                    <div class="ct-filter-item" style="margin: 0; min-width: 200px;">
+                    <div class="ct-filter-item" style="margin: 0; min-width: 180px;">
                         <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Technician (Optional)</label>
                         <div id="ct-map-technician-control"></div>
                     </div>
-                    <div class="ct-filter-item" style="margin: 0; min-width: 200px;">
+                    <div class="ct-filter-item" style="margin: 0; min-width: 180px;">
                         <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Customer (Optional)</label>
                         <div id="ct-map-customer-control"></div>
                     </div>
-                    <div class="ct-filter-item" style="margin: 0; min-width: 150px;">
+                    <div class="ct-filter-item" style="margin: 0; min-width: 140px;">
                         <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Ticket Status</label>
                         <select id="ct-map-filter-status" style="width: 100%; height: 36px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 10px; font-size: 13px; background: white;">
                             ${map_status_options}
@@ -557,25 +622,142 @@ class ChiefTechnicianDashboard {
         }, 100);
     }
     
+    _load_google_maps(callback) {
+        if (window.google && window.google.maps) {
+            callback();
+            return;
+        }
+        frappe.call({
+            method: "vin_chakra.vin_chakra.page.chief_technician_das.chief_technician_das.get_google_maps_api_key",
+            callback: (r) => {
+                let api_key = r.message || "";
+                if (!api_key) {
+                    frappe.msgprint(__("Google Maps API key is not configured. Please set the API key in <strong>Google Maps Settings</strong>."));
+                    return;
+                }
+                if (document.getElementById("vc-gmaps-script")) {
+                    let wait = setInterval(() => {
+                        if (window.google && window.google.maps) {
+                            clearInterval(wait);
+                            callback();
+                        }
+                    }, 100);
+                    return;
+                }
+                api_key = String(api_key).trim();
+                const show_gm_error = (code) => {
+                    let map_el = $("#ct-movement-map");
+                    if (!map_el.length) return;
+                    const origin = window.location.origin;
+                    const hints = {
+                        BillingNotEnabledMapError: `Billing is not enabled on the Google Cloud project that owns this key. Link a billing account to the project (Billing → Link a billing account).`,
+                        RefererNotAllowedMapError: `This site's URL is not allowed by the key's HTTP referrer restriction. Add <code>${frappe.utils.escape_html(origin)}/*</code> to the key's Website restrictions.`,
+                        ApiNotActivatedMapError: `The <strong>Maps JavaScript API</strong> is not enabled in the project that owns this key.`,
+                        ApiTargetBlockedMapError: `The key's API restrictions do not include the <strong>Maps JavaScript API</strong>.`,
+                        InvalidKeyMapError: `The key is invalid. Re-copy it from Google Cloud Console into Google Maps Settings.`,
+                        ExpiredKeyMapError: `The key has expired or was deleted. Create a new key.`,
+                        MissingKeyMapError: `No key reached Google. Check Google Maps Settings.`,
+                    };
+                    const hint = hints[code] || `The key in <strong>Google Maps Settings</strong> was rejected by Google. Open the browser console for the exact error.`;
+                    map_el.html(`
+                        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:20px; background:#f8fafc; border-radius:8px; text-align:center;">
+                            <i class="fa fa-exclamation-triangle" style="font-size:36px; color:#eab308; margin-bottom:12px;"></i>
+                            <h4 style="margin:0 0 8px 0; color:#1e293b; font-weight:700;">Google Maps Key Error${code ? `: ${frappe.utils.escape_html(code)}` : ""}</h4>
+                            <p style="margin:0; color:#64748b; font-size:13px; max-width:520px; line-height:1.5;">${hint}<br><br>Changes in Google Cloud can take a few minutes to apply.</p>
+                            <a href="/app/google-maps-settings" class="btn btn-primary btn-sm" style="margin-top:16px; font-weight:600;">
+                                <i class="fa fa-cog"></i> Open Google Maps Settings
+                            </a>
+                        </div>
+                    `);
+                };
+                // Google reports the precise reason (e.g. BillingNotEnabledMapError) only via console.error.
+                // Capture it so the dashboard can show an actionable message instead of a watermarked map.
+                window._vc_gm_error_code = null;
+                if (!window._vc_console_patched) {
+                    window._vc_console_patched = true;
+                    const orig_error = console.error.bind(console);
+                    console.error = (...args) => {
+                        try {
+                            const text = args.map(a => (a && a.message) || String(a)).join(" ");
+                            const m = text.match(/Google Maps JavaScript API error: (\w+)/) || text.match(/\b(\w+MapError)\b/);
+                            if (m && !window._vc_gm_error_code) {
+                                window._vc_gm_error_code = m[1];
+                                show_gm_error(m[1]);
+                            }
+                        } catch (e) {}
+                        orig_error(...args);
+                    };
+                }
+                window.gm_authFailure = () => {
+                    show_gm_error(window._vc_gm_error_code);
+                };
+                window._vc_gm_cb = () => {
+                    delete window._vc_gm_cb;
+                    callback();
+                };
+                let script = document.createElement("script");
+                script.id = "vc-gmaps-script";
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(api_key)}&v=weekly&loading=async&callback=_vc_gm_cb`;
+                script.async = true;
+                script.defer = true;
+                script.onerror = () => {
+                    show_gm_error("ScriptLoadError");
+                };
+                document.head.appendChild(script);
+            }
+        });
+    }
+
     init_map() {
         let self = this;
         setTimeout(() => {
-            if (!self.map && self.wrapper.find("#ct-movement-map").length) {
-                frappe.require([
-                    '/assets/vin_chakra/js/lib/leaflet/leaflet.css',
-                    '/assets/vin_chakra/js/lib/leaflet/leaflet.js'
-                ], function() {
-                    let map_el = self.wrapper.find("#ct-movement-map")[0];
-                    self.map = L.map(map_el, { scrollWheelZoom: false }).setView([20.5937, 78.9629], 5);
+            let map_el = self.wrapper.find("#ct-movement-map")[0];
+            if (!map_el) return;
+
+            if (self.map_provider === "osm") {
+                if (self.map) self.destroy_maps();
+                if (self.leaflet_map) {
+                    try { self.leaflet_map.invalidateSize(); } catch(e){}
+                    self.load_movement_data();
+                    return;
+                }
+                self._load_leaflet(() => {
+                    let el = self.wrapper.find("#ct-movement-map")[0];
+                    if (!el) return;
+                    self.leaflet_map = L.map(el).setView([20.5937, 78.9629], 5);
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                        attribution: '© OpenStreetMap contributors'
-                    }).addTo(self.map);
-                    self.markers_layer = L.layerGroup().addTo(self.map);
+                        maxZoom: 19,
+                        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    }).addTo(self.leaflet_map);
+                    self.leaflet_markers = [];
+                    self.leaflet_polylines = [];
                     self.load_movement_data();
                 });
-            } else if (self.map) {
-                self.map.invalidateSize();
-                self.load_movement_data();
+            } else {
+                if (self.leaflet_map) self.destroy_maps();
+                if (self.map) {
+                    if (window.google && window.google.maps) {
+                        google.maps.event.trigger(self.map, "resize");
+                    }
+                    self.load_movement_data();
+                    return;
+                }
+                self._load_google_maps(() => {
+                    let el = self.wrapper.find("#ct-movement-map")[0];
+                    if (!el) return;
+                    self.map = new google.maps.Map(el, {
+                        center: { lat: 20.5937, lng: 78.9629 },
+                        zoom: 5,
+                        scrollwheel: false,
+                        mapTypeControl: true,
+                        streetViewControl: false,
+                        fullscreenControl: true,
+                        gestureHandling: "cooperative"
+                    });
+                    self.gm_markers = [];
+                    self.gm_polylines = [];
+                    self.load_movement_data();
+                });
             }
         }, 150);
     }
@@ -751,6 +933,17 @@ class ChiefTechnicianDashboard {
             self.load_data();
         });
         
+        // Map Provider Direct Selection Change
+        this.wrapper.on("change", "#ct-map-filter-provider", function() {
+            let new_provider = $(this).val() || "google";
+            if (new_provider !== self.map_provider) {
+                self.map_provider = new_provider;
+                localStorage.setItem("ct_map_provider", self.map_provider);
+                self.destroy_maps();
+                self.init_map();
+            }
+        });
+
         // Apply Map Filters
         this.wrapper.on("click", "#ct-map-filter-apply", function() {
             self.map_filters.date = self.wrapper.find("#ct-map-filter-date").val();
@@ -758,13 +951,23 @@ class ChiefTechnicianDashboard {
             self.map_filters.customer = self.map_customer_control.get_value();
             self.map_filters.status = self.wrapper.find("#ct-map-filter-status").val();
             
+            let new_provider = self.wrapper.find("#ct-map-filter-provider").val() || "google";
+            let provider_changed = (new_provider !== self.map_provider);
+            self.map_provider = new_provider;
+            localStorage.setItem("ct_map_provider", self.map_provider);
+            
             if(!self.map_filters.date) {
                 frappe.msgprint("Date is mandatory for the Technician Map.");
                 return;
             }
             
-            self.wrapper.find("#ct-loader").show();
-            self.load_movement_data();
+            if (provider_changed) {
+                self.destroy_maps();
+                self.init_map();
+            } else {
+                self.wrapper.find("#ct-loader").show();
+                self.load_movement_data();
+            }
         });
 
         // Redirect to raise ticket page
@@ -779,6 +982,16 @@ class ChiefTechnicianDashboard {
             let lng = parseFloat($(this).data("lng"));
             if (!isNaN(lat) && !isNaN(lng)) {
                 self.open_map_popup(lat, lng);
+            }
+        });
+
+        // Popup Lat & Long Google Map modal click
+        $(document).off("click", ".ct-popup-gmap-link").on("click", ".ct-popup-gmap-link", function(e) {
+            e.preventDefault();
+            let lat = parseFloat($(this).data("lat"));
+            let lng = parseFloat($(this).data("lng"));
+            if (!isNaN(lat) && !isNaN(lng)) {
+                self.open_google_map_popup(lat, lng);
             }
         });
     }
@@ -1273,11 +1486,19 @@ class ChiefTechnicianDashboard {
                     let data = r.message;
                     
                     if (data.mode === "all_technicians") {
-                        self.render_all_tech_map(data.markers);
+                        if (self.map_provider === "osm") {
+                            self.render_all_tech_osm_map(data.markers);
+                        } else {
+                            self.render_all_tech_map(data.markers);
+                        }
                         self.wrapper.find("#ct-map-summary-row").hide();
                         self.wrapper.find("#ct-map-timeline-container").hide();
                     } else {
-                        self.render_tech_route_map(data.visits);
+                        if (self.map_provider === "osm") {
+                            self.render_tech_route_osm_map(data.visits);
+                        } else {
+                            self.render_tech_route_map(data.visits);
+                        }
                         self.render_map_summary(data.summary);
                         self.render_map_timeline(data.visits);
                         self.wrapper.find("#ct-map-summary-row").css("display", "grid");
@@ -1288,187 +1509,340 @@ class ChiefTechnicianDashboard {
         });
     }
 
-    render_all_tech_map(markers) {
+    render_all_tech_osm_map(markers) {
         let self = this;
-        if (!self.map || !self.markers_layer) return;
+        if (!self.leaflet_map) return;
 
-        self.markers_layer.clearLayers();
-        let bounds = [];
+        (self.leaflet_markers || []).forEach(m => { if(m && m.remove) m.remove(); });
+        (self.leaflet_polylines || []).forEach(p => { if(p && p.remove) p.remove(); });
+        self.leaflet_markers = [];
+        self.leaflet_polylines = [];
+
+        let bounds = L.latLngBounds();
         let legend_html = "";
-        
-        let route_colors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899', '#3b82f6', '#8b5cf6'];
-        
+        let route_colors = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#3b82f6", "#8b5cf6"];
+
         markers.forEach((log, index) => {
+            if (!log.latitude || !log.longitude) return;
+            let lat = parseFloat(log.latitude);
+            let lng = parseFloat(log.longitude);
             let tech_color = route_colors[index % route_colors.length];
             let tech_name = frappe.user.full_name(log.user) || log.user;
-            
-            legend_html += `
-                <div class="ct-map-legend-item">
-                    <div style="width:16px; height:16px; border-radius:50%; background:${tech_color}; display:inline-block; vertical-align:middle; margin-right:6px;"></div>
-                    ${tech_name}
-                </div>`;
-                
-            let icon_html = `
-                <div class="map-route-marker" style="background-color:${tech_color}; color:white; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-weight:800; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-size:11px;" title="${tech_name}">
-                    <i class="fa fa-user"></i>
-                </div>
-            `;
+
+            legend_html += `<div class="ct-map-legend-item">
+                <div style="width:16px;height:16px;border-radius:50%;background:${tech_color};display:inline-block;vertical-align:middle;margin-right:6px;"></div>
+                ${tech_name}</div>`;
+
+            let iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">` +
+                `<circle cx="14" cy="14" r="12" fill="${tech_color}" stroke="white" stroke-width="2"/>` +
+                `<text x="14" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="bold" font-family="sans-serif">T</text></svg>`;
+
             let customIcon = L.divIcon({
-                className: 'custom-div-icon',
-                html: icon_html,
-                iconSize: [26, 26],
-                iconAnchor: [13, 13]
+                className: "ct-osm-custom-marker",
+                html: iconSvg,
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
             });
-            
-            let marker = L.marker([log.latitude, log.longitude], {icon: customIcon});
+
             let time_only = frappe.datetime.get_time(log.creation).substring(0, 5);
-            let popup_html = `
-                <div style="font-family: 'Inter', sans-serif; padding: 4px; width: 220px;">
-                    <div style="font-weight: 800; font-size: 13px; margin-bottom: 4px; color: var(--ct-text-main);">
-                        ${tech_name}
-                    </div>
-                    <div style="font-size: 11px; color: var(--ct-text-muted); margin-bottom: 6px; font-weight: 600;">Latest Location at ${time_only}</div>
-                    <div style="font-size: 12px; line-height: 1.4; border-top: 1px solid #f1f5f9; padding-top: 6px;">
-                        <strong>Ticket:</strong> <a onclick="window.location.href='/helpdesk/tickets/${log.ticket}'" style="cursor:pointer; color:var(--ct-primary); font-weight: 700;">${log.ticket}</a><br>
-                        <strong>Customer:</strong> ${log.customer || 'N/A'}<br>
-                        <strong>Status:</strong> ${log.status || 'N/A'}<br>
-                        <strong>Address:</strong> <span style="color: #475569;">${log.display_address || 'N/A'}</span>
-                    </div>
-                </div>
-            `;
-            marker.bindPopup(popup_html);
-            self.markers_layer.addLayer(marker);
-            bounds.push([log.latitude, log.longitude]);
+            let iwContent = `<div style="font-family:'Inter',sans-serif;padding:4px;width:240px;">
+                <div style="font-weight:800;font-size:13px;margin-bottom:4px;">${tech_name}</div>
+                <div style="font-size:11px;color:#64748b;margin-bottom:6px;font-weight:600;">Latest location at ${time_only}</div>
+                <div style="font-size:12px;line-height:1.4;border-top:1px solid #f1f5f9;padding-top:6px;">
+                    <strong>Ticket:</strong> <a href="/helpdesk/tickets/${log.ticket}" style="color:#6366f1;font-weight:700;">${log.ticket}</a><br>
+                    <strong>Customer:</strong> ${log.customer || "N/A"}<br>
+                    <strong>Status:</strong> ${log.status || "N/A"}<br>
+                    <strong>Address:</strong> <span style="color:#475569;">${log.display_address || "N/A"}</span><br>
+                    <strong>Lat & Long:</strong> <a href="#" class="ct-popup-gmap-link" data-lat="${lat}" data-lng="${lng}" style="color:#6366f1;font-weight:700;text-decoration:underline;" title="View on Google Maps"><i class="fa fa-map-marker"></i> ${lat.toFixed(5)}, ${lng.toFixed(5)}</a>
+                </div></div>`;
+
+            let marker = L.marker([lat, lng], { icon: customIcon, title: tech_name })
+                .addTo(self.leaflet_map)
+                .bindPopup(iwContent);
+
+            self.leaflet_markers.push(marker);
+            bounds.extend([lat, lng]);
         });
-        
+
         self.wrapper.find("#ct-map-legend-routes").html(legend_html);
-        if (bounds.length > 0) {
-            self.map.fitBounds(bounds, {padding: [50, 50]});
+        if (bounds.isValid()) {
+            self.leaflet_map.fitBounds(bounds, { padding: [30, 30] });
         } else {
-            self.map.setView([20.5937, 78.9629], 5);
+            self.leaflet_map.setView([20.5937, 78.9629], 5);
         }
+        setTimeout(() => {
+            if (self.leaflet_map) { try { self.leaflet_map.invalidateSize(); } catch(e){} }
+        }, 200);
     }
-    
-    render_tech_route_map(visits) {
+
+    render_tech_route_osm_map(visits) {
         let self = this;
-        if (!self.map || !self.markers_layer) return;
+        if (!self.leaflet_map) return;
 
-        self.markers_layer.clearLayers();
-        let bounds = [];
-        let tech_color = '#3b82f6';
+        (self.leaflet_markers || []).forEach(m => { if(m && m.remove) m.remove(); });
+        (self.leaflet_polylines || []).forEach(p => { if(p && p.remove) p.remove(); });
+        self.leaflet_markers = [];
+        self.leaflet_polylines = [];
+
+        let bounds = L.latLngBounds();
+        let tech_color = "#3b82f6";
         let tech_name = this.map_filters.technician ? frappe.user.full_name(this.map_filters.technician) : "";
-        
-        let legend_html = `
-            <div class="ct-map-legend-item">
-                <div style="width:16px; height:3px; background:${tech_color}; border-radius:2px; display:inline-block; vertical-align:middle; margin-right:6px;"></div>
-                ${tech_name} Journey
-            </div>
-            <div class="ct-map-legend-item">
-                <span class="badge" style="background:#10b981; color:white; font-size:9px; padding:2px 4px; margin-right:6px;">START</span> First Ticket
-            </div>
-            <div class="ct-map-legend-item">
-                <span class="badge" style="background:#ef4444; color:white; font-size:9px; padding:2px 4px; margin-right:6px;">END</span> Last Ticket
-            </div>`;
-        self.wrapper.find("#ct-map-legend-routes").html(legend_html);
-        
-        if (visits.length > 1) {
-            let path_coords = visits.map(v => [v.latitude, v.longitude]);
-            L.polyline(path_coords, {
-                color: tech_color,
-                weight: 4,
-                opacity: 0.85,
-                lineJoin: 'round'
-            }).addTo(self.markers_layer);
-            
-            for (let i = 0; i < path_coords.length - 1; i++) {
-                let p1 = path_coords[i];
-                let p2 = path_coords[i + 1];
-                let mid_lat = (p1[0] + p2[0]) / 2;
-                let mid_lng = (p1[1] + p2[1]) / 2;
-                let dy = p2[0] - p1[0];
-                let dx = p2[1] - p1[1];
-                let angle = Math.atan2(dy, dx) * 180 / Math.PI;
 
+        self.wrapper.find("#ct-map-legend-routes").html(`
+            <div class="ct-map-legend-item"><div style="width:16px;height:3px;background:${tech_color};border-radius:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div>${tech_name} Journey</div>
+            <div class="ct-map-legend-item"><span class="badge" style="background:#10b981;color:white;font-size:9px;padding:2px 4px;margin-right:6px;">START</span>First Ticket</div>
+            <div class="ct-map-legend-item"><span class="badge" style="background:#ef4444;color:white;font-size:9px;padding:2px 4px;margin-right:6px;">END</span>Last Ticket</div>`);
+
+        let path = visits.filter(v => v.latitude && v.longitude)
+                         .map(v => [parseFloat(v.latitude), parseFloat(v.longitude)]);
+
+        if (path.length > 1) {
+            let polyline = L.polyline(path, { color: tech_color, opacity: 0.85, weight: 4 }).addTo(self.leaflet_map);
+            self.leaflet_polylines.push(polyline);
+
+            for (let i = 0; i < path.length - 1; i++) {
+                let p1 = path[i], p2 = path[i + 1];
+                let angle = Math.atan2(p2[0] - p1[0], p2[1] - p1[1]) * 180 / Math.PI;
+                let arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><g transform="rotate(${angle},8,8)"><polygon points="8,2 14,14 8,10 2,14" fill="${tech_color}" opacity="0.9"/></g></svg>`;
                 let arrowIcon = L.divIcon({
-                    className: 'route-arrow-icon',
-                    html: `<div style="transform: rotate(${angle}deg); color: ${tech_color}; font-size: 14px; display: flex; align-items: center; justify-content: center; opacity:1;"><i class="fa fa-chevron-right"></i></div>`,
+                    className: "ct-osm-arrow",
+                    html: arrowSvg,
                     iconSize: [16, 16],
                     iconAnchor: [8, 8]
                 });
-                L.marker([mid_lat, mid_lng], {icon: arrowIcon, interactive: false}).addTo(self.markers_layer);
+                let midLat = (p1[0] + p2[0]) / 2;
+                let midLng = (p1[1] + p2[1]) / 2;
+                let arrowMarker = L.marker([midLat, midLng], { icon: arrowIcon, interactive: false }).addTo(self.leaflet_map);
+                self.leaflet_markers.push(arrowMarker);
             }
         }
-        
+
         self.map_markers = {};
-        
+
         visits.forEach((v, index) => {
-            let badge = "";
-            let pin_color = '#64748b';
-            if (index === 0) { badge = "START"; pin_color = '#10b981'; }
-            else if (index === visits.length - 1) { badge = "END"; pin_color = '#ef4444'; }
-            
-            let icon_html = `
-                <div class="map-route-marker" style="background-color:${pin_color}; color:white; border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-weight:800; border:2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); font-size:12px; position: relative;">
-                    ${index + 1}
-                    ${badge ? `<div style="position: absolute; top: -15px; left: 50%; transform: translateX(-50%); background: ${pin_color}; color: white; font-size: 8px; padding: 2px 4px; border-radius: 4px; font-weight: 700;">${badge}</div>` : ""}
-                </div>
-            `;
-            let customIcon = L.divIcon({
-                className: 'custom-div-icon',
-                html: icon_html,
-                iconSize: [26, 26],
-                iconAnchor: [13, 13]
+            if (!v.latitude || !v.longitude) return;
+            let lat = parseFloat(v.latitude);
+            let lng = parseFloat(v.longitude);
+            let pin_color = index === 0 ? "#10b981" : (index === visits.length - 1 ? "#ef4444" : "#64748b");
+            let lbl = String(index + 1);
+            let pinSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">` +
+                `<path d="M16 0C7.163 0 0 7.163 0 16c0 12 16 26 16 26s16-14 16-26C32 7.163 24.837 0 16 0z" fill="${pin_color}"/>` +
+                `<circle cx="16" cy="16" r="9" fill="white" opacity="0.25"/>` +
+                `<text x="16" y="21" text-anchor="middle" fill="white" font-size="${lbl.length > 1 ? "9" : "11"}" font-weight="800" font-family="sans-serif">${lbl}</text></svg>`;
+
+            let pinIcon = L.divIcon({
+                className: "ct-osm-pin",
+                html: pinSvg,
+                iconSize: [32, 42],
+                iconAnchor: [16, 42],
+                popupAnchor: [0, -36]
             });
-            
-            let marker = L.marker([v.latitude, v.longitude], {icon: customIcon});
-            
-            let format_time = (t) => t ? frappe.datetime.get_time(t).substring(0, 5) : "N/A";
-            let duration_str = "N/A";
-            if (v.time_spent_seconds !== null) {
-                let hrs = Math.floor(v.time_spent_seconds / 3600);
-                let mins = Math.floor((v.time_spent_seconds % 3600) / 60);
-                duration_str = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+
+            let fmt = (t) => t ? frappe.datetime.get_time(t).substring(0, 5) : "N/A";
+            let dur = "N/A";
+            if (v.time_spent_seconds !== null && v.time_spent_seconds !== undefined) {
+                let hrs = Math.floor(v.time_spent_seconds / 3600), mins = Math.floor((v.time_spent_seconds % 3600) / 60);
+                dur = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
             }
-            
-            let popup_html = `
-                <div style="font-family: 'Inter', sans-serif; padding: 4px; width: 220px;" class="ct-marker-popup" data-ticket="${v.ticket}">
-                    <div style="font-weight: 800; font-size: 14px; margin-bottom: 4px; color: var(--ct-text-main);">
-                        Ticket #${index + 1}
-                    </div>
-                    <div style="font-size: 12px; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 6px;">
-                        <strong>Ticket ID:</strong> <a onclick="window.location.href='/helpdesk/tickets/${v.ticket}'" style="cursor:pointer; color:var(--ct-primary); font-weight: 700;">${v.ticket}</a><br>
-                        <strong>Customer:</strong> ${v.customer || 'N/A'}<br>
-                        <strong>Status:</strong> ${v.status}<br>
-                        <strong>In:</strong> ${format_time(v.check_in)} | <strong>Out:</strong> ${format_time(v.check_out)}<br>
-                        <strong>Time Spent:</strong> ${duration_str}<br>
-                        <strong>Location:</strong> <span style="color: #475569; font-size:11px;">${v.address || `${v.latitude.toFixed(4)}, ${v.longitude.toFixed(4)}`}</span>
-                    </div>
-                </div>
-            `;
-            
-            marker.bindPopup(popup_html);
-            
-            marker.on('popupopen', function() {
-                $(".ct-timeline-item").removeClass("active").css("border-color", "transparent").css("background", "white");
+            let iwContent = `<div style="font-family:'Inter',sans-serif;padding:4px;width:240px;">
+                <div style="font-weight:800;font-size:14px;margin-bottom:4px;">Ticket #${index + 1}</div>
+                <div style="font-size:12px;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:6px;">
+                    <strong>Ticket ID:</strong> <a href="/helpdesk/tickets/${v.ticket}" style="color:#6366f1;font-weight:700;">${v.ticket}</a><br>
+                    <strong>Customer:</strong> ${v.customer || "N/A"}<br>
+                    <strong>Status:</strong> ${v.status}<br>
+                    <strong>In:</strong> ${fmt(v.check_in)} | <strong>Out:</strong> ${fmt(v.check_out)}<br>
+                    <strong>Time Spent:</strong> ${dur}<br>
+                    <strong>Address:</strong> <span style="color:#475569;font-size:11px;">${v.address || "N/A"}</span><br>
+                    <strong>Lat & Long:</strong> <a href="#" class="ct-popup-gmap-link" data-lat="${lat}" data-lng="${lng}" style="color:#6366f1;font-weight:700;text-decoration:underline;" title="View on Google Maps"><i class="fa fa-map-marker"></i> ${lat.toFixed(5)}, ${lng.toFixed(5)}</a>
+                </div></div>`;
+
+            let marker = L.marker([lat, lng], { icon: pinIcon, title: `Ticket #${index + 1}: ${v.ticket}` })
+                .addTo(self.leaflet_map)
+                .bindPopup(iwContent);
+
+            marker.on("click", () => {
+                $(".ct-timeline-item").removeClass("active").css({"border-color": "transparent", "background": "white"});
                 let t_el = $(`#timeline-item-${v.ticket}`);
-                if(t_el.length) {
-                    t_el.addClass("active").css("border-color", "var(--ct-primary)").css("background", "#f8fafc");
-                    t_el[0].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                if (t_el.length) { 
+                    t_el.addClass("active").css({"border-color": "var(--ct-primary)", "background": "#f8fafc"}); 
+                    t_el[0].scrollIntoView({behavior:"smooth",block:"nearest",inline:"center"}); 
                 }
             });
-            
-            self.markers_layer.addLayer(marker);
-            self.map_markers[v.ticket] = marker;
-            bounds.push([v.latitude, v.longitude]);
+
+            self.leaflet_markers.push(marker);
+            self.map_markers[v.ticket] = { marker, is_osm: true };
+            bounds.extend([lat, lng]);
         });
-        
-        if (bounds.length > 0) {
-            self.map.fitBounds(bounds, {padding: [50, 50]});
+
+        if (bounds.isValid()) {
+            self.leaflet_map.fitBounds(bounds, { padding: [30, 30] });
         } else {
-            self.map.setView([20.5937, 78.9629], 5);
+            self.leaflet_map.setView([20.5937, 78.9629], 5);
+        }
+        setTimeout(() => {
+            if (self.leaflet_map) { try { self.leaflet_map.invalidateSize(); } catch(e){} }
+        }, 200);
+    }
+
+    render_all_tech_map(markers) {
+        let self = this;
+        if (!self.map) return;
+
+        (self.gm_markers || []).forEach(m => m.setMap(null));
+        (self.gm_polylines || []).forEach(p => p.setMap(null));
+        self.gm_markers = [];
+        self.gm_polylines = [];
+        if (self._open_info_window) { self._open_info_window.close(); self._open_info_window = null; }
+
+        let bounds = new google.maps.LatLngBounds();
+        let legend_html = "";
+        let route_colors = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#3b82f6", "#8b5cf6"];
+
+        markers.forEach((log, index) => {
+            if (!log.latitude || !log.longitude) return;
+            let tech_color = route_colors[index % route_colors.length];
+            let tech_name = frappe.user.full_name(log.user) || log.user;
+
+            legend_html += `<div class="ct-map-legend-item">
+                <div style="width:16px;height:16px;border-radius:50%;background:${tech_color};display:inline-block;vertical-align:middle;margin-right:6px;"></div>
+                ${tech_name}</div>`;
+
+            let icon = {
+                url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(
+                    `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28">` +
+                    `<circle cx="14" cy="14" r="12" fill="${tech_color}" stroke="white" stroke-width="2"/>` +
+                    `<text x="14" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="bold" font-family="sans-serif">T</text></svg>`
+                ),
+                scaledSize: new google.maps.Size(28, 28),
+                anchor: new google.maps.Point(14, 14)
+            };
+            let marker = new google.maps.Marker({
+                position: { lat: parseFloat(log.latitude), lng: parseFloat(log.longitude) },
+                map: self.map, icon, title: tech_name
+            });
+            let time_only = frappe.datetime.get_time(log.creation).substring(0, 5);
+            let lat_num = parseFloat(log.latitude), lng_num = parseFloat(log.longitude);
+            let iw = new google.maps.InfoWindow({ content:
+                `<div style="font-family:'Inter',sans-serif;padding:4px;width:240px;">
+                <div style="font-weight:800;font-size:13px;margin-bottom:4px;">${tech_name}</div>
+                <div style="font-size:11px;color:#64748b;margin-bottom:6px;font-weight:600;">Latest location at ${time_only}</div>
+                <div style="font-size:12px;line-height:1.4;border-top:1px solid #f1f5f9;padding-top:6px;">
+                    <strong>Ticket:</strong> <a href="/helpdesk/tickets/${log.ticket}" style="color:#6366f1;font-weight:700;">${log.ticket}</a><br>
+                    <strong>Customer:</strong> ${log.customer || "N/A"}<br>
+                    <strong>Status:</strong> ${log.status || "N/A"}<br>
+                    <strong>Address:</strong> <span style="color:#475569;">${log.display_address || "N/A"}</span><br>
+                    <strong>Lat & Long:</strong> <a href="#" class="ct-popup-gmap-link" data-lat="${lat_num}" data-lng="${lng_num}" style="color:#6366f1;font-weight:700;text-decoration:underline;" title="View on Google Maps"><i class="fa fa-map-marker"></i> ${lat_num.toFixed(5)}, ${lng_num.toFixed(5)}</a>
+                </div></div>`
+            });
+            marker.addListener("click", () => {
+                if (self._open_info_window) self._open_info_window.close();
+                iw.open(self.map, marker);
+                self._open_info_window = iw;
+            });
+            self.gm_markers.push(marker);
+            bounds.extend({ lat: parseFloat(log.latitude), lng: parseFloat(log.longitude) });
+        });
+
+        self.wrapper.find("#ct-map-legend-routes").html(legend_html);
+        if (!bounds.isEmpty()) {
+            self.map.fitBounds(bounds);
+        } else {
+            self.map.setCenter({ lat: 20.5937, lng: 78.9629 });
+            self.map.setZoom(5);
         }
     }
-    
+    render_tech_route_map(visits) {
+        let self = this;
+        if (!self.map) return;
+
+        (self.gm_markers || []).forEach(m => m.setMap(null));
+        (self.gm_polylines || []).forEach(p => p.setMap(null));
+        self.gm_markers = [];
+        self.gm_polylines = [];
+        if (self._open_info_window) { self._open_info_window.close(); self._open_info_window = null; }
+
+        let bounds = new google.maps.LatLngBounds();
+        let tech_color = "#3b82f6";
+        let tech_name = this.map_filters.technician ? frappe.user.full_name(this.map_filters.technician) : "";
+
+        self.wrapper.find("#ct-map-legend-routes").html(`
+            <div class="ct-map-legend-item"><div style="width:16px;height:3px;background:${tech_color};border-radius:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div>${tech_name} Journey</div>
+            <div class="ct-map-legend-item"><span class="badge" style="background:#10b981;color:white;font-size:9px;padding:2px 4px;margin-right:6px;">START</span>First Ticket</div>
+            <div class="ct-map-legend-item"><span class="badge" style="background:#ef4444;color:white;font-size:9px;padding:2px 4px;margin-right:6px;">END</span>Last Ticket</div>`);
+
+        if (visits.length > 1) {
+            let path = visits.filter(v => v.latitude && v.longitude)
+                             .map(v => ({ lat: parseFloat(v.latitude), lng: parseFloat(v.longitude) }));
+            let polyline = new google.maps.Polyline({ path, geodesic: true, strokeColor: tech_color, strokeOpacity: 0.85, strokeWeight: 4, map: self.map });
+            self.gm_polylines.push(polyline);
+            for (let i = 0; i < path.length - 1; i++) {
+                let p1 = path[i], p2 = path[i + 1];
+                let angle = Math.atan2(p2.lat - p1.lat, p2.lng - p1.lng) * 180 / Math.PI;
+                let arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><g transform="rotate(${angle},8,8)"><polygon points="8,2 14,14 8,10 2,14" fill="${tech_color}" opacity="0.9"/></g></svg>`;
+                let arrow = new google.maps.Marker({
+                    position: { lat: (p1.lat + p2.lat) / 2, lng: (p1.lng + p2.lng) / 2 },
+                    map: self.map, clickable: false, zIndex: 1,
+                    icon: { url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(arrowSvg), scaledSize: new google.maps.Size(16, 16), anchor: new google.maps.Point(8, 8) }
+                });
+                self.gm_markers.push(arrow);
+            }
+        }
+
+        self.map_markers = {};
+
+        visits.forEach((v, index) => {
+            if (!v.latitude || !v.longitude) return;
+            let pin_color = index === 0 ? "#10b981" : (index === visits.length - 1 ? "#ef4444" : "#64748b");
+            let lbl = String(index + 1);
+            let pinSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="42" viewBox="0 0 32 42">` +
+                `<path d="M16 0C7.163 0 0 7.163 0 16c0 12 16 26 16 26s16-14 16-26C32 7.163 24.837 0 16 0z" fill="${pin_color}"/>` +
+                `<circle cx="16" cy="16" r="9" fill="white" opacity="0.25"/>` +
+                `<text x="16" y="21" text-anchor="middle" fill="white" font-size="${lbl.length > 1 ? "9" : "11"}" font-weight="800" font-family="sans-serif">${lbl}</text></svg>`;
+            let marker = new google.maps.Marker({
+                position: { lat: parseFloat(v.latitude), lng: parseFloat(v.longitude) },
+                map: self.map, zIndex: 10, title: `Ticket #${index + 1}: ${v.ticket}`,
+                icon: { url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(pinSvg), scaledSize: new google.maps.Size(32, 42), anchor: new google.maps.Point(16, 42) }
+            });
+            let fmt = (t) => t ? frappe.datetime.get_time(t).substring(0, 5) : "N/A";
+            let dur = "N/A";
+            if (v.time_spent_seconds !== null && v.time_spent_seconds !== undefined) {
+                let hrs = Math.floor(v.time_spent_seconds / 3600), mins = Math.floor((v.time_spent_seconds % 3600) / 60);
+                dur = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+            }
+            let lat_num = parseFloat(v.latitude), lng_num = parseFloat(v.longitude);
+            let iw = new google.maps.InfoWindow({ content:
+                `<div style="font-family:'Inter',sans-serif;padding:4px;width:240px;">
+                <div style="font-weight:800;font-size:14px;margin-bottom:4px;">Ticket #${index + 1}</div>
+                <div style="font-size:12px;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:6px;">
+                    <strong>Ticket ID:</strong> <a href="/helpdesk/tickets/${v.ticket}" style="color:#6366f1;font-weight:700;">${v.ticket}</a><br>
+                    <strong>Customer:</strong> ${v.customer || "N/A"}<br>
+                    <strong>Status:</strong> ${v.status}<br>
+                    <strong>In:</strong> ${fmt(v.check_in)} | <strong>Out:</strong> ${fmt(v.check_out)}<br>
+                    <strong>Time Spent:</strong> ${dur}<br>
+                    <strong>Address:</strong> <span style="color:#475569;font-size:11px;">${v.address || "N/A"}</span><br>
+                    <strong>Lat & Long:</strong> <a href="#" class="ct-popup-gmap-link" data-lat="${lat_num}" data-lng="${lng_num}" style="color:#6366f1;font-weight:700;text-decoration:underline;" title="View on Google Maps"><i class="fa fa-map-marker"></i> ${lat_num.toFixed(5)}, ${lng_num.toFixed(5)}</a>
+                </div></div>`
+            });
+            marker.addListener("click", () => {
+                if (self._open_info_window) self._open_info_window.close();
+                iw.open(self.map, marker);
+                self._open_info_window = iw;
+                $(".ct-timeline-item").removeClass("active").css({"border-color": "transparent", "background": "white"});
+                let t_el = $(`#timeline-item-${v.ticket}`);
+                if (t_el.length) { t_el.addClass("active").css({"border-color": "var(--ct-primary)", "background": "#f8fafc"}); t_el[0].scrollIntoView({behavior:"smooth",block:"nearest",inline:"center"}); }
+            });
+            self.gm_markers.push(marker);
+            self.map_markers[v.ticket] = { marker, iw };
+            bounds.extend({ lat: parseFloat(v.latitude), lng: parseFloat(v.longitude) });
+        });
+
+        if (!bounds.isEmpty()) {
+            self.map.fitBounds(bounds);
+        } else {
+            self.map.setCenter({ lat: 20.5937, lng: 78.9629 });
+            self.map.setZoom(5);
+        }
+    }
     render_map_summary(summary) {
         let container = this.wrapper.find("#ct-map-summary-row");
         if (!summary.total_tickets) {
@@ -1549,9 +1923,21 @@ class ChiefTechnicianDashboard {
         container.off("click", ".ct-timeline-item").on("click", ".ct-timeline-item", function() {
             let t_id = $(this).data("ticket");
             if (self.map_markers && self.map_markers[t_id]) {
-                self.map_markers[t_id].openPopup();
-                let latlng = self.map_markers[t_id].getLatLng();
-                self.map.panTo(latlng);
+                let item = self.map_markers[t_id];
+                if (item.is_osm) {
+                    if (item.marker) {
+                        item.marker.openPopup();
+                        if (self.leaflet_map) self.leaflet_map.panTo(item.marker.getLatLng());
+                    }
+                } else {
+                    let { marker, iw } = item;
+                    if (self._open_info_window) self._open_info_window.close();
+                    if (iw && self.map) {
+                        iw.open(self.map, marker);
+                        self._open_info_window = iw;
+                        self.map.panTo(marker.getPosition());
+                    }
+                }
             }
         });
     }
@@ -1755,67 +2141,94 @@ class ChiefTechnicianDashboard {
     }
 
     open_map_popup(lat, lng) {
-        let popup_map = null;
-        let invalidate_timeout = null;
-        let init_timeout = null;
+        let self = this;
         let map_id = "ct-popup-map-" + Math.random().toString(36).substring(2, 9);
 
         let d = new frappe.ui.Dialog({
             title: __("Check-in Location"),
-            fields: [
-                {
-                    fieldtype: "HTML",
-                    fieldname: "map_html"
-                }
-            ]
+            fields: [{ fieldtype: "HTML", fieldname: "map_html" }]
         });
-        
-        d.onhide = () => {
-            if (invalidate_timeout) clearTimeout(invalidate_timeout);
-            if (init_timeout) clearTimeout(init_timeout);
-            if (popup_map) {
-                try {
-                    popup_map.remove();
-                } catch(e) {
-                    console.error("Error removing popup map:", e);
-                }
-                popup_map = null;
-            }
-            d.$wrapper.remove();
-        };
-        
-        d.get_field("map_html").$wrapper.html(`<div id="${map_id}" style="height: 400px; width: 100%; border-radius: 8px;"></div>`);
+
+        d.onhide = () => { d.$wrapper.remove(); };
+        d.get_field("map_html").$wrapper.html(`<div id="${map_id}" style="height:400px;width:100%;border-radius:8px;"></div>`);
         d.show();
 
-        const render_map = () => {
-            let el = document.getElementById(map_id);
-            if (!el) return;
-            try {
-                popup_map = L.map(el).setView([lat, lng], 15);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    attribution: '© OpenStreetMap contributors'
-                }).addTo(popup_map);
-                L.marker([lat, lng]).addTo(popup_map);
-                
-                invalidate_timeout = setTimeout(() => {
-                    if (popup_map) popup_map.invalidateSize();
-                }, 200);
-            } catch(e) {
-                console.error("Error initializing popup map:", e);
-            }
-        };
-
-        if (window.L) {
-            init_timeout = setTimeout(render_map, 150);
-        } else {
-            init_timeout = setTimeout(() => {
-                frappe.require([
-                    '/assets/vin_chakra/js/lib/leaflet/leaflet.css',
-                    '/assets/vin_chakra/js/lib/leaflet/leaflet.js'
-                ], function() {
-                    render_map();
+        setTimeout(() => {
+            if (self.map_provider === "osm") {
+                self._load_leaflet(() => {
+                    let el = document.getElementById(map_id);
+                    if (!el) return;
+                    try {
+                        let popup_map = L.map(el).setView([lat, lng], 15);
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19,
+                            attribution: '© OpenStreetMap'
+                        }).addTo(popup_map);
+                        L.marker([lat, lng]).addTo(popup_map);
+                    } catch(e) {
+                        console.error("Error initializing popup OSM map:", e);
+                    }
                 });
-            }, 150);
-        }
+            } else {
+                self._load_google_maps(() => {
+                    let el = document.getElementById(map_id);
+                    if (!el) return;
+                    try {
+                        let popup_map = new google.maps.Map(el, {
+                            center: { lat: lat, lng: lng },
+                            zoom: 15,
+                            mapTypeControl: false,
+                            streetViewControl: false,
+                            fullscreenControl: false
+                        });
+                        new google.maps.Marker({
+                            position: { lat: lat, lng: lng },
+                            map: popup_map,
+                            title: `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+                        });
+                    } catch(e) {
+                        console.error("Error initializing popup map:", e);
+                    }
+                });
+            }
+        }, 150);
     }
+
+    open_google_map_popup(lat, lng) {
+        let self = this;
+        let map_id = "ct-popup-gmap-" + Math.random().toString(36).substring(2, 9);
+
+        let d = new frappe.ui.Dialog({
+            title: __("Location Preview (Google Maps)"),
+            fields: [{ fieldtype: "HTML", fieldname: "map_html" }]
+        });
+
+        d.onhide = () => { d.$wrapper.remove(); };
+        d.get_field("map_html").$wrapper.html(`<div id="${map_id}" style="height:400px;width:100%;border-radius:8px;"></div>`);
+        d.show();
+
+        setTimeout(() => {
+            self._load_google_maps(() => {
+                let el = document.getElementById(map_id);
+                if (!el) return;
+                try {
+                    let popup_map = new google.maps.Map(el, {
+                        center: { lat: lat, lng: lng },
+                        zoom: 15,
+                        mapTypeControl: true,
+                        streetViewControl: true,
+                        fullscreenControl: true
+                    });
+                    new google.maps.Marker({
+                        position: { lat: lat, lng: lng },
+                        map: popup_map,
+                        title: `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+                    });
+                } catch(e) {
+                    console.error("Error initializing Google map popup:", e);
+                }
+            });
+        }, 150);
+    }
+
 }

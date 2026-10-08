@@ -1,6 +1,18 @@
 import frappe
 from vin_chakra.technician_api import enrich_tickets_customer_details
 
+
+@frappe.whitelist()
+def get_google_maps_api_key() -> str:
+	"""Return the Google Maps API key stored in Google Maps Settings DocType."""
+	if not ("Chief Technician" in frappe.get_roles() or "System Manager" in frappe.get_roles()):
+		frappe.throw("Not permitted")
+	settings = frappe.get_single("Google Maps Settings")
+	if not settings.enabled:
+		return ""
+	return (settings.get_password("api_key", raise_exception=False) or "").strip()
+
+
 @frappe.whitelist()
 def get_dashboard_data(
     date_from: str = None, 

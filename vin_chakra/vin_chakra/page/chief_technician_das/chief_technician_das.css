@@ -742,7 +742,9 @@
     border: none !important;
 }
 
-.map-route-marker {
+.map-route-marker, .ct-osm-custom-marker, .ct-osm-arrow, .ct-osm-pin {
+    background: transparent !important;
+    border: none !important;
     cursor: pointer;
 }
 
@@ -848,4 +850,21 @@
         padding: 6px 10px;
         font-size: 12px;
     }
+}
+
+/* Google Maps Watermark & Grayscale Overlay Suppression */
+#ct-movement-map div[style*="z-index: 1000001"],
+#ct-movement-map .gm-err-container,
+#ct-movement-map .gm-err-content,
+#ct-movement-map div[style*="background-color: rgba(0, 0, 0, 0.5)"],
+#ct-movement-map div[style*="background-color: rgba(255, 255, 255, 0.5)"],
+#ct-movement-map div[style*="pointer-events: none"][style*="z-index"] {
+    display: none !important;
+}
+
+/* Remove grayscale & dimming filters applied to map tiles in development mode */
+#ct-movement-map .gm-style > div:first-child,
+#ct-movement-map .gm-style img {
+    filter: none !important;
+    opacity: 1 !important;
 }
