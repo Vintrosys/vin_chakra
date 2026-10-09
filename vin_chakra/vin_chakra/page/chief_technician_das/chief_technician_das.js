@@ -399,43 +399,20 @@ class ChiefTechnicianDashboard {
     }
 
     _load_leaflet(callback) {
+        let self = this;
+        const set_leaflet_defaults = () => {
+            if (window.L && window.L.Icon && window.L.Icon.Default) {
+                window.L.Icon.Default.imagePath = "https://unpkg.com/leaflet@1.9.4/dist/images/";
+            }
+        };
+
         if (window.L) {
+            set_leaflet_defaults();
             callback();
             return;
         }
-        // Always inject local CSS first; if it 404s, inject CDN CSS as backup
-        if (!document.getElementById("vc-leaflet-css")) {
-            let link = document.createElement("link");
-            link.id = "vc-leaflet-css";
-            link.rel = "stylesheet";
-            link.href = "/assets/vin_chakra/js/lib/leaflet/leaflet.css";
-            link.onerror = () => {
-                if (!document.getElementById("vc-leaflet-css-cdn")) {
-                    let cdnLink = document.createElement("link");
-                    cdnLink.id = "vc-leaflet-css-cdn";
-                    cdnLink.rel = "stylesheet";
-                    cdnLink.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-                    document.head.appendChild(cdnLink);
-                }
-            };
-            document.head.appendChild(link);
-        }
-        // If the script tag already exists but L isn't ready yet, poll for it
-        if (document.getElementById("vc-leaflet-script") || document.getElementById("vc-leaflet-script-cdn")) {
-            let wait = setInterval(() => {
-                if (window.L) {
-                    clearInterval(wait);
-                    callback();
-                }
-            }, 100);
-            return;
-        }
-        let script = document.createElement("script");
-        script.id = "vc-leaflet-script";
-        script.src = "/assets/vin_chakra/js/lib/leaflet/leaflet.js";
-        script.onload = () => { callback(); };
-        script.onerror = () => {
-            // Local asset missing – fall back to CDN for both CSS and JS
+
+        const ensure_cdn_css = () => {
             if (!document.getElementById("vc-leaflet-css-cdn")) {
                 let cdnLink = document.createElement("link");
                 cdnLink.id = "vc-leaflet-css-cdn";
@@ -443,14 +420,78 @@ class ChiefTechnicianDashboard {
                 cdnLink.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
                 document.head.appendChild(cdnLink);
             }
+        };
+
+        const load_cdn_js = () => {
+            ensure_cdn_css();
+            if (document.getElementById("vc-leaflet-script-cdn")) {
+                let pollCdn = setInterval(() => {
+                    if (window.L) {
+                        clearInterval(pollCdn);
+                        set_leaflet_defaults();
+                        callback();
+                    }
+                }, 50);
+                return;
+            }
             let cdn = document.createElement("script");
             cdn.id = "vc-leaflet-script-cdn";
             cdn.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-            cdn.onload = () => { callback(); };
+            cdn.onload = () => {
+                if (window.L) {
+                    set_leaflet_defaults();
+                    callback();
+                } else {
+                    frappe.msgprint(__("Failed to initialize OpenStreetMap library."));
+                }
+            };
             cdn.onerror = () => {
                 frappe.msgprint(__("Failed to load OpenStreetMap library. Please check your network connection."));
             };
             document.head.appendChild(cdn);
+        };
+
+        // Always inject local CSS first; if it 404s, inject CDN CSS as backup
+        if (!document.getElementById("vc-leaflet-css")) {
+            let link = document.createElement("link");
+            link.id = "vc-leaflet-css";
+            link.rel = "stylesheet";
+            link.href = "/assets/vin_chakra/js/lib/leaflet/leaflet.css";
+            link.onerror = () => { ensure_cdn_css(); };
+            document.head.appendChild(link);
+        }
+
+        // If the script tag already exists, poll for it
+        if (document.getElementById("vc-leaflet-script") || document.getElementById("vc-leaflet-script-cdn")) {
+            let waitCount = 0;
+            let wait = setInterval(() => {
+                waitCount++;
+                if (window.L) {
+                    clearInterval(wait);
+                    set_leaflet_defaults();
+                    callback();
+                } else if (waitCount > 50) { // 2.5 seconds timeout
+                    clearInterval(wait);
+                    load_cdn_js();
+                }
+            }, 50);
+            return;
+        }
+
+        let script = document.createElement("script");
+        script.id = "vc-leaflet-script";
+        script.src = "/assets/vin_chakra/js/lib/leaflet/leaflet.js";
+        script.onload = () => {
+            if (window.L) {
+                set_leaflet_defaults();
+                callback();
+            } else {
+                // Local asset returned 200 OK with HTML error page (e.g. Frappe Cloud 404 fallback)
+                load_cdn_js();
+            }
+        };
+        script.onerror = () => {
+            load_cdn_js();
         };
         document.head.appendChild(script);
     }
@@ -736,8 +777,9 @@ class ChiefTechnicianDashboard {
             if (self.map_provider === "osm") {
                 if (self.map) self.destroy_maps();
                 if (self.leaflet_map) {
-                    // Map already exists – just force a size recalculation and reload data
+                    // Map already exists – just force size recalculations and reload data
                     try { self.leaflet_map.invalidateSize(); } catch(e){}
+                    setTimeout(() => { if (self.leaflet_map) try { self.leaflet_map.invalidateSize(); } catch(e){} }, 200);
                     self.load_movement_data();
                     return;
                 }
@@ -750,20 +792,43 @@ class ChiefTechnicianDashboard {
                         el.style.height = "380px";
                     }
                     self.leaflet_map = L.map(el, { preferCanvas: true }).setView([20.5937, 78.9629], 5);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+
+                    // Primary Tile Layer: standard OpenStreetMap tiles (free, no API key required)
+                    let primaryTile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         maxZoom: 19,
-                        attribution: '\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    }).addTo(self.leaflet_map);
+                        subdomains: 'abc',
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    });
+
+                    // Secondary Fallback Tile Layer: Wikimedia's OSM tiles (different host/CDN, also free, no API key)
+                    let fallbackTile = L.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    });
+
+                    let tileErrorHandled = false;
+                    primaryTile.on('tileerror', function() {
+                        if (!tileErrorHandled && self.leaflet_map) {
+                            tileErrorHandled = true;
+                            try {
+                                self.leaflet_map.removeLayer(primaryTile);
+                                fallbackTile.addTo(self.leaflet_map);
+                            } catch(e) {}
+                        }
+                    });
+
+                    primaryTile.addTo(self.leaflet_map);
+
                     self.leaflet_markers = [];
                     self.leaflet_polylines = [];
-                    // Force Leaflet to recalculate after the browser finishes
-                    // painting – this is the primary fix for the blank map on
-                    // production / live sites.
-                    setTimeout(() => {
-                        if (self.leaflet_map) {
-                            self.leaflet_map.invalidateSize();
-                        }
-                    }, 300);
+                    // Multi-pass size recalculation after DOM rendering
+                    [100, 300, 600].forEach(delay => {
+                        setTimeout(() => {
+                            if (self.leaflet_map) {
+                                try { self.leaflet_map.invalidateSize(); } catch(e){}
+                            }
+                        }, delay);
+                    });
                     self.load_movement_data();
                 });
             } else {
@@ -2192,12 +2257,34 @@ class ChiefTechnicianDashboard {
                     let el = document.getElementById(map_id);
                     if (!el) return;
                     try {
-                        let popup_map = L.map(el).setView([lat, lng], 15);
-                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        let popup_map = L.map(el, { preferCanvas: true }).setView([lat, lng], 15);
+
+                        // Same primary/fallback tile strategy as the main Technician Map:
+                        // standard OpenStreetMap tiles first, Wikimedia's OSM tiles (different
+                        // host/CDN) as a fallback if that fails. Both are free, no API key.
+                        let primaryTile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                             maxZoom: 19,
-                            attribution: '© OpenStreetMap'
-                        }).addTo(popup_map);
+                            subdomains: 'abc',
+                            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        });
+                        let fallbackTile = L.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png', {
+                            maxZoom: 19,
+                            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        });
+                        let tileErrorHandled = false;
+                        primaryTile.on('tileerror', function() {
+                            if (!tileErrorHandled) {
+                                tileErrorHandled = true;
+                                try {
+                                    popup_map.removeLayer(primaryTile);
+                                    fallbackTile.addTo(popup_map);
+                                } catch(e) {}
+                            }
+                        });
+                        primaryTile.addTo(popup_map);
+
                         L.marker([lat, lng]).addTo(popup_map);
+                        setTimeout(() => { try { popup_map.invalidateSize(); } catch(e){} }, 100);
                     } catch(e) {
                         console.error("Error initializing popup OSM map:", e);
                     }
