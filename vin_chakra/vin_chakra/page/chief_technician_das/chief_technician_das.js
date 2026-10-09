@@ -399,101 +399,94 @@ class ChiefTechnicianDashboard {
     }
 
     _load_leaflet(callback) {
-        let self = this;
-        const set_leaflet_defaults = () => {
-            if (window.L && window.L.Icon && window.L.Icon.Default) {
-                window.L.Icon.Default.imagePath = "https://unpkg.com/leaflet@1.9.4/dist/images/";
-            }
-        };
+        // Leaflet is kept in its own global (window.vc_leaflet) instead of relying on window.L.
+        // Since Frappe v16 lazy-loads its Leaflet bundle, window.L may be undefined, an older
+        // Leaflet from Frappe, or an unrelated object defined by another script. Trusting any
+        // truthy window.L caused "L.map is not a function" on the live site.
+        const is_leaflet = (obj) => !!obj
+            && typeof obj.map === "function"
+            && typeof obj.tileLayer === "function"
+            && typeof obj.marker === "function"
+            && typeof obj.divIcon === "function"
+            && typeof obj.polyline === "function"
+            && typeof obj.latLngBounds === "function";
 
-        if (window.L) {
-            set_leaflet_defaults();
+        if (is_leaflet(window.vc_leaflet)) {
             callback();
             return;
         }
 
-        const ensure_cdn_css = () => {
-            if (!document.getElementById("vc-leaflet-css-cdn")) {
-                let cdnLink = document.createElement("link");
-                cdnLink.id = "vc-leaflet-css-cdn";
-                cdnLink.rel = "stylesheet";
-                cdnLink.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-                document.head.appendChild(cdnLink);
-            }
-        };
+        window._vc_leaflet_callbacks = window._vc_leaflet_callbacks || [];
+        window._vc_leaflet_callbacks.push(callback);
+        if (window._vc_leaflet_loading) return;
+        window._vc_leaflet_loading = true;
 
-        const load_cdn_js = () => {
-            ensure_cdn_css();
-            if (document.getElementById("vc-leaflet-script-cdn")) {
-                let pollCdn = setInterval(() => {
-                    if (window.L) {
-                        clearInterval(pollCdn);
-                        set_leaflet_defaults();
-                        callback();
-                    }
-                }, 50);
+        const LOCAL_BASE = "/assets/vin_chakra/js/lib/leaflet/";
+        const CDN_BASE = "https://unpkg.com/leaflet@1.9.4/dist/";
+
+        const finish = (lf, base) => {
+            window._vc_leaflet_loading = false;
+            if (!lf) {
+                window._vc_leaflet_callbacks = [];
+                frappe.msgprint(__("Failed to load the OpenStreetMap library. Please check your network connection and reload the page."));
                 return;
             }
-            let cdn = document.createElement("script");
-            cdn.id = "vc-leaflet-script-cdn";
-            cdn.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-            cdn.onload = () => {
-                if (window.L) {
-                    set_leaflet_defaults();
-                    callback();
-                } else {
-                    frappe.msgprint(__("Failed to initialize OpenStreetMap library."));
-                }
-            };
-            cdn.onerror = () => {
-                frappe.msgprint(__("Failed to load OpenStreetMap library. Please check your network connection."));
-            };
-            document.head.appendChild(cdn);
-        };
-
-        // Always inject local CSS first; if it 404s, inject CDN CSS as backup
-        if (!document.getElementById("vc-leaflet-css")) {
-            let link = document.createElement("link");
-            link.id = "vc-leaflet-css";
-            link.rel = "stylesheet";
-            link.href = "/assets/vin_chakra/js/lib/leaflet/leaflet.css";
-            link.onerror = () => { ensure_cdn_css(); };
-            document.head.appendChild(link);
-        }
-
-        // If the script tag already exists, poll for it
-        if (document.getElementById("vc-leaflet-script") || document.getElementById("vc-leaflet-script-cdn")) {
-            let waitCount = 0;
-            let wait = setInterval(() => {
-                waitCount++;
-                if (window.L) {
-                    clearInterval(wait);
-                    set_leaflet_defaults();
-                    callback();
-                } else if (waitCount > 50) { // 2.5 seconds timeout
-                    clearInterval(wait);
-                    load_cdn_js();
-                }
-            }, 50);
-            return;
-        }
-
-        let script = document.createElement("script");
-        script.id = "vc-leaflet-script";
-        script.src = "/assets/vin_chakra/js/lib/leaflet/leaflet.js";
-        script.onload = () => {
-            if (window.L) {
-                set_leaflet_defaults();
-                callback();
-            } else {
-                // Local asset returned 200 OK with HTML error page (e.g. Frappe Cloud 404 fallback)
-                load_cdn_js();
+            if (lf.Icon && lf.Icon.Default) {
+                lf.Icon.Default.imagePath = base + "images/";
             }
+            window.vc_leaflet = lf;
+            let pending = window._vc_leaflet_callbacks;
+            window._vc_leaflet_callbacks = [];
+            pending.forEach((cb) => {
+                try { cb(); } catch (e) { console.error(e); }
+            });
         };
-        script.onerror = () => {
-            load_cdn_js();
+
+        const load_css = (id, href, on_error) => {
+            if (document.getElementById(id)) return;
+            let link = document.createElement("link");
+            link.id = id;
+            link.rel = "stylesheet";
+            link.href = href;
+            if (on_error) link.onerror = on_error;
+            document.head.appendChild(link);
         };
-        document.head.appendChild(script);
+
+        const load_js = (id, src, base, on_fail) => {
+            let previous_L = window.L;
+            let old_tag = document.getElementById(id);
+            if (old_tag) old_tag.remove();
+            let script = document.createElement("script");
+            script.id = id;
+            script.src = src;
+            script.onload = () => {
+                // Leaflet 1.9 sets window.L (and globalThis.leaflet) to its namespace.
+                let lf = [window.L, window.leaflet].find(is_leaflet);
+                if (!lf) {
+                    on_fail();
+                    return;
+                }
+                // Hand window.L back to whatever owned it before, so Frappe's own
+                // Geolocation/Map views and other scripts are not affected.
+                if (lf !== previous_L && typeof lf.noConflict === "function") {
+                    lf.noConflict();
+                }
+                finish(lf, base);
+            };
+            // A 404 on Frappe Cloud can return an HTML page with 200 OK; onload then finds no
+            // Leaflet and falls through to on_fail as well.
+            script.onerror = on_fail;
+            document.head.appendChild(script);
+        };
+
+        load_css("vc-leaflet-css", LOCAL_BASE + "leaflet.css", () => {
+            load_css("vc-leaflet-css-cdn", CDN_BASE + "leaflet.css");
+        });
+
+        load_js("vc-leaflet-script", LOCAL_BASE + "leaflet.js", LOCAL_BASE, () => {
+            load_css("vc-leaflet-css-cdn", CDN_BASE + "leaflet.css");
+            load_js("vc-leaflet-script-cdn", CDN_BASE + "leaflet.js", CDN_BASE, () => finish(null));
+        });
     }
 
     render_view_structure() {
@@ -791,17 +784,17 @@ class ChiefTechnicianDashboard {
                     if (!el.style.height) {
                         el.style.height = "380px";
                     }
-                    self.leaflet_map = L.map(el, { preferCanvas: true }).setView([20.5937, 78.9629], 5);
+                    self.leaflet_map = window.vc_leaflet.map(el, { preferCanvas: true }).setView([20.5937, 78.9629], 5);
 
                     // Primary Tile Layer: standard OpenStreetMap tiles (free, no API key required)
-                    let primaryTile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    let primaryTile = window.vc_leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         maxZoom: 19,
                         subdomains: 'abc',
                         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     });
 
                     // Secondary Fallback Tile Layer: Wikimedia's OSM tiles (different host/CDN, also free, no API key)
-                    let fallbackTile = L.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png', {
+                    let fallbackTile = window.vc_leaflet.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png', {
                         maxZoom: 19,
                         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     });
@@ -1616,7 +1609,7 @@ class ChiefTechnicianDashboard {
         self.leaflet_markers = [];
         self.leaflet_polylines = [];
 
-        let bounds = L.latLngBounds();
+        let bounds = window.vc_leaflet.latLngBounds();
         let legend_html = "";
         let route_colors = ["#6366f1", "#10b981", "#f59e0b", "#ec4899", "#3b82f6", "#8b5cf6"];
 
@@ -1635,7 +1628,7 @@ class ChiefTechnicianDashboard {
                 `<circle cx="14" cy="14" r="12" fill="${tech_color}" stroke="white" stroke-width="2"/>` +
                 `<text x="14" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="bold" font-family="sans-serif">T</text></svg>`;
 
-            let customIcon = L.divIcon({
+            let customIcon = window.vc_leaflet.divIcon({
                 className: "ct-osm-custom-marker",
                 html: iconSvg,
                 iconSize: [28, 28],
@@ -1654,7 +1647,7 @@ class ChiefTechnicianDashboard {
                     <strong>Lat & Long:</strong> <a href="#" class="ct-popup-gmap-link" data-lat="${lat}" data-lng="${lng}" style="color:#6366f1;font-weight:700;text-decoration:underline;" title="View on Google Maps"><i class="fa fa-map-marker"></i> ${lat.toFixed(5)}, ${lng.toFixed(5)}</a>
                 </div></div>`;
 
-            let marker = L.marker([lat, lng], { icon: customIcon, title: tech_name })
+            let marker = window.vc_leaflet.marker([lat, lng], { icon: customIcon, title: tech_name })
                 .addTo(self.leaflet_map)
                 .bindPopup(iwContent);
 
@@ -1682,7 +1675,7 @@ class ChiefTechnicianDashboard {
         self.leaflet_markers = [];
         self.leaflet_polylines = [];
 
-        let bounds = L.latLngBounds();
+        let bounds = window.vc_leaflet.latLngBounds();
         let tech_color = "#3b82f6";
         let tech_name = this.map_filters.technician ? frappe.user.full_name(this.map_filters.technician) : "";
 
@@ -1695,14 +1688,14 @@ class ChiefTechnicianDashboard {
                          .map(v => [parseFloat(v.latitude), parseFloat(v.longitude)]);
 
         if (path.length > 1) {
-            let polyline = L.polyline(path, { color: tech_color, opacity: 0.85, weight: 4 }).addTo(self.leaflet_map);
+            let polyline = window.vc_leaflet.polyline(path, { color: tech_color, opacity: 0.85, weight: 4 }).addTo(self.leaflet_map);
             self.leaflet_polylines.push(polyline);
 
             for (let i = 0; i < path.length - 1; i++) {
                 let p1 = path[i], p2 = path[i + 1];
                 let angle = Math.atan2(p2[0] - p1[0], p2[1] - p1[1]) * 180 / Math.PI;
                 let arrowSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><g transform="rotate(${angle},8,8)"><polygon points="8,2 14,14 8,10 2,14" fill="${tech_color}" opacity="0.9"/></g></svg>`;
-                let arrowIcon = L.divIcon({
+                let arrowIcon = window.vc_leaflet.divIcon({
                     className: "ct-osm-arrow",
                     html: arrowSvg,
                     iconSize: [16, 16],
@@ -1710,7 +1703,7 @@ class ChiefTechnicianDashboard {
                 });
                 let midLat = (p1[0] + p2[0]) / 2;
                 let midLng = (p1[1] + p2[1]) / 2;
-                let arrowMarker = L.marker([midLat, midLng], { icon: arrowIcon, interactive: false }).addTo(self.leaflet_map);
+                let arrowMarker = window.vc_leaflet.marker([midLat, midLng], { icon: arrowIcon, interactive: false }).addTo(self.leaflet_map);
                 self.leaflet_markers.push(arrowMarker);
             }
         }
@@ -1728,7 +1721,7 @@ class ChiefTechnicianDashboard {
                 `<circle cx="16" cy="16" r="9" fill="white" opacity="0.25"/>` +
                 `<text x="16" y="21" text-anchor="middle" fill="white" font-size="${lbl.length > 1 ? "9" : "11"}" font-weight="800" font-family="sans-serif">${lbl}</text></svg>`;
 
-            let pinIcon = L.divIcon({
+            let pinIcon = window.vc_leaflet.divIcon({
                 className: "ct-osm-pin",
                 html: pinSvg,
                 iconSize: [32, 42],
@@ -1754,7 +1747,7 @@ class ChiefTechnicianDashboard {
                     <strong>Lat & Long:</strong> <a href="#" class="ct-popup-gmap-link" data-lat="${lat}" data-lng="${lng}" style="color:#6366f1;font-weight:700;text-decoration:underline;" title="View on Google Maps"><i class="fa fa-map-marker"></i> ${lat.toFixed(5)}, ${lng.toFixed(5)}</a>
                 </div></div>`;
 
-            let marker = L.marker([lat, lng], { icon: pinIcon, title: `Ticket #${index + 1}: ${v.ticket}` })
+            let marker = window.vc_leaflet.marker([lat, lng], { icon: pinIcon, title: `Ticket #${index + 1}: ${v.ticket}` })
                 .addTo(self.leaflet_map)
                 .bindPopup(iwContent);
 
@@ -2257,17 +2250,17 @@ class ChiefTechnicianDashboard {
                     let el = document.getElementById(map_id);
                     if (!el) return;
                     try {
-                        let popup_map = L.map(el, { preferCanvas: true }).setView([lat, lng], 15);
+                        let popup_map = window.vc_leaflet.map(el, { preferCanvas: true }).setView([lat, lng], 15);
 
                         // Same primary/fallback tile strategy as the main Technician Map:
                         // standard OpenStreetMap tiles first, Wikimedia's OSM tiles (different
                         // host/CDN) as a fallback if that fails. Both are free, no API key.
-                        let primaryTile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                        let primaryTile = window.vc_leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                             maxZoom: 19,
                             subdomains: 'abc',
                             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                         });
-                        let fallbackTile = L.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png', {
+                        let fallbackTile = window.vc_leaflet.tileLayer('https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png', {
                             maxZoom: 19,
                             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                         });
@@ -2283,7 +2276,7 @@ class ChiefTechnicianDashboard {
                         });
                         primaryTile.addTo(popup_map);
 
-                        L.marker([lat, lng]).addTo(popup_map);
+                        window.vc_leaflet.marker([lat, lng]).addTo(popup_map);
                         setTimeout(() => { try { popup_map.invalidateSize(); } catch(e){} }, 100);
                     } catch(e) {
                         console.error("Error initializing popup OSM map:", e);
