@@ -403,17 +403,25 @@ class ChiefTechnicianDashboard {
             callback();
             return;
         }
+        // Always inject local CSS first; if it 404s, inject CDN CSS as backup
         if (!document.getElementById("vc-leaflet-css")) {
             let link = document.createElement("link");
             link.id = "vc-leaflet-css";
             link.rel = "stylesheet";
             link.href = "/assets/vin_chakra/js/lib/leaflet/leaflet.css";
             link.onerror = () => {
-                link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+                if (!document.getElementById("vc-leaflet-css-cdn")) {
+                    let cdnLink = document.createElement("link");
+                    cdnLink.id = "vc-leaflet-css-cdn";
+                    cdnLink.rel = "stylesheet";
+                    cdnLink.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+                    document.head.appendChild(cdnLink);
+                }
             };
             document.head.appendChild(link);
         }
-        if (document.getElementById("vc-leaflet-script")) {
+        // If the script tag already exists but L isn't ready yet, poll for it
+        if (document.getElementById("vc-leaflet-script") || document.getElementById("vc-leaflet-script-cdn")) {
             let wait = setInterval(() => {
                 if (window.L) {
                     clearInterval(wait);
@@ -427,6 +435,14 @@ class ChiefTechnicianDashboard {
         script.src = "/assets/vin_chakra/js/lib/leaflet/leaflet.js";
         script.onload = () => { callback(); };
         script.onerror = () => {
+            // Local asset missing – fall back to CDN for both CSS and JS
+            if (!document.getElementById("vc-leaflet-css-cdn")) {
+                let cdnLink = document.createElement("link");
+                cdnLink.id = "vc-leaflet-css-cdn";
+                cdnLink.rel = "stylesheet";
+                cdnLink.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+                document.head.appendChild(cdnLink);
+            }
             let cdn = document.createElement("script");
             cdn.id = "vc-leaflet-script-cdn";
             cdn.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
@@ -710,6 +726,9 @@ class ChiefTechnicianDashboard {
 
     init_map() {
         let self = this;
+        // Use a slightly longer delay to ensure the DOM container is fully
+        // rendered and has its final computed dimensions before Leaflet or
+        // Google Maps initialises (avoids the blank-tile / 0-height issue).
         setTimeout(() => {
             let map_el = self.wrapper.find("#ct-movement-map")[0];
             if (!map_el) return;
@@ -717,6 +736,7 @@ class ChiefTechnicianDashboard {
             if (self.map_provider === "osm") {
                 if (self.map) self.destroy_maps();
                 if (self.leaflet_map) {
+                    // Map already exists – just force a size recalculation and reload data
                     try { self.leaflet_map.invalidateSize(); } catch(e){}
                     self.load_movement_data();
                     return;
@@ -724,13 +744,26 @@ class ChiefTechnicianDashboard {
                 self._load_leaflet(() => {
                     let el = self.wrapper.find("#ct-movement-map")[0];
                     if (!el) return;
-                    self.leaflet_map = L.map(el).setView([20.5937, 78.9629], 5);
+                    // Ensure the container has an explicit height so Leaflet
+                    // can calculate tile positions correctly
+                    if (!el.style.height) {
+                        el.style.height = "380px";
+                    }
+                    self.leaflet_map = L.map(el, { preferCanvas: true }).setView([20.5937, 78.9629], 5);
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         maxZoom: 19,
-                        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        attribution: '\u00a9 <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     }).addTo(self.leaflet_map);
                     self.leaflet_markers = [];
                     self.leaflet_polylines = [];
+                    // Force Leaflet to recalculate after the browser finishes
+                    // painting – this is the primary fix for the blank map on
+                    // production / live sites.
+                    setTimeout(() => {
+                        if (self.leaflet_map) {
+                            self.leaflet_map.invalidateSize();
+                        }
+                    }, 300);
                     self.load_movement_data();
                 });
             } else {
@@ -759,7 +792,7 @@ class ChiefTechnicianDashboard {
                     self.load_movement_data();
                 });
             }
-        }, 150);
+        }, 250);
     }
     
     bind_events() {

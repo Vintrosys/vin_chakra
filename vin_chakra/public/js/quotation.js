@@ -33,35 +33,171 @@ $(`<style>
 	}
 </style>`).appendTo('head');
 
-frappe.ui.form.on('Quotation', {
-	onload: function (frm) {
-		if (frm.is_new() && !frm.doc.custom_sales_person) {
+// ─── Constants ────────────────────────────────────────────────────────────────
+// CC email that must always be injected when sending from the Quotation DocType.
+var QUOTATION_CC_EMAIL = 'sreechakrasewing@gmail.com';
 
+// ─── Layer 1: CommunicationComposer Prototype Hook ─────────────────────────────
+// In Frappe, sending email creates an instance of `frappe.views.CommunicationComposer`.
+// Patching `make()` ensures `this.cc` contains QUOTATION_CC_EMAIL when `frm.doctype === 'Quotation'`.
+// This guarantees `set_values()` in CommunicationComposer populates the CC field when the modal opens.
+(function () {
+	function patch_communication_composer() {
+		if (
+			window.frappe &&
+			frappe.views &&
+			frappe.views.CommunicationComposer &&
+			!frappe.views.CommunicationComposer._quotation_cc_patched
+		) {
+			frappe.views.CommunicationComposer._quotation_cc_patched = true;
+			var original_make = frappe.views.CommunicationComposer.prototype.make;
+
+			frappe.views.CommunicationComposer.prototype.make = function () {
+				try {
+					var active_frm = this.frm || window.cur_frm;
+					if (active_frm && active_frm.doctype === 'Quotation') {
+						var existing_cc = this.cc || '';
+						var list = existing_cc.trim()
+							? existing_cc.split(/[,;]+/).map(function (e) { return e.trim(); }).filter(Boolean)
+							: [];
+
+						var exists = list.some(function (e) {
+							return e.toLowerCase() === QUOTATION_CC_EMAIL.toLowerCase();
+						});
+
+						if (!exists) {
+							list.push(QUOTATION_CC_EMAIL);
+						}
+						this.cc = list.join(', ');
+					}
+				} catch (err) {
+					console.warn('[Quotation CC Patch Error]', err);
+				}
+				return original_make.apply(this, arguments);
+			};
+		}
+	}
+
+	patch_communication_composer();
+	$(document).on('app_ready page_change', patch_communication_composer);
+})();
+
+// ─── DOM Observer & Field Injector ─────────────────────────────────────────────
+function _inject_quotation_cc(dialogEl) {
+	try {
+		var $dialog = $(dialogEl);
+		var $cc = $dialog.find('input[data-fieldname="cc"], textarea[data-fieldname="cc"]');
+		if (!$cc.length) {
+			$cc = $dialog.find('.frappe-control[data-fieldname="cc"] input, .frappe-control[data-fieldname="cc"] textarea');
+		}
+		if (!$cc.length) return;
+
+		var current = ($cc.val() || '').trim();
+		var emails = current
+			? current.split(/[,;]+/).map(function (e) { return e.trim(); }).filter(Boolean)
+			: [];
+
+		var already_added = emails.some(function (e) {
+			return e.toLowerCase() === QUOTATION_CC_EMAIL.toLowerCase();
+		});
+
+		if (!already_added) {
+			emails.push(QUOTATION_CC_EMAIL);
+			$cc.val(emails.join(', ')).trigger('input').trigger('change');
+		}
+	} catch (err) {
+		console.warn('[Quotation CC] Could not inject CC:', err);
+	}
+}
+
+function _watch_email_dialog_for_cc(frm) {
+	if (!frm || frm.doctype !== 'Quotation') return;
+
+	if (window.__quotation_cc_observer) {
+		window.__quotation_cc_observer.disconnect();
+		window.__quotation_cc_observer = null;
+	}
+
+	var observer = new MutationObserver(function (mutations, obs) {
+		var dialogEl = document.querySelector(
+			'.modal.compose-mail-dialog, .modal[data-modal-name="compose-mail"], .modal .compose-mail'
+		);
+
+		if (!dialogEl) {
+			var modals = document.querySelectorAll('.modal.show, .modal.in');
+			for (var i = 0; i < modals.length; i++) {
+				if (modals[i].querySelector('[data-fieldname="cc"]')) {
+					dialogEl = modals[i];
+					break;
+				}
+			}
+		}
+
+		if (dialogEl) {
+			_inject_quotation_cc(dialogEl);
+			obs.disconnect();
+			window.__quotation_cc_observer = null;
+		}
+	});
+
+	observer.observe(document.body, { childList: true, subtree: true });
+
+	setTimeout(function () {
+		if (observer) observer.disconnect();
+		window.__quotation_cc_observer = null;
+	}, 10000);
+
+	window.__quotation_cc_observer = observer;
+}
+
+frappe.ui.form.on('Quotation', {
+	// Standard Frappe hook for default email recipients
+	get_email_recipients: function (frm, fieldname) {
+		if (frm.doctype === 'Quotation' && fieldname === 'cc') {
+			return [QUOTATION_CC_EMAIL];
+		}
+	},
+
+	onload: function (frm) {
+		// Override frm.email_doc to explicitly include CC
+		if (frm && !frm._quotation_email_doc_patched) {
+			frm._quotation_email_doc_patched = true;
+			var orig_email_doc = frm.email_doc;
+			frm.email_doc = function (message) {
+				_watch_email_dialog_for_cc(frm);
+				var composer = orig_email_doc.call(frm, message);
+				if (composer) {
+					var existing_cc = composer.cc || '';
+					if (!existing_cc.toLowerCase().includes(QUOTATION_CC_EMAIL.toLowerCase())) {
+						composer.cc = existing_cc ? existing_cc + ', ' + QUOTATION_CC_EMAIL : QUOTATION_CC_EMAIL;
+					}
+				}
+				return composer;
+			};
+		}
+
+		if (frm.is_new() && !frm.doc.custom_sales_person) {
 			// Get Employee linked to current logged-in user
 			frappe.db.get_value(
 				'Employee',
 				{ user_id: frappe.session.user },
 				'name'
 			).then(r => {
-
 				if (!r.message || !r.message.name) {
 					return;
 				}
-
 				// Get Sales Person linked to that Employee
 				frappe.db.get_value(
 					'Sales Person',
 					{ employee: r.message.name },
 					'name'
 				).then(sp => {
-
 					if (sp.message && sp.message.name) {
 						frm.set_value(
 							'custom_sales_person',
 							sp.message.name
 						);
 					}
-
 				});
 			});
 		}
@@ -69,7 +205,6 @@ frappe.ui.form.on('Quotation', {
 
 	custom_sales_person: function (frm) {
 		console.log("SALES PERSON SELECTED:", frm.doc.custom_sales_person);
-
 		update_sales_person_phone(frm);
 	},
 
@@ -83,12 +218,26 @@ frappe.ui.form.on('Quotation', {
 				}
 			});
 		}, 400);
+
+		// Intercept toolbar and timeline email button clicks
+		var $page = $(frm.wrapper);
+		$page.off('click.quotation_cc', '.btn-send-email, [data-action="send_email"], .email-compose-btn')
+			.on('click.quotation_cc', '.btn-send-email, [data-action="send_email"], .email-compose-btn', function () {
+				_watch_email_dialog_for_cc(frm);
+			});
+
+		$(document)
+			.off('click.quotation_cc_toolbar')
+			.on('click.quotation_cc_toolbar', '.page-head .btn[data-action="send_email"], .page-actions [data-action="send_email"], .action-btn-email', function () {
+				if (cur_frm && cur_frm.doctype === 'Quotation') {
+					_watch_email_dialog_for_cc(cur_frm);
+				}
+			});
 	},
 
 	validate: function (frm) {
 		let warnings = [];
 		(frm.doc.items || []).forEach(row => {
-			// Prioritize the actual custom field if it exists, fallback to API variable
 			let min_rate = row.custom_minimum_bargaining_rate || row.__min_rate || 0;
 			if (min_rate > 0 && row.rate < min_rate) {
 				warnings.push(`Item <b>${row.item_code}</b> rate (${format_currency(row.rate, frm.doc.currency)}) is below minimum (${format_currency(min_rate, frm.doc.currency)}).`);
@@ -100,7 +249,7 @@ frappe.ui.form.on('Quotation', {
 				indicator: 'red',
 				message: __('Some items are quoted below their Minimum Bargaining Rate. You cannot save this Quotation.<br><br>' + warnings.join('<br>'))
 			});
-			frappe.validated = false; // Block the save action
+			frappe.validated = false;
 		}
 	}
 });
