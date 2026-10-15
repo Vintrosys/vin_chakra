@@ -148,9 +148,9 @@ permission_query_conditions = {
 # 	"Task": "vin_chakra.task.get_dashboard_data"
 
 override_whitelisted_methods = {
-    "frappe.utils.print_format.download_pdf": "vin_chakra.utils.pdf_merger.custom_download_pdf"
+    "frappe.utils.print_format.download_pdf": "vin_chakra.utils.pdf_merger.custom_download_pdf",
+	"frappe.email.doctype.email_template.email_template.get_email_templates": "vin_chakra.vin_chakra.email_template_override.get_email_templates"
 }
-
 
 # -----------------------------------------------------------
 
@@ -262,3 +262,6 @@ fixtures = [
         ]
     }
 ]
+
+
+
