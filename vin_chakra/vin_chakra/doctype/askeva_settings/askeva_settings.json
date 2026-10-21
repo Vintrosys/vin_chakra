@@ -1,0 +1,90 @@
+{
+ "actions": [],
+ "allow_import": 0,
+ "allow_rename": 0,
+ "creation": "2026-10-14 14:30:00.000000",
+ "doctype": "DocType",
+ "issingle": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "inbound_section",
+  "webhook_token",
+  "inbound_description",
+  "outbound_section",
+  "api_url",
+  "api_token",
+  "default_language_code"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "inbound_section",
+   "fieldtype": "Section Break",
+   "label": "Inbound Webhook (Chatbot -> Ticket)"
+  },
+  {
+   "fieldname": "webhook_token",
+   "fieldtype": "Password",
+   "label": "Webhook Secret Token",
+   "reqd": 1,
+   "description": "Shared secret AskEva must send as the ?token= query parameter (or X-Askeva-Token header) when posting form submissions."
+  },
+  {
+   "fieldname": "inbound_description",
+   "fieldtype": "HTML",
+   "options": "<div class=\"alert alert-info\" style=\"font-size:13px; line-height:1.6;\">\n  <strong>&#128276; WhatsApp Chatbot Ticket Intake</strong><br>\n  Configure the AskEva chatbot's <em>flow submitted</em> step to POST to:<br>\n  <code>/api/method/vin_chakra.whatsapp_api.receive_form?token=&lt;Webhook Secret Token&gt;</code><br>\n  with the form fields and the sender's <code>userNumber</code>. Submissions are logged under <strong>WhatsApp Form Submission</strong>.\n</div>"
+  },
+  {
+   "fieldname": "outbound_section",
+   "fieldtype": "Section Break",
+   "label": "Outbound Messaging (Invoice / Confirmation)"
+  },
+  {
+   "default": "https://backend.askeva.io/v1/message/send-message",
+   "fieldname": "api_url",
+   "fieldtype": "Data",
+   "label": "Send Message API URL"
+  },
+  {
+   "fieldname": "api_token",
+   "fieldtype": "Password",
+   "label": "Send Message API Token",
+   "description": "Authentication token passed as ?token= when sending WhatsApp template messages (invoice, confirmation)."
+  },
+  {
+   "default": "en",
+   "fieldname": "default_language_code",
+   "fieldtype": "Data",
+   "label": "Default Template Language Code"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-14 14:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "vin_chakra",
+ "name": "AskEva Settings",
+ "naming_rule": "By Name",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "states": []
+}
