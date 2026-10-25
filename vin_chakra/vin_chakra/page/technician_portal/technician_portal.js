@@ -448,7 +448,7 @@ class TechnicianPortal {
         
         // Clicking Ticket cards/rows
         this.wrapper.on("click", ".tp-ticket-card, .tp-ticket-list-row", function(e) {
-            if ($(e.target).closest(".tp-btn-create-invoice").length) {
+            if ($(e.target).closest(".tp-btn-create-invoice, .tp-btn-send-invoice").length) {
                 return;
             }
             let ticket_name = $(this).data("name");
@@ -457,14 +457,30 @@ class TechnicianPortal {
             }
         });
         
-        // Create Invoice Button Click
+        // Create or View Invoice Button Click
         this.wrapper.on("click", ".tp-btn-create-invoice", function(e) {
             e.stopPropagation();
             e.preventDefault();
+            let invoice = $(this).data("invoice");
+            if (invoice) {
+                frappe.set_route("Form", "Sales Invoice", invoice);
+                return;
+            }
             let ticket_name = $(this).data("name");
             let customer = $(this).data("customer");
             let phone = $(this).data("phone");
             self.create_invoice(ticket_name, customer, phone);
+        });
+
+        // Send Invoice via WhatsApp Button Click
+        this.wrapper.on("click", ".tp-btn-send-invoice", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            let ticket_name = $(this).data("ticket");
+            let invoice_name = $(this).data("invoice");
+            let customer = $(this).data("customer");
+            let phone = $(this).data("phone");
+            self.send_invoice_whatsapp(ticket_name, invoice_name, customer, phone);
         });
         
         // Quick filter pill remove
@@ -590,13 +606,29 @@ class TechnicianPortal {
             
             let is_resolved = t.status && t.status.trim().toLowerCase() === 'resolved';
             let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
-            let invoice_btn = is_resolved ? `
-                <div style="margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px;">
-                    <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="width: 100%; border-radius: 6px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; background-color: #10b981; border-color: #10b981; color: white;">
-                        <i class="fa fa-file-text-o"></i> Create Invoice
-                    </button>
-                </div>
-            ` : '';
+            let invoice_btn = '';
+            if (is_resolved) {
+                if (t.sales_invoice) {
+                    invoice_btn = `
+                        <div style="margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px; display: flex; gap: 8px;">
+                            <button class="btn btn-xs btn-outline-secondary tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" data-invoice="${t.sales_invoice.name}" style="flex:1; border-radius: 6px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 8px;" title="View Sales Invoice">
+                                <i class="fa fa-file-text-o"></i> ${t.sales_invoice.name}
+                            </button>
+                            <button class="btn btn-xs tp-btn-send-invoice" data-ticket="${t.name}" data-invoice="${t.sales_invoice.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="flex:1; border-radius: 6px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 8px; background-color: #25D366; border-color: #25D366; color: white;" title="Send Invoice via WhatsApp">
+                                <i class="fa fa-whatsapp"></i> Send Invoice
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    invoice_btn = `
+                        <div style="margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px;">
+                            <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="width: 100%; border-radius: 6px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; background-color: #10b981; border-color: #10b981; color: white;">
+                                <i class="fa fa-file-text-o"></i> Create Invoice
+                            </button>
+                        </div>
+                    `;
+                }
+            }
             
             return `
                 <div class="tp-ticket-card" data-name="${t.name}">
@@ -641,13 +673,29 @@ class TechnicianPortal {
             let address = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ') || 'N/A';
             let is_resolved = t.status && t.status.trim().toLowerCase() === 'resolved';
             let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
-            let invoice_btn = is_resolved ? `
-                <div class="tp-list-action-col" style="flex-shrink:0;">
-                    <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:6px; font-weight:700; display: flex; align-items: center; gap: 4px; padding: 5px 10px; background-color: #10b981; border-color: #10b981; color: white;">
-                        <i class="fa fa-file-text-o"></i> Create Invoice
-                    </button>
-                </div>
-            ` : '';
+            let invoice_btn = '';
+            if (is_resolved) {
+                if (t.sales_invoice) {
+                    invoice_btn = `
+                        <div class="tp-list-action-col" style="flex-shrink:0; display:flex; gap:6px;">
+                            <button class="btn btn-xs btn-outline-secondary tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" data-invoice="${t.sales_invoice.name}" style="border-radius:6px; font-weight:700; display: flex; align-items: center; gap: 4px; padding: 5px 8px;" title="View Sales Invoice">
+                                <i class="fa fa-file-text-o"></i> ${t.sales_invoice.name}
+                            </button>
+                            <button class="btn btn-xs tp-btn-send-invoice" data-ticket="${t.name}" data-invoice="${t.sales_invoice.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:6px; font-weight:700; display: flex; align-items: center; gap: 4px; padding: 5px 10px; background-color: #25D366; border-color: #25D366; color: white;" title="Send Invoice via WhatsApp">
+                                <i class="fa fa-whatsapp"></i> Send Invoice
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    invoice_btn = `
+                        <div class="tp-list-action-col" style="flex-shrink:0;">
+                            <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:6px; font-weight:700; display: flex; align-items: center; gap: 4px; padding: 5px 10px; background-color: #10b981; border-color: #10b981; color: white;">
+                                <i class="fa fa-file-text-o"></i> Create Invoice
+                            </button>
+                        </div>
+                    `;
+                }
+            }
             
             return `
                 <div class="tp-ticket-list-row" data-name="${t.name}">
@@ -842,9 +890,19 @@ class TechnicianPortal {
             : (t.custom_machine_name || '');
         let is_res = t.status && t.status.trim().toLowerCase() === 'resolved';
         let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
-        let invoice_btn = is_res 
-            ? `<button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:4px; font-weight:700; background-color: #10b981; border-color: #10b981; color: white;"><i class="fa fa-file-text-o"></i> Create Invoice</button>`
-            : '-';
+        let invoice_btn = '-';
+        if (is_res) {
+            if (t.sales_invoice) {
+                invoice_btn = `
+                    <div style="display:flex; gap:4px;">
+                        <button class="btn btn-xs btn-outline-secondary tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" data-invoice="${t.sales_invoice.name}" style="border-radius:4px; font-weight:700;">${t.sales_invoice.name}</button>
+                        <button class="btn btn-xs tp-btn-send-invoice" data-ticket="${t.name}" data-invoice="${t.sales_invoice.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:4px; font-weight:700; background-color: #25D366; border-color: #25D366; color: white;" title="Send Invoice via WhatsApp"><i class="fa fa-whatsapp"></i></button>
+                    </div>
+                `;
+            } else {
+                invoice_btn = `<button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:4px; font-weight:700; background-color: #10b981; border-color: #10b981; color: white;"><i class="fa fa-file-text-o"></i> Create Invoice</button>`;
+            }
+        }
         return `
             <tr>
                 <td>
@@ -888,11 +946,28 @@ class TechnicianPortal {
     dialog.$wrapper.on("click", ".tp-btn-create-invoice", function(e) {
         e.stopPropagation();
         e.preventDefault();
+        let invoice = $(this).data("invoice");
+        if (invoice) {
+            dialog.hide();
+            frappe.set_route("Form", "Sales Invoice", invoice);
+            return;
+        }
         let ticket_name = $(this).data("name");
         let customer = $(this).data("customer");
         let phone = $(this).data("phone");
         dialog.hide();
         self.create_invoice(ticket_name, customer, phone);
+    });
+
+    dialog.$wrapper.on("click", ".tp-btn-send-invoice", function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        let ticket_name = $(this).data("ticket");
+        let invoice_name = $(this).data("invoice");
+        let customer = $(this).data("customer");
+        let phone = $(this).data("phone");
+        dialog.hide();
+        self.send_invoice_whatsapp(ticket_name, invoice_name, customer, phone);
     });
 
     dialog.$wrapper.find("#tp-btn-share-excel").on("click", function() {
@@ -1289,10 +1364,27 @@ class TechnicianPortal {
             let is_closed = ticket.status && ticket.status.trim().toLowerCase() === 'closed';
             
             if (is_resolved || is_closed) {
+                let inv = ticket.sales_invoice;
+                let phone = ticket.custom_customer_mobile_number || ticket.primary_phone || ticket.custom__secondary_phone_number || '';
+                let cust = ticket.customer || ticket.custom_customer_name || '';
                 box.html(`
-                    <div style="display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:10px; padding: 8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding: 8px;">
                         <div style="color: var(--tp-success); font-weight: 700; font-size: 15px;">
                             <i class="fa fa-check-circle" style="font-size:18px; margin-right:6px; vertical-align:middle;"></i> Service Completed &amp; Checked Out
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                            ${inv ? `
+                                <button class="btn btn-xs btn-outline-secondary tp-btn-create-invoice" data-name="${ticket.name}" data-customer="${cust}" data-phone="${phone}" data-invoice="${inv.name}" style="border-radius:6px; font-weight:700; padding:6px 12px;">
+                                    <i class="fa fa-file-text-o"></i> Invoice (${inv.name})
+                                </button>
+                                <button class="btn btn-xs tp-btn-send-invoice" data-ticket="${ticket.name}" data-invoice="${inv.name}" data-customer="${cust}" data-phone="${phone}" style="border-radius:6px; font-weight:700; display:flex; align-items:center; gap:6px; padding:6px 12px; background-color:#25D366; border-color:#25D366; color:white;">
+                                    <i class="fa fa-whatsapp"></i> Send Invoice
+                                </button>
+                            ` : `
+                                <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${ticket.name}" data-customer="${cust}" data-phone="${phone}" style="border-radius:6px; font-weight:700; padding:6px 12px; background-color:#10b981; border-color:#10b981; color:white;">
+                                    <i class="fa fa-file-text-o"></i> Create Invoice
+                                </button>
+                            `}
                         </div>
                     </div>
                 `);
@@ -1578,6 +1670,33 @@ class TechnicianPortal {
         
         render_action_state(t);
         render_timeline_logs(t.check_log);
+
+        dialog.$wrapper.on("click", ".tp-btn-create-invoice", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            let invoice = $(this).data("invoice");
+            if (invoice) {
+                dialog.hide();
+                frappe.set_route("Form", "Sales Invoice", invoice);
+                return;
+            }
+            let ticket_name = $(this).data("name");
+            let customer = $(this).data("customer");
+            let phone = $(this).data("phone");
+            dialog.hide();
+            self.create_invoice(ticket_name, customer, phone);
+        });
+
+        dialog.$wrapper.on("click", ".tp-btn-send-invoice", function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            let ticket_name = $(this).data("ticket");
+            let invoice_name = $(this).data("invoice");
+            let customer = $(this).data("customer");
+            let phone = $(this).data("phone");
+            dialog.hide();
+            self.send_invoice_whatsapp(ticket_name, invoice_name, customer, phone);
+        });
         
         dialog.show();
     }
@@ -1615,6 +1734,115 @@ class TechnicianPortal {
                 if (ticket_name) opts.ticket_name               = ticket_name;
 
                 frappe.new_doc("Sales Invoice", opts);
+            }
+        });
+    }
+
+    send_invoice_whatsapp(ticket_name, invoice_name, customer, phone) {
+        let self = this;
+        if (!invoice_name) {
+            frappe.msgprint({
+                title: __("No Invoice Found"),
+                indicator: "orange",
+                message: __("An invoice has not been created for this ticket yet. Please click 'Create Invoice' first.")
+            });
+            return;
+        }
+
+        frappe.call({
+            method: "vin_chakra.whatsapp_api.get_invoice_notification_preview",
+            args: { invoice_name: invoice_name, target_phone: phone || "" },
+            freeze: true,
+            freeze_message: __("Preparing WhatsApp invoice preview..."),
+            callback: function(r) {
+                if (r.exc || !r.message) return;
+                let res = r.message;
+
+                let d = new frappe.ui.Dialog({
+                    title: __("💬 Send Invoice via WhatsApp"),
+                    fields: [
+                        {
+                            fieldname: "info_html",
+                            fieldtype: "HTML",
+                            options: `
+                                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                                    <div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
+                                        <span style="font-weight:600; color:#166534; font-size:14px;">${frappe.utils.escape_html(res.customer_name || customer || 'Customer')}</span>
+                                        <span style="font-weight:700; color:#15803d; font-size:15px;">${frappe.utils.escape_html(res.grand_total || '')}</span>
+                                    </div>
+                                    <div style="font-size:12px; color:#15803d;">Invoice: <strong>${frappe.utils.escape_html(res.invoice_name || '')}</strong></div>
+                                    <div style="font-size:12px; color:#15803d;">AskEva Mode: <strong>${frappe.utils.escape_html(res.send_mode || '')}</strong> ${res.send_mode === 'Template Message' ? `(Template: <code>${frappe.utils.escape_html(res.template_name || '')}</code>)` : ''}</div>
+                                    ${res.send_mode !== 'Template Message' ? `
+                                    <div style="margin-top:8px; font-size:12px; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:6px 10px; border-radius:6px; line-height:1.4;">
+                                        ⚠️ <strong>24-Hour Session Rule:</strong> Direct text messages can only be sent if this customer sent a WhatsApp message to your business in the last 24 hours. Outside 24h, Meta requires an approved Template Message in AskEva Settings.
+                                    </div>
+                                    ` : ''}
+                                </div>
+                            `
+                        },
+                        {
+                            fieldname: "target_phone",
+                            fieldtype: "Data",
+                            label: __("Customer Mobile Number (WhatsApp)"),
+                            reqd: 1,
+                            default: res.target_phone || phone,
+                            description: __("10-digit mobile number with or without +91 prefix")
+                        },
+                        {
+                            fieldname: "preview_html",
+                            fieldtype: "HTML",
+                            options: `
+                                <label class="control-label" style="font-size:12px; font-weight:600; color:#374151; margin-bottom:4px; display:block;">
+                                    ${res.send_mode === 'Template Message' ? __('Template Parameters Preview:') : __('Message Text Preview:')}
+                                </label>
+                                <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:10px; font-size:13px; white-space:pre-wrap; max-height:160px; overflow-y:auto; color:#1f2937;">
+                                    ${res.send_mode === 'Template Message' ? 
+                                        `<ol style="padding-left:18px; margin:0;">${(res.param_values || []).map(p => `<li><strong>${frappe.utils.escape_html(p)}</strong></li>`).join('')}</ol>` : 
+                                        frappe.utils.escape_html(res.rendered_text)}
+                                </div>
+                                <div style="margin-top:8px; font-size:11px; color:#6b7280;">
+                                    ${(res.send_mode !== 'Template Message' && res.include_pdf_link) ? '📎 The invoice PDF will be attached as a WhatsApp document.<br>' : ''}Invoice PDF: <a href="${res.pdf_link}" target="_blank" style="color:#2563eb; text-decoration:underline;">View / Test PDF Download</a>
+                                </div>
+                            `
+                        }
+                    ],
+                    primary_action_label: __("Send via WhatsApp"),
+                    primary_action: function(values) {
+                        let dest_phone = (values.target_phone || "").trim();
+                        if (!dest_phone) {
+                            frappe.msgprint(__("Please enter a mobile number."));
+                            return;
+                        }
+                        d.hide();
+                        frappe.call({
+                            method: "vin_chakra.whatsapp_api.send_sales_invoice_whatsapp",
+                            args: {
+                                invoice_name: invoice_name,
+                                target_phone: dest_phone
+                            },
+                            freeze: true,
+                            freeze_message: __("Dispatching invoice to WhatsApp..."),
+                            callback: function(resp) {
+                                if (resp.message && resp.message.status === "success") {
+                                    frappe.show_alert({
+                                        message: resp.message.message || __("Invoice sent via WhatsApp!"),
+                                        indicator: "green"
+                                    }, 6);
+                                    if (typeof self.load_data === 'function') {
+                                        self.load_data();
+                                    }
+                                } else {
+                                    frappe.msgprint({
+                                        title: __("Dispatch Failed"),
+                                        indicator: "red",
+                                        message: resp.message ? resp.message.message : __("Failed to send WhatsApp message.")
+                                    });
+                                }
+                            }
+                        });
+                    }
+                });
+                d.show();
             }
         });
     }

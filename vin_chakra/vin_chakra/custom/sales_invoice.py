@@ -138,6 +138,9 @@ def set_invoice_name(doc, method=None):
 	if doc.naming_series != TECHNICIAN_SERIES:
 		return
 
+	if _is_exempt() and not doc.flags.get("technician_abbr"):
+		doc.flags.technician_abbr = "AD"
+
 	abbr = doc.flags.get("technician_abbr")
 	if not abbr:
 		frappe.throw(

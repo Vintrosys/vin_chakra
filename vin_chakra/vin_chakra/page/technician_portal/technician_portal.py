@@ -122,9 +122,23 @@ def get_portal_data(
                 child_map[p] = []
             child_map[p].append(row)
             
+        # Fetch any linked Sales Invoices
+        inv_rows = frappe.get_all(
+            "Sales Invoice",
+            filters={"custom_hd_ticket": ["in", ticket_names], "docstatus": ["!=", 2]},
+            fields=["name", "custom_hd_ticket", "grand_total", "docstatus"],
+            order_by="creation desc"
+        )
+        inv_map = {}
+        for inv in inv_rows:
+            tk = inv.get("custom_hd_ticket")
+            if tk and tk not in inv_map:
+                inv_map[tk] = inv
+
         for t in tickets:
             t["custom_machine_type_list"] = child_map.get(t["name"], [])
-    
+            t["sales_invoice"] = inv_map.get(t["name"])
+
     result = {
         "tickets": tickets,
         "total_count": total_count,

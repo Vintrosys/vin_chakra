@@ -19,6 +19,17 @@ def execute():
                 "fetch_from": "item_code.machine_catalog",
                 "insert_after": "item_code"
             }
+        ],
+        "Sales Invoice": [
+            {
+                "fieldname": "custom_hd_ticket",
+                "label": "HD Ticket",
+                "fieldtype": "Link",
+                "options": "HD Ticket",
+                "insert_after": "customer",
+                "read_only": 0,
+                "no_copy": 1
+            }
         ]
     }
 

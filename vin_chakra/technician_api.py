@@ -487,6 +487,12 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		"gst_options": gst_options,
 		"customer": ticket.get("customer"),
 		"contact": ticket.get("contact"),
+		"sales_invoice": frappe.db.get_value(
+			"Sales Invoice",
+			{"custom_hd_ticket": ticket_name, "docstatus": ["!=", 2]},
+			["name", "grand_total", "docstatus"],
+			as_dict=True
+		),
 	}
 	return enrich_tickets_customer_details(t_dict)
 

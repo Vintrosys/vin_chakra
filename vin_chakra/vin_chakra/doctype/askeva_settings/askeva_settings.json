@@ -4,7 +4,6 @@
  "allow_rename": 0,
  "creation": "2026-10-14 14:30:00.000000",
  "doctype": "DocType",
- "issingle": 1,
  "engine": "InnoDB",
  "field_order": [
   "enabled",
@@ -14,7 +13,16 @@
   "outbound_section",
   "api_url",
   "api_token",
-  "default_language_code"
+  "default_language_code",
+  "public_base_url",
+  "invoice_section",
+  "invoice_send_mode",
+  "invoice_template_name",
+  "invoice_template_language",
+  "include_pdf_link",
+  "invoice_template_params",
+  "invoice_message_template",
+  "outbound_help"
  ],
  "fields": [
   {
@@ -29,11 +37,11 @@
    "label": "Inbound Webhook (Chatbot -> Ticket)"
   },
   {
+   "description": "Shared secret AskEva must send as the ?token= query parameter (or X-Askeva-Token header) when posting form submissions.",
    "fieldname": "webhook_token",
    "fieldtype": "Password",
    "label": "Webhook Secret Token",
-   "reqd": 1,
-   "description": "Shared secret AskEva must send as the ?token= query parameter (or X-Askeva-Token header) when posting form submissions."
+   "reqd": 1
   },
   {
    "fieldname": "inbound_description",
@@ -43,7 +51,7 @@
   {
    "fieldname": "outbound_section",
    "fieldtype": "Section Break",
-   "label": "Outbound Messaging (Invoice / Confirmation)"
+   "label": "Outbound Messaging Credentials"
   },
   {
    "default": "https://backend.askeva.io/v1/message/send-message",
@@ -52,21 +60,81 @@
    "label": "Send Message API URL"
   },
   {
+   "description": "Authentication token passed as ?token= when sending WhatsApp messages via AskEva.",
    "fieldname": "api_token",
    "fieldtype": "Password",
-   "label": "Send Message API Token",
-   "description": "Authentication token passed as ?token= when sending WhatsApp template messages (invoice, confirmation)."
+   "label": "Send Message API Token"
   },
   {
    "default": "en",
    "fieldname": "default_language_code",
    "fieldtype": "Data",
    "label": "Default Template Language Code"
+  },
+  {
+   "description": "Public domain URL for customer-accessible links (e.g. https://erp.chakra.in). If empty, defaults to current site domain.",
+   "fieldname": "public_base_url",
+   "fieldtype": "Data",
+   "label": "Public Base URL"
+  },
+  {
+   "fieldname": "invoice_section",
+   "fieldtype": "Section Break",
+   "label": "Sales Invoice WhatsApp Notification"
+  },
+  {
+   "default": "Template Message",
+   "description": "Choose whether to send an approved Meta WhatsApp template (required for official WABA outside 24h window) or a direct text message.",
+   "fieldname": "invoice_send_mode",
+   "fieldtype": "Select",
+   "label": "Send Mode",
+   "options": "Template Message\nDirect Text Message"
+  },
+  {
+   "default": "service_invoice",
+   "description": "Approved Meta WhatsApp template name in AskEva dashboard (no spaces, e.g. service_invoice).",
+   "fieldname": "invoice_template_name",
+   "fieldtype": "Data",
+   "label": "Meta Template Name"
+  },
+  {
+   "default": "en",
+   "description": "Language code for the template (e.g. en, ta, hi).",
+   "fieldname": "invoice_template_language",
+   "fieldtype": "Data",
+   "label": "Template Language"
+  },
+  {
+   "default": "1",
+   "description": "Direct Text mode: delivers the invoice PDF as an actual WhatsApp document (the message becomes its caption). Template mode: passes the PDF as the template's media link.",
+   "fieldname": "include_pdf_link",
+   "fieldtype": "Check",
+   "label": "Attach Invoice PDF"
+  },
+  {
+   "default": "{customer_name}, {invoice_no}, {amount}, {payment_mode}, {pdf_link}",
+   "description": "Comma-separated list of placeholder tokens to map into Meta template body variables {{1}}, {{2}}, {{3}}, etc.<br>Available tokens: <code>{customer_name}</code>, <code>{invoice_no}</code>, <code>{amount}</code>, <code>{grand_total}</code>, <code>{payment_mode}</code>, <code>{technician_name}</code>, <code>{ticket_no}</code>, <code>{company_name}</code>, <code>{pdf_link}</code>.",
+   "fieldname": "invoice_template_params",
+   "fieldtype": "Small Text",
+   "label": "Template Body Parameters Mapping"
+  },
+  {
+   "default": "Dear {customer_name},\n\nThank you for choosing {company_name}! Your service invoice {invoice_no} for {amount} has been generated.\n\nMode of Payment: {payment_mode}\nTechnician: {technician_name}\n\nView / Download Invoice PDF:\n{pdf_link}\n\nFor any queries, please feel free to reach out to us.",
+   "description": "Message template with placeholders: {customer_name}, {invoice_no}, {amount}, {payment_mode}, {technician_name}, {ticket_no}, {pdf_link}, {company_name}",
+   "fieldname": "invoice_message_template",
+   "fieldtype": "Text",
+   "label": "Direct Text Message Template"
+  },
+  {
+   "fieldname": "outbound_help",
+   "fieldtype": "HTML",
+   "options": "<div class=\"alert alert-info\" style=\"font-size:13px; line-height:1.6;\">\n  <strong>&#128172; Sales Invoice WhatsApp Notification Guide</strong><br>\n  When clicking <strong>Send Invoice</strong> on a Sales Invoice or inside the Technician Portal, the system contacts AskEva's <code>send-message</code> API.<br><br>\n  <strong>&#9888;&#65039; Meta 24-Hour Policy &amp; Send Modes:</strong><br>\n  &bull; <strong>Template Message (Recommended):</strong> Can be sent anytime, even outside the 24h customer window. Requires an approved Meta template.<br>\n  &bull; <strong>Direct Text Message:</strong> Only works if the customer has messaged your WhatsApp business number in the last 24 hours. Outside 24h, Meta rejects with <em>Session is not opened</em>.<br><br>\n  <strong>&#128221; Creating Templates in AskEva / Meta Dashboard:</strong><br>\n  Meta templates <strong>must</strong> use numbered variables like <code>{{1}}</code>, <code>{{2}}</code>, <code>{{3}}</code>. <em>Do not use named variables like {customer_name} in the Meta template editor, or Meta will reject it with INVALID_FORMAT.</em><br><br>\n  <strong>Supported Placeholders in Parameter Mapping:</strong><br>\n  &bull; <code>{customer_name}</code>: Customer or business name<br>\n  &bull; <code>{invoice_no}</code>: Sales Invoice number (e.g. SI/26/HR/001)<br>\n  &bull; <code>{amount}</code>: Formatted invoice grand total (e.g. &#8377;1,500.00)<br>\n  &bull; <code>{payment_mode}</code>: Mode of payment (UPI, Cash, etc.)<br>\n  &bull; <code>{technician_name}</code>: Assigned technician<br>\n  &bull; <code>{ticket_no}</code>: Linked HD Ticket ID<br>\n  &bull; <code>{company_name}</code>: Company name<br>\n  &bull; <code>{pdf_link}</code>: Secure public PDF download link\n</div>"
   }
  ],
  "index_web_pages_for_search": 1,
+ "issingle": 1,
  "links": [],
- "modified": "2026-10-14 14:30:00.000000",
+ "modified": "2026-10-23 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "vin_chakra",
  "name": "AskEva Settings",

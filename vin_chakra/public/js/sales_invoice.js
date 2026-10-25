@@ -56,6 +56,9 @@ frappe.ui.form.on("Sales Invoice", {
 				frm.set_value("custom_gst_bill_required", gst_val);
 			}
 		}
+		if (ticket && frm.fields_dict.custom_hd_ticket && frm.doc.custom_hd_ticket !== ticket) {
+			frm.set_value("custom_hd_ticket", ticket);
+		}
 
 		// Fetch machines & ticket details directly from the ticket — no sessionStorage for machines
 		if (ticket) {
@@ -108,6 +111,13 @@ frappe.ui.form.on("Sales Invoice", {
 			frm.add_custom_button(__("Apply Service Charge"), function () {
 				apply_service_charges_to_items(frm);
 			});
+		}
+
+		// Send Invoice via WhatsApp (AskEva)
+		if (!frm.is_new() && frm.doc.docstatus !== 2) {
+			frm.add_custom_button(__("💬 Send Invoice (WhatsApp)"), function () {
+				_show_send_invoice_dialog(frm);
+			}).addClass("btn-success");
 		}
 	},
 
@@ -448,4 +458,109 @@ function toggle_service_charges(frm) {
 	let hide_due = val === "installation" || val === "service (warranty)";
 	frm.toggle_display("due_date", !hide_due);
 	frm.set_df_property("due_date", "reqd", hide_due ? 1 : 0);
+}
+
+/**
+ * Display modal dialog to preview and send the Sales Invoice via WhatsApp (AskEva).
+ */
+function _show_send_invoice_dialog(frm) {
+	frappe.call({
+		method: "vin_chakra.whatsapp_api.get_invoice_notification_preview",
+		args: { invoice_name: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Loading invoice details..."),
+		callback: function (r) {
+			if (r.exc || !r.message) return;
+			let res = r.message;
+
+			let phone_options = (res.available_phones || []).map(p => ({ label: p, value: p }));
+			if (!phone_options.some(o => o.value === res.target_phone) && res.target_phone) {
+				phone_options.unshift({ label: res.target_phone, value: res.target_phone });
+			}
+
+			let d = new frappe.ui.Dialog({
+				title: __("💬 Send Invoice via WhatsApp"),
+				fields: [
+					{
+						fieldname: "info_html",
+						fieldtype: "HTML",
+						options: `
+							<div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+								<div style="display:flex; justify-content:space-between; margin-bottom: 4px;">
+									<span style="font-weight:600; color:#166534; font-size:14px;">${frappe.utils.escape_html(res.customer_name || 'Customer')}</span>
+									<span style="font-weight:700; color:#15803d; font-size:15px;">${frappe.utils.escape_html(res.grand_total || '')}</span>
+								</div>
+								<div style="font-size:12px; color:#15803d;">Invoice: <strong>${frappe.utils.escape_html(res.invoice_name || '')}</strong></div>
+								<div style="font-size:12px; color:#15803d;">AskEva Mode: <strong>${frappe.utils.escape_html(res.send_mode || '')}</strong> ${res.send_mode === 'Template Message' ? `(Template: <code>${frappe.utils.escape_html(res.template_name || '')}</code>)` : ''}</div>
+								${res.send_mode !== 'Template Message' ? `
+								<div style="margin-top:8px; font-size:12px; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:6px 10px; border-radius:6px; line-height:1.4;">
+									⚠️ <strong>24-Hour Session Rule:</strong> Direct text messages can only be sent if this customer sent a WhatsApp message to your business in the last 24 hours. Outside 24h, Meta requires an approved Template Message in AskEva Settings.
+								</div>
+								` : ''}
+							</div>
+						`
+					},
+					{
+						fieldname: "target_phone",
+						fieldtype: "Data",
+						label: __("Customer Mobile Number (WhatsApp)"),
+						reqd: 1,
+						default: res.target_phone,
+						description: __("10-digit mobile number with or without +91 prefix")
+					},
+					{
+						fieldname: "preview_html",
+						fieldtype: "HTML",
+						options: `
+							<label class="control-label" style="font-size:12px; font-weight:600; color:#374151; margin-bottom:4px; display:block;">
+								${res.send_mode === 'Template Message' ? __('Template Parameters Preview:') : __('Message Text Preview:')}
+							</label>
+							<div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:10px; font-size:13px; white-space:pre-wrap; max-height:160px; overflow-y:auto; color:#1f2937;">
+								${res.send_mode === 'Template Message' ? 
+									`<ol style="padding-left:18px; margin:0;">${(res.param_values || []).map(p => `<li><strong>${frappe.utils.escape_html(p)}</strong></li>`).join('')}</ol>` : 
+									frappe.utils.escape_html(res.rendered_text)}
+							</div>
+							<div style="margin-top:8px; font-size:11px; color:#6b7280;">
+								${(res.send_mode !== 'Template Message' && res.include_pdf_link) ? '📎 The invoice PDF will be attached as a WhatsApp document.<br>' : ''}Invoice PDF: <a href="${res.pdf_link}" target="_blank" style="color:#2563eb; text-decoration:underline;">View / Test PDF Download</a>
+							</div>
+						`
+					}
+				],
+				primary_action_label: __("Send via WhatsApp"),
+				primary_action: function (values) {
+					let phone = (values.target_phone || "").trim();
+					if (!phone) {
+						frappe.msgprint(__("Please enter a mobile number."));
+						return;
+					}
+					d.hide();
+					frappe.call({
+						method: "vin_chakra.whatsapp_api.send_sales_invoice_whatsapp",
+						args: {
+							invoice_name: frm.doc.name,
+							target_phone: phone
+						},
+						freeze: true,
+						freeze_message: __("Dispatching invoice to WhatsApp..."),
+						callback: function (resp) {
+							if (resp.message && resp.message.status === "success") {
+								frappe.show_alert({
+									message: resp.message.message || __("Invoice sent via WhatsApp!"),
+									indicator: "green"
+								}, 6);
+								frm.reload_doc();
+							} else {
+								frappe.msgprint({
+									title: __("Dispatch Failed"),
+									indicator: "red",
+									message: resp.message ? resp.message.message : __("Failed to send WhatsApp message.")
+								});
+							}
+						}
+					});
+				}
+			});
+			d.show();
+		}
+	});
 }
