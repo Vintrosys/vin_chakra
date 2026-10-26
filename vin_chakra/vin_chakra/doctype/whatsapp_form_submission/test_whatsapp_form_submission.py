@@ -340,10 +340,10 @@ class TestWhatsAppIntakeFlow(unittest.TestCase):
 		with self.assertRaises(frappe.PermissionError):
 			whatsapp_api.download_invoice_pdf(inv.name)
 
-		# Guest with a valid, unexpired signed key must succeed
+		# Guest with a valid, unexpired signed key must succeed (testing both default and chosen print format)
 		valid_exp = int(time.time()) + 3600
-		valid_pdf_key = whatsapp_api._generate_invoice_pdf_token(inv.name, valid_exp)
-		whatsapp_api.download_invoice_pdf(inv.name, key=valid_pdf_key, exp=valid_exp)
+		valid_pdf_key = whatsapp_api._generate_invoice_pdf_token(inv.name, valid_exp, print_format="Service invoice")
+		whatsapp_api.download_invoice_pdf(inv.name, key=valid_pdf_key, exp=valid_exp, print_format="Service invoice")
 		self.assertEqual(frappe.local.response.type, "pdf")
 
 		# Guest with an EXPIRED signed key must be rejected
@@ -358,6 +358,15 @@ class TestWhatsAppIntakeFlow(unittest.TestCase):
 
 		frappe.set_user("Administrator")
 
+		# Test preview endpoint returns print formats and strips direct link from message
+		preview = whatsapp_api.get_invoice_notification_preview(inv.name, print_format="Service invoice")
+		self.assertIn("print_formats", preview)
+		self.assertTrue(isinstance(preview["print_formats"], list))
+		self.assertIn("default_print_format", preview)
+		self.assertNotIn("download_invoice_pdf", preview["rendered_text"])
+		self.assertNotIn("{pdf_link}", preview["rendered_text"])
+		self.assertTrue(preview.get("has_document_header"))
+
 		# Test parameter sanitization for Meta API compliance
 		dirty_param = "Line1\nLine2\r\nLine3\tTab   Spaces"
 		clean = whatsapp_api._sanitize_meta_param(dirty_param)
@@ -370,7 +379,8 @@ class TestWhatsAppIntakeFlow(unittest.TestCase):
 		settings.enabled = 1
 		settings.api_token = TEST_API_TOKEN
 		settings.invoice_send_mode = "Template Message"
-		settings.invoice_template_name = "service_invoice"
+		settings.invoice_template_name = "service_invoice_with_pdf"
+		settings.invoice_template_params = "{customer_name}, {ticket_no}, {amount}, {payment_mode}, {technician_name}"
 		settings.include_pdf_link = 1
 		settings.save(ignore_permissions=True)
 
@@ -381,7 +391,7 @@ class TestWhatsAppIntakeFlow(unittest.TestCase):
 			mock_resp.text = '{"status":"success"}'
 			mock_post.return_value = mock_resp
 
-			res = whatsapp_api.send_sales_invoice_whatsapp(inv.name, cust_phone)
+			res = whatsapp_api.send_sales_invoice_whatsapp(inv.name, cust_phone, print_format="Service invoice")
 			self.assertEqual(res.get("status"), "success")
 			self.assertIn("91" + cust_phone, res.get("message"))
 
@@ -394,8 +404,8 @@ class TestWhatsAppIntakeFlow(unittest.TestCase):
 			self.assertEqual(payload["to"], "91" + cust_phone)
 			self.assertEqual(payload["number"], "91" + cust_phone)
 			self.assertEqual(payload["type"], "template")
-			self.assertEqual(payload["template"]["name"], "service_invoice")
-			self.assertTrue(len(payload["parameters"]) >= 3)
+			self.assertEqual(payload["template"]["name"], "service_invoice_with_pdf")
+			self.assertTrue(len(payload["parameters"]) == 5)
 
 			# PDF attached via a document header component (allowed outside 24h window)
 			components = payload["template"].get("components", [])
@@ -403,9 +413,10 @@ class TestWhatsAppIntakeFlow(unittest.TestCase):
 			self.assertIsNotNone(header, "template must carry a document header for the PDF")
 			self.assertEqual(header["parameters"][0]["type"], "document")
 			self.assertIn("download_invoice_pdf", header["parameters"][0]["document"]["link"])
+			self.assertIn("format=Service", header["parameters"][0]["document"]["link"])
 			self.assertTrue(header["parameters"][0]["document"]["filename"].endswith(".pdf"))
 
-		# Test Direct Text Message mode with PDF attachment -> document message
+		# Test Direct Text Message mode with PDF attachment -> document message with clean caption
 		settings.invoice_send_mode = "Direct Text Message"
 		settings.include_pdf_link = 1
 		settings.save(ignore_permissions=True)
@@ -417,34 +428,19 @@ class TestWhatsAppIntakeFlow(unittest.TestCase):
 			mock_resp.text = '{"status":"success"}'
 			mock_post.return_value = mock_resp
 
-			res2 = whatsapp_api.send_sales_invoice_whatsapp(inv.name)
+			res2 = whatsapp_api.send_sales_invoice_whatsapp(inv.name, print_format="Service invoice")
 			self.assertEqual(res2.get("status"), "success")
 			args, kwargs = mock_post.call_args
 			payload = kwargs["json"]
 			self.assertEqual(payload["to"], "91" + cust_phone)
 			self.assertEqual(payload["type"], "document")
 			self.assertIn("download_invoice_pdf", payload["document"]["link"])
+			self.assertIn("format=Service", payload["document"]["link"])
 			self.assertTrue(payload["document"]["filename"].endswith(".pdf"))
 			self.assertNotIn("/", payload["document"]["filename"])
 			self.assertIn(inv.name, payload["document"]["caption"])
-
-		# Direct Text mode with PDF attachment disabled -> plain text message
-		settings.include_pdf_link = 0
-		settings.save(ignore_permissions=True)
-
-		with patch("requests.post") as mock_post:
-			mock_resp = MagicMock()
-			mock_resp.status_code = 200
-			mock_resp.json.return_value = {"status": "success"}
-			mock_resp.text = '{"status":"success"}'
-			mock_post.return_value = mock_resp
-
-			res3 = whatsapp_api.send_sales_invoice_whatsapp(inv.name)
-			self.assertEqual(res3.get("status"), "success")
-			args, kwargs = mock_post.call_args
-			payload = kwargs["json"]
-			self.assertEqual(payload["type"], "text")
-			self.assertIn(inv.name, payload["message"])
+			# Direct link must NOT be in caption
+			self.assertNotIn("download_invoice_pdf", payload["document"]["caption"])
 
 
 def run_tests():

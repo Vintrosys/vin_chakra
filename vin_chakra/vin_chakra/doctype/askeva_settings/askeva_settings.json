@@ -91,8 +91,8 @@
    "options": "Template Message\nDirect Text Message"
   },
   {
-   "default": "service_invoice",
-   "description": "Approved Meta WhatsApp template name in AskEva dashboard (no spaces, e.g. service_invoice).",
+   "default": "service_invoice_with_pdf",
+   "description": "Approved Meta WhatsApp template name in AskEva dashboard (no spaces, e.g. service_invoice_with_pdf).",
    "fieldname": "invoice_template_name",
    "fieldtype": "Data",
    "label": "Meta Template Name"
@@ -106,21 +106,21 @@
   },
   {
    "default": "1",
-   "description": "Direct Text mode: delivers the invoice PDF as an actual WhatsApp document (the message becomes its caption). Template mode: passes the PDF as the template's media link.",
+   "description": "Attaches the generated Sales Invoice PDF directly with the WhatsApp message as a document.",
    "fieldname": "include_pdf_link",
    "fieldtype": "Check",
    "label": "Attach Invoice PDF"
   },
   {
-   "default": "{customer_name}, {invoice_no}, {amount}, {payment_mode}, {pdf_link}",
-   "description": "Comma-separated list of placeholder tokens to map into Meta template body variables {{1}}, {{2}}, {{3}}, etc.<br>Available tokens: <code>{customer_name}</code>, <code>{invoice_no}</code>, <code>{amount}</code>, <code>{grand_total}</code>, <code>{payment_mode}</code>, <code>{technician_name}</code>, <code>{ticket_no}</code>, <code>{company_name}</code>, <code>{pdf_link}</code>.",
+   "default": "{customer_name}, {ticket_no}, {amount}, {payment_mode}, {technician_name}",
+   "description": "Comma-separated list of placeholder tokens to map into Meta template body variables {{1}}, {{2}}, {{3}}, etc.<br>Available tokens: <code>{customer_name}</code>, <code>{invoice_no}</code>, <code>{amount}</code>, <code>{grand_total}</code>, <code>{payment_mode}</code>, <code>{technician_name}</code>, <code>{ticket_no}</code>, <code>{company_name}</code>.",
    "fieldname": "invoice_template_params",
    "fieldtype": "Small Text",
    "label": "Template Body Parameters Mapping"
   },
   {
-   "default": "Dear {customer_name},\n\nThank you for choosing {company_name}! Your service invoice {invoice_no} for {amount} has been generated.\n\nMode of Payment: {payment_mode}\nTechnician: {technician_name}\n\nView / Download Invoice PDF:\n{pdf_link}\n\nFor any queries, please feel free to reach out to us.",
-   "description": "Message template with placeholders: {customer_name}, {invoice_no}, {amount}, {payment_mode}, {technician_name}, {ticket_no}, {pdf_link}, {company_name}",
+   "default": "Dear {customer_name},\n\nThank you for choosing {company_name}! Your service invoice {invoice_no} for {amount} has been generated.\n\nMode of Payment: {payment_mode}\nTechnician: {technician_name}\n\nFor any queries, please feel free to reach out to us.",
+   "description": "Message template with placeholders: {customer_name}, {invoice_no}, {amount}, {payment_mode}, {technician_name}, {ticket_no}, {company_name}",
    "fieldname": "invoice_message_template",
    "fieldtype": "Text",
    "label": "Direct Text Message Template"

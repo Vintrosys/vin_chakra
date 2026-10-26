@@ -30,10 +30,14 @@ frappe.ui.form.on('AskEva Settings', {
 								details = `<div style="font-size:11px; color:#b91c1c; margin-top:2px;">Reason: <strong>${t.rejected_reason}</strong>${t.rejected_reason === 'INVALID_FORMAT' ? ' (Use {{1}}, {{2}} in Meta template body, not {name})' : ''}</div>`;
 							}
 
+							let docBadge = (t.has_document_header || t.header_format === 'DOCUMENT')
+								? '<span class="badge" style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:10px; font-size:10px; margin-left:4px;">📎 DOCUMENT</span>'
+								: '';
+
 							return `
 								<tr style="border-bottom:1px solid #f1f5f9; ${!isApproved ? 'background:#fef2f2;' : ''}">
 									<td style="padding:10px 8px; font-weight:600; color:#1e293b;">
-										${t.name}
+										${t.name} ${docBadge}
 										${details}
 									</td>
 									<td style="padding:10px 8px; color:#475569;">${t.language}</td>
@@ -41,7 +45,7 @@ frappe.ui.form.on('AskEva Settings', {
 									<td style="padding:10px 8px;">${statusBadge}</td>
 									<td style="padding:10px 8px; color:#475569; font-size:12px;">${t.param_count} param(s)</td>
 									<td style="padding:10px 8px; text-align:right;">
-										<button class="btn btn-xs ${isApproved ? 'btn-primary' : 'btn-default'} select-tpl-btn" data-name="${t.name}" data-lang="${t.language}" data-status="${t.status}">
+										<button class="btn btn-xs ${isApproved ? 'btn-primary' : 'btn-default'} select-tpl-btn" data-name="${t.name}" data-lang="${t.language}" data-status="${t.status}" data-has-doc="${t.has_document_header ? '1' : '0'}">
 											${isApproved ? __('Use Template') : __('Not Approved')}
 										</button>
 									</td>
@@ -97,6 +101,9 @@ frappe.ui.form.on('AskEva Settings', {
 							frm.set_value('invoice_template_name', tplName);
 							if (tplLang) {
 								frm.set_value('invoice_template_language', tplLang);
+							}
+							if (tplName === 'service_invoice_with_pdf') {
+								frm.set_value('invoice_template_params', '{customer_name}, {ticket_no}, {amount}, {payment_mode}, {technician_name}');
 							}
 							d.hide();
 							frappe.show_alert({

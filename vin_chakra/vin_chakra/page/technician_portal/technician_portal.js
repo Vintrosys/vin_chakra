@@ -1758,6 +1758,23 @@ class TechnicianPortal {
                 if (r.exc || !r.message) return;
                 let res = r.message;
 
+                let pf_options = (res.print_formats && res.print_formats.length) ? res.print_formats : [res.default_print_format || "Service invoice"];
+                let selected_pf = res.default_print_format || pf_options[0];
+
+                let _render_pdf_badge = function(pdf_link, pf) {
+                    let esc_pf = frappe.utils.escape_html(pf || selected_pf || "Service invoice");
+                    return `
+                        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:8px 12px; margin:4px 0 10px 0; display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:12px; color:#1e40af;">
+                                📎 <strong>Invoice PDF will be attached</strong> using format: <strong>${esc_pf}</strong>
+                            </span>
+                            <a href="${pdf_link}" target="_blank" class="btn btn-xs btn-default" style="font-size:11px; padding:3px 8px; color:#1d4ed8; font-weight:600; text-decoration:none;">
+                                ${__("Preview PDF ↗")}
+                            </a>
+                        </div>
+                    `;
+                };
+
                 let d = new frappe.ui.Dialog({
                     title: __("💬 Send Invoice via WhatsApp"),
                     fields: [
@@ -1771,7 +1788,15 @@ class TechnicianPortal {
                                         <span style="font-weight:700; color:#15803d; font-size:15px;">${frappe.utils.escape_html(res.grand_total || '')}</span>
                                     </div>
                                     <div style="font-size:12px; color:#15803d;">Invoice: <strong>${frappe.utils.escape_html(res.invoice_name || '')}</strong></div>
-                                    <div style="font-size:12px; color:#15803d;">AskEva Mode: <strong>${frappe.utils.escape_html(res.send_mode || '')}</strong> ${res.send_mode === 'Template Message' ? `(Template: <code>${frappe.utils.escape_html(res.template_name || '')}</code>)` : ''}</div>
+                                    <div style="font-size:12px; color:#15803d; margin-top:2px;">
+                                        AskEva Mode: <strong>${frappe.utils.escape_html(res.send_mode || '')}</strong>
+                                        ${res.send_mode === 'Template Message' ? `(Template: <code>${frappe.utils.escape_html(res.template_name || '')}</code> ${res.has_document_header ? '<span class="badge" style="background:#0284c7; color:#fff; padding:1px 6px; border-radius:8px; font-size:10px;">📎 Attached PDF</span>' : ''})` : ''}
+                                    </div>
+                                    ${!res.is_public_base_url ? `
+                                    <div style="margin-top:8px; font-size:11px; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:6px 10px; border-radius:6px; line-height:1.4;">
+                                        ⚠️ <strong>Local Base URL Notice:</strong> Server address is local (<code>${frappe.utils.escape_html(res.public_base_url || '')}</code>). For Meta Cloud API to download and deliver the PDF file, set <strong>Public Base URL</strong> in AskEva Settings (e.g. your public domain or ngrok tunnel).
+                                    </div>
+                                    ` : ''}
                                     ${res.send_mode !== 'Template Message' ? `
                                     <div style="margin-top:8px; font-size:12px; color:#92400e; background:#fef3c7; border:1px solid #fcd34d; padding:6px 10px; border-radius:6px; line-height:1.4;">
                                         ⚠️ <strong>24-Hour Session Rule:</strong> Direct text messages can only be sent if this customer sent a WhatsApp message to your business in the last 24 hours. Outside 24h, Meta requires an approved Template Message in AskEva Settings.
@@ -1789,6 +1814,52 @@ class TechnicianPortal {
                             description: __("10-digit mobile number with or without +91 prefix")
                         },
                         {
+                            fieldname: "print_format",
+                            fieldtype: "Select",
+                            label: __("Print Format"),
+                            options: pf_options,
+                            default: selected_pf,
+                            reqd: 1,
+                            description: __("Choose the print format for the attached invoice PDF"),
+                            change: function() {
+                                let new_pf = (this.get_value() || "").trim();
+                                if (!new_pf) return;
+                                selected_pf = new_pf;
+                                if (d.fields_dict.pdf_badge_html) {
+                                    d.fields_dict.pdf_badge_html.$wrapper.html(
+                                        _render_pdf_badge(res.pdf_link, new_pf)
+                                    );
+                                }
+                                frappe.call({
+                                    method: "vin_chakra.whatsapp_api.get_invoice_notification_preview",
+                                    args: {
+                                        invoice_name: invoice_name,
+                                        target_phone: d.get_value("target_phone") || phone,
+                                        print_format: new_pf
+                                    },
+                                    freeze: false,
+                                    callback: function(r) {
+                                        if (r.message && r.message.pdf_link) {
+                                            res.pdf_link = r.message.pdf_link;
+                                            if (d.fields_dict.pdf_badge_html) {
+                                                d.fields_dict.pdf_badge_html.$wrapper.html(
+                                                    _render_pdf_badge(res.pdf_link, new_pf)
+                                                );
+                                            }
+                                        }
+                                    },
+                                    error: function(err) {
+                                        // Preserve user's format selection without throwing modal
+                                    }
+                                });
+                            }
+                        },
+                        {
+                            fieldname: "pdf_badge_html",
+                            fieldtype: "HTML",
+                            options: _render_pdf_badge(res.pdf_link, selected_pf)
+                        },
+                        {
                             fieldname: "preview_html",
                             fieldtype: "HTML",
                             options: `
@@ -1800,9 +1871,6 @@ class TechnicianPortal {
                                         `<ol style="padding-left:18px; margin:0;">${(res.param_values || []).map(p => `<li><strong>${frappe.utils.escape_html(p)}</strong></li>`).join('')}</ol>` : 
                                         frappe.utils.escape_html(res.rendered_text)}
                                 </div>
-                                <div style="margin-top:8px; font-size:11px; color:#6b7280;">
-                                    ${(res.send_mode !== 'Template Message' && res.include_pdf_link) ? '📎 The invoice PDF will be attached as a WhatsApp document.<br>' : ''}Invoice PDF: <a href="${res.pdf_link}" target="_blank" style="color:#2563eb; text-decoration:underline;">View / Test PDF Download</a>
-                                </div>
                             `
                         }
                     ],
@@ -1813,12 +1881,14 @@ class TechnicianPortal {
                             frappe.msgprint(__("Please enter a mobile number."));
                             return;
                         }
+                        let pf = (values.print_format || selected_pf || "").trim();
                         d.hide();
                         frappe.call({
                             method: "vin_chakra.whatsapp_api.send_sales_invoice_whatsapp",
                             args: {
                                 invoice_name: invoice_name,
-                                target_phone: dest_phone
+                                target_phone: dest_phone,
+                                print_format: pf
                             },
                             freeze: true,
                             freeze_message: __("Dispatching invoice to WhatsApp..."),

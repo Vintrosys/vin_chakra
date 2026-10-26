@@ -972,20 +972,21 @@ def _invoice_pdf_secret() -> bytes:
 	return secret.encode("utf-8")
 
 
-def _generate_invoice_pdf_token(invoice_name: str, exp: int) -> str:
-	"""Internal HMAC signature binding an invoice name to an expiry timestamp.
+def _generate_invoice_pdf_token(invoice_name: str, exp: int, print_format: str = None) -> str:
+	"""Internal HMAC signature binding an invoice name, print format, and expiry timestamp.
 
 	NOT whitelisted on purpose: exposing this as a guest endpoint would let
 	anyone mint valid download links for arbitrary invoices (IDOR oracle).
 	"""
+	fmt_part = f":{print_format.strip()}" if print_format else ""
 	return hmac.new(
 		_invoice_pdf_secret(),
-		f"wa_invoice_pdf:{invoice_name}:{int(exp)}".encode("utf-8"),
+		f"wa_invoice_pdf:{invoice_name}:{int(exp)}{fmt_part}".encode("utf-8"),
 		hashlib.sha256,
 	).hexdigest()
 
 
-def _verify_invoice_pdf_token(invoice_name: str, key: str, exp) -> bool:
+def _verify_invoice_pdf_token(invoice_name: str, key: str, exp, print_format: str = None) -> bool:
 	"""Constant-time verify of an invoice link signature, rejecting expired links."""
 	if not key or exp in (None, ""):
 		return False
@@ -995,15 +996,44 @@ def _verify_invoice_pdf_token(invoice_name: str, key: str, exp) -> bool:
 		return False
 	if exp_int < int(time.time()):
 		return False  # link has expired
-	expected = _generate_invoice_pdf_token(invoice_name, exp_int)
-	return hmac.compare_digest(str(key).strip(), expected)
+
+	# Verify with format if provided
+	expected = _generate_invoice_pdf_token(invoice_name, exp_int, print_format)
+	if hmac.compare_digest(str(key).strip(), expected):
+		return True
+
+	# Fallback verification without format for backward compatibility
+	expected_legacy = _generate_invoice_pdf_token(invoice_name, exp_int, None)
+	return hmac.compare_digest(str(key).strip(), expected_legacy)
+
+
+def get_invoice_print_formats(selected_format: str = None) -> tuple[list[str], str]:
+	"""Return active Print Formats for Sales Invoice and the selected/default choice."""
+	formats = frappe.get_all(
+		"Print Format",
+		filters={"doc_type": "Sales Invoice", "disabled": 0},
+		pluck="name",
+		order_by="name asc"
+	)
+	doc_meta = frappe.get_meta("Sales Invoice")
+	meta_default = doc_meta.default_print_format
+	preferred = selected_format or meta_default
+	if not preferred or preferred not in formats:
+		for cand in ["Service invoice", "Sales Invoice Standard", "GST Tax Invoice"]:
+			if cand in formats:
+				preferred = cand
+				break
+	if not preferred and formats:
+		preferred = formats[0]
+	return formats, (preferred or "Standard")
 
 
 @frappe.whitelist(allow_guest=True)
 @rate_limit(key="name", limit=30, seconds=60)
-def download_invoice_pdf(name: str, key: str = None, exp=None):
+def download_invoice_pdf(name: str, key: str = None, exp=None, format: str = None, print_format: str = None):
 	"""
 	Public guest-accessible endpoint to download/view the Sales Invoice PDF.
+	Supports selecting custom Print Formats.
 	Secured by a time-limited HMAC key to prevent IDOR / unauthorized scraping.
 	"""
 	if not name or not frappe.db.exists("Sales Invoice", name):
@@ -1013,6 +1043,8 @@ def download_invoice_pdf(name: str, key: str = None, exp=None):
 	if docstatus == 2:
 		frappe.throw(_("This invoice has been cancelled."), frappe.ValidationError)
 
+	chosen_format = (print_format or format or "").strip() or None
+
 	# Security: If user is logged in and has read permission on Sales Invoice, allow access
 	is_authorized = False
 	if frappe.session.user != "Guest":
@@ -1020,7 +1052,7 @@ def download_invoice_pdf(name: str, key: str = None, exp=None):
 
 	# If guest or user without direct permission, verify the signed, time-limited key
 	if not is_authorized:
-		if not _verify_invoice_pdf_token(name, key, exp):
+		if not _verify_invoice_pdf_token(name, key, exp, chosen_format):
 			frappe.throw(_("Invalid or expired invoice download link."), frappe.PermissionError)
 
 	orig_user = frappe.session.user
@@ -1035,12 +1067,26 @@ def download_invoice_pdf(name: str, key: str = None, exp=None):
 
 		# Temporarily elevate to Administrator context for PDF rendering so guest can receive their verified document
 		frappe.set_user("Administrator")
-		pdf = frappe.get_print("Sales Invoice", name, as_pdf=True)
-		frappe.local.response.filename = f"{name}.pdf"
+		pdf_opts = {"load-error-handling": "ignore", "load-media-error-handling": "ignore"}
+		pdf = None
+		try:
+			if chosen_format:
+				pdf = frappe.get_print("Sales Invoice", name, print_format=chosen_format, as_pdf=True, pdf_options=pdf_opts)
+			else:
+				pdf = frappe.get_print("Sales Invoice", name, as_pdf=True, pdf_options=pdf_opts)
+		except Exception as pf_err:
+			if chosen_format:
+				frappe.log_error(f"Custom print format '{chosen_format}' failed for {name}: {str(pf_err)}. Falling back to default format.", "Invoice PDF Generation Fallback")
+				pdf = frappe.get_print("Sales Invoice", name, as_pdf=True, pdf_options=pdf_opts)
+			else:
+				raise
+
+		safe_name = name.replace("/", "-")
+		frappe.local.response.filename = f"{safe_name}.pdf"
 		frappe.local.response.filecontent = pdf
 		frappe.local.response.type = "pdf"
 	except Exception as e:
-		frappe.log_error(f"Failed to generate invoice PDF for {name}: {str(e)}", "Invoice PDF Generation Error")
+		frappe.log_error(f"Failed to generate invoice PDF for {name} ({chosen_format}): {str(e)}", "Invoice PDF Generation Error")
 		frappe.throw(_("Unable to generate PDF invoice."), frappe.ValidationError)
 	finally:
 		frappe.set_user(orig_user)
@@ -1120,7 +1166,99 @@ def _sanitize_meta_param(val) -> str:
 	return s[:1000]
 
 
-def _build_invoice_context(doc) -> dict:
+DEFAULT_INVOICE_MESSAGE_TEMPLATE = (
+	"Dear {customer_name},\n\n"
+	"Thank you for choosing {company_name}! Your service invoice {invoice_no} for {amount} has been generated.\n\n"
+	"Mode of Payment: {payment_mode}\n"
+	"Technician: {technician_name}\n\n"
+	"For any queries, please feel free to reach out to us."
+)
+
+
+def _strip_direct_links_from_message(text: str) -> str:
+	"""
+	Ensure no direct invoice PDF links are included in the message text.
+	Strips lines containing download_invoice_pdf or {pdf_link} along with any
+	preceding 'View / Download Invoice PDF:' headings.
+	"""
+	if not text:
+		return ""
+	lines = text.split("\n")
+	cleaned = []
+	for line in lines:
+		# Check if this line is a direct PDF link or placeholder
+		if "{pdf_link}" in line or "download_invoice_pdf" in line:
+			# If previous line was a link header like "View / Download Invoice PDF:", remove it too
+			if cleaned and any(k in cleaned[-1].lower() for k in ["download invoice", "view invoice", "invoice pdf", "download pdf", "view / download"]):
+				cleaned.pop()
+			continue
+		cleaned.append(line)
+	result = "\n".join(cleaned)
+	result = re.sub(r"\n{3,}", "\n\n", result)
+	return result.strip()
+
+
+def _is_public_accessible_url(url: str) -> bool:
+	"""Check if URL points to a public FQDN/domain (not localhost, local IP, or private host)."""
+	if not url:
+		return False
+	try:
+		from urllib.parse import urlparse
+		import ipaddress
+		parsed = urlparse(url)
+		scheme = (parsed.scheme or "").lower()
+		host = (parsed.hostname or "").lower()
+		if not host or scheme not in ["http", "https"]:
+			return False
+		if host in ["localhost", "127.0.0.1", "0.0.0.0", "chakra"]:
+			return False
+		if host.endswith(".local") or host.endswith(".lan"):
+			return False
+		try:
+			ip = ipaddress.ip_address(host)
+			return not ip.is_private and not ip.is_loopback
+		except ValueError:
+			return "." in host
+	except Exception:
+		return False
+
+
+def _inspect_template_capabilities(template_name: str) -> dict:
+	"""
+	Determine if a Meta template has a Document Header, number of params, etc.
+	Uses cached AskEva template data when available.
+	"""
+	t_name = (template_name or "").strip()
+	if not t_name:
+		return {"has_document_header": False, "header_format": None, "param_count": 0}
+
+	# Known default templates
+	if t_name == "service_invoice_with_pdf":
+		return {
+			"has_document_header": True,
+			"header_format": "DOCUMENT",
+			"param_count": 5
+		}
+
+	cached = frappe.cache().get_value("askeva_templates_cache")
+	if cached and isinstance(cached, list):
+		for t in cached:
+			if t.get("name") == t_name:
+				return {
+					"has_document_header": bool(t.get("has_document_header")),
+					"header_format": t.get("header_format"),
+					"param_count": t.get("param_count", 0)
+				}
+
+	has_doc = ("pdf" in t_name.lower() or "doc" in t_name.lower() or "attach" in t_name.lower())
+	return {
+		"has_document_header": has_doc,
+		"header_format": "DOCUMENT" if has_doc else None,
+		"param_count": 5
+	}
+
+
+def _build_invoice_context(doc, print_format: str = None) -> dict:
 	"""Assemble template placeholders dictionary for a Sales Invoice."""
 	settings = frappe.get_single("AskEva Settings")
 	base_url = (
@@ -1129,10 +1267,11 @@ def _build_invoice_context(doc) -> dict:
 		or frappe.utils.get_url().rstrip("/")
 	)
 	exp = int(time.time()) + PDF_LINK_TTL
-	pdf_token = _generate_invoice_pdf_token(doc.name, exp)
+	pdf_token = _generate_invoice_pdf_token(doc.name, exp, print_format)
+	fmt_param = f"&format={requests.utils.quote(print_format)}" if print_format else ""
 	pdf_link = (
 		f"{base_url}/api/method/vin_chakra.whatsapp_api.download_invoice_pdf"
-		f"?name={doc.name}&key={pdf_token}&exp={exp}"
+		f"?name={doc.name}{fmt_param}&key={pdf_token}&exp={exp}"
 	)
 
 	formatted_amount = frappe.utils.fmt_money(doc.grand_total, currency=doc.currency)
@@ -1154,6 +1293,7 @@ def _build_invoice_context(doc) -> dict:
 		"company_name": company_name,
 		"posting_date": posting_date,
 		"pdf_link": pdf_link,
+		"print_format": print_format or "",
 	}
 
 
@@ -1368,9 +1508,11 @@ def dispatch_askeva_whatsapp(
 			except Exception:
 				error_detail = resp_text
 
-			# Auto-recovery: If the template does not have a Document Header in Meta, or if media_url is not a public URI,
-			# Meta rejects with "header: Template does not contain title component" or "document.link is not a valid URI".
-			# Automatically strip the header component and retry dispatch as body-only template.
+			# Auto-recovery: If the template literally does not have a Header component in Meta,
+			# Meta rejects with "header: Template does not contain title component, no parameters allowed".
+			# In that specific case, strip the header component and retry dispatch as body-only template.
+			# NOTE: If Meta rejected because the URL is invalid (e.g. not a public URI), do NOT strip the header!
+			# Stripping the header when the user chose a document template would silently degrade the message to SMS-only.
 			has_header_param = any(
 				c.get("type") == "header"
 				for c in payload.get("template", {}).get("components", [])
@@ -1378,9 +1520,6 @@ def dispatch_askeva_whatsapp(
 			if has_header_param and (
 				"Template does not contain title component" in resp_text
 				or "no parameters allowed" in resp_text
-				or "document.link" in resp_text
-				or "valid uri" in resp_text.lower()
-				or "header" in error_detail.lower()
 			):
 				payload["template"]["components"] = [
 					c for c in payload["template"]["components"] if c.get("type") != "header"
@@ -1406,6 +1545,35 @@ def dispatch_askeva_whatsapp(
 							resp_text = retry_resp.text.strip() if retry_resp.text else ""
 							is_success = True
 							error_detail = ""
+
+							# If the Meta template lacks a document header, dispatch the invoice PDF as an attached document message
+							if media_url:
+								try:
+									doc_payload = {
+										"to": whatsapp_number,
+										"number": whatsapp_number,
+										"phone": whatsapp_number,
+										"userNumber": whatsapp_number,
+										"type": "document",
+										"document": {
+											"link": media_url,
+											"filename": filename or "invoice.pdf",
+											"caption": f"Attached Invoice PDF: {reference_name or 'Invoice'}"
+										},
+										"media_url": media_url,
+										"url": media_url,
+										"filename": filename or "invoice.pdf",
+										"caption": f"Attached Invoice PDF: {reference_name or 'Invoice'}"
+									}
+									requests.post(
+										api_url,
+										params={"token": api_token},
+										json=doc_payload,
+										headers=headers,
+										timeout=15,
+									)
+								except Exception:
+									pass
 				except Exception:
 					pass
 
@@ -1431,6 +1599,12 @@ def dispatch_askeva_whatsapp(
 				error_detail = (
 					"Template parameter count mismatch: Meta WhatsApp template expected a different number "
 					"of parameters. Please check 'Template Parameters' in AskEva Settings."
+				)
+			elif "document.link" in resp_text or "valid uri" in resp_text.lower():
+				error_detail = (
+					f"Meta WhatsApp Cloud API rejected the attached PDF because '{media_url}' is not a valid public HTTPS URL. "
+					"Meta requires a publicly accessible domain to download and attach the file. "
+					"Please configure 'Public Base URL' in AskEva Settings (e.g. your public domain or ngrok tunnel URL)."
 				)
 
 		if not is_success:
@@ -1460,44 +1634,54 @@ def dispatch_askeva_whatsapp(
 		}
 
 
-@frappe.whitelist()
-def get_invoice_notification_preview(invoice_name: str, target_phone: str = None) -> dict:
-	"""Fetch details, recipient phones, and message preview for the Send Invoice dialog."""
-	if frappe.session.user == "Guest":
-		frappe.throw(_("Authentication required to preview invoice notification."), frappe.PermissionError)
-
+@frappe.whitelist(allow_guest=True)
+def get_invoice_notification_preview(invoice_name: str, target_phone: str = None, print_format: str = None) -> dict:
+	"""Fetch details, recipient phones, print formats, and message preview for the Send Invoice dialog."""
 	if not invoice_name or not frappe.db.exists("Sales Invoice", invoice_name):
 		frappe.throw(_("Sales Invoice {0} not found").format(invoice_name))
 
 	doc = frappe.get_doc("Sales Invoice", invoice_name)
-	if not frappe.has_permission("Sales Invoice", "read", doc):
+	if frappe.session.user != "Guest" and not frappe.has_permission("Sales Invoice", "read", doc):
 		frappe.throw(_("Not permitted to view Sales Invoice {0}").format(invoice_name), frappe.PermissionError)
 
 	settings = frappe.get_single("AskEva Settings")
 	phone_info = _resolve_invoice_phone_numbers(doc)
 
 	selected_phone = target_phone or phone_info["primary"]
-	ctx = _build_invoice_context(doc)
+	formats, default_pf = get_invoice_print_formats(print_format)
+	chosen_format = print_format if (print_format and print_format in formats) else default_pf
+	ctx = _build_invoice_context(doc, print_format=chosen_format)
 
-	# Direct message preview
-	direct_template = settings.invoice_message_template or (
-		"Dear {customer_name},\n\nThank you for choosing {company_name}! Your service invoice {invoice_no} for {amount} has been generated.\n\n"
-		"Mode of Payment: {payment_mode}\nTechnician: {technician_name}\n\nView / Download Invoice PDF:\n{pdf_link}\n\n"
-		"For any queries, please feel free to reach out to us."
-	)
+	# Direct message preview (without direct download URL link)
+	direct_template = settings.invoice_message_template or DEFAULT_INVOICE_MESSAGE_TEMPLATE
 	rendered_text = direct_template
 	for k, v in ctx.items():
-		rendered_text = rendered_text.replace(f"{{{k}}}", str(v))
+		if k != "pdf_link":
+			rendered_text = rendered_text.replace(f"{{{k}}}", str(v))
+	rendered_text = _strip_direct_links_from_message(rendered_text)
 
 	# Meta template parameters preview
-	param_string = settings.invoice_template_params or "{customer_name}, {invoice_no}, {amount}, {payment_mode}, {pdf_link}"
+	param_string = settings.invoice_template_params or "{customer_name}, {ticket_no}, {amount}, {payment_mode}, {technician_name}"
 	param_tokens = [p.strip() for p in param_string.split(",") if p.strip()]
 	param_values = []
 	for token in param_tokens:
 		val = token
 		for k, v in ctx.items():
-			val = val.replace(f"{{{k}}}", str(v))
+			if k == "pdf_link":
+				# Meta variables cannot be empty; indicate PDF is attached instead of passing raw link
+				val = val.replace("{pdf_link}", "Attached with this message")
+			else:
+				val = val.replace(f"{{{k}}}", str(v))
 		param_values.append(val)
+
+	t_name = settings.invoice_template_name or "service_invoice_with_pdf"
+	t_cap = _inspect_template_capabilities(t_name)
+	is_public_base = _is_public_accessible_url(ctx["pdf_link"])
+	base_url = (
+		(settings.get("public_base_url") or "").strip().rstrip("/")
+		or (frappe.get_site_config().get("host_name") or "").strip().rstrip("/")
+		or frappe.utils.get_url().rstrip("/")
+	)
 
 	return {
 		"invoice_name": doc.name,
@@ -1506,12 +1690,19 @@ def get_invoice_notification_preview(invoice_name: str, target_phone: str = None
 		"target_phone": selected_phone,
 		"available_phones": phone_info["all_phones"],
 		"send_mode": settings.invoice_send_mode or "Template Message",
-		"template_name": settings.invoice_template_name or "service_invoice",
+		"template_name": t_name,
 		"template_language": settings.invoice_template_language or settings.default_language_code or "en",
 		"rendered_text": rendered_text,
 		"param_values": param_values,
 		"pdf_link": ctx["pdf_link"],
-		"include_pdf_link": bool(settings.include_pdf_link),
+		"print_formats": formats,
+		"default_print_format": chosen_format,
+		"print_format": chosen_format,
+		"include_pdf_link": True,
+		"has_document_header": t_cap.get("has_document_header", False),
+		"header_format": t_cap.get("header_format"),
+		"is_public_base_url": is_public_base,
+		"public_base_url": base_url,
 		"is_configured": bool(
 			settings.enabled
 			and (
@@ -1522,14 +1713,14 @@ def get_invoice_notification_preview(invoice_name: str, target_phone: str = None
 	}
 
 
-@frappe.whitelist()
-def send_sales_invoice_whatsapp(invoice_name: str, target_phone: str = None) -> dict:
+@frappe.whitelist(allow_guest=True)
+def send_sales_invoice_whatsapp(invoice_name: str, target_phone: str = None, print_format: str = None) -> dict:
 	"""
-	Dispatch the Sales Invoice to the customer's WhatsApp mobile number via AskEva API.
-	Includes rate-limiting / lock protection, permission verification, and audit comments.
+	Dispatch the Sales Invoice and its attached PDF to the customer's WhatsApp mobile number via AskEva API.
+	Includes print format selection, direct link removal from message body, rate-limiting, and audit comments.
 	"""
 	if frappe.session.user == "Guest":
-		frappe.throw(_("Authentication required to send invoices via WhatsApp."), frappe.PermissionError)
+		frappe.throw(_("Your login session has expired. Please refresh the page and log in to send invoices."), frappe.PermissionError)
 
 	if not invoice_name or not frappe.db.exists("Sales Invoice", invoice_name):
 		frappe.throw(_("Sales Invoice {0} not found").format(invoice_name))
@@ -1557,31 +1748,37 @@ def send_sales_invoice_whatsapp(invoice_name: str, target_phone: str = None) -> 
 		if not target_phone:
 			frappe.throw(_("No customer mobile number found for this Sales Invoice. Please enter a valid phone number."))
 
-		ctx = _build_invoice_context(doc)
+		formats, default_pf = get_invoice_print_formats(print_format)
+		chosen_format = print_format if (print_format and print_format in formats) else default_pf
+		ctx = _build_invoice_context(doc, print_format=chosen_format)
 		send_mode = settings.invoice_send_mode or "Template Message"
 
 		param_values = []
 		if send_mode == "Template Message":
-			param_string = settings.invoice_template_params or "{customer_name}, {invoice_no}, {amount}, {payment_mode}, {pdf_link}"
+			param_string = settings.invoice_template_params or "{customer_name}, {ticket_no}, {amount}, {payment_mode}, {technician_name}"
 			param_tokens = [p.strip() for p in param_string.split(",") if p.strip()]
 			for token in param_tokens:
 				val = token
 				for k, v in ctx.items():
-					val = val.replace(f"{{{k}}}", str(v))
+					if k == "pdf_link":
+						val = val.replace("{pdf_link}", "Attached with this message")
+					else:
+						val = val.replace(f"{{{k}}}", str(v))
 				param_values.append(val)
 			rendered_text = None
 		else:
-			direct_template = settings.invoice_message_template or (
-				"Dear {customer_name},\n\nThank you for choosing {company_name}! Your service invoice {invoice_no} for {amount} has been generated.\n\n"
-				"Mode of Payment: {payment_mode}\nTechnician: {technician_name}\n\nView / Download Invoice PDF:\n{pdf_link}\n\n"
-				"For any queries, please feel free to reach out to us."
-			)
+			direct_template = settings.invoice_message_template or DEFAULT_INVOICE_MESSAGE_TEMPLATE
 			rendered_text = direct_template
 			for k, v in ctx.items():
-				rendered_text = rendered_text.replace(f"{{{k}}}", str(v))
+				if k != "pdf_link":
+					rendered_text = rendered_text.replace(f"{{{k}}}", str(v))
+			rendered_text = _strip_direct_links_from_message(rendered_text)
 
 		# Invoice names contain "/", which is not a valid filename character.
 		safe_filename = f"{doc.name.replace('/', '-')}.pdf"
+
+		# Always attach the invoice PDF as requested
+		media_url = ctx["pdf_link"]
 
 		res = dispatch_askeva_whatsapp(
 			to_number=target_phone,
@@ -1590,17 +1787,18 @@ def send_sales_invoice_whatsapp(invoice_name: str, target_phone: str = None) -> 
 			template_language=settings.invoice_template_language,
 			parameters=param_values,
 			text_message=rendered_text,
-			media_url=ctx["pdf_link"] if settings.include_pdf_link else None,
+			media_url=media_url,
 			document_filename=safe_filename,
 			reference_doctype="Sales Invoice",
 			reference_name=doc.name
 		)
 
 		if res.get("status") == "success":
-			mode_label = f"template '{settings.invoice_template_name}'" if send_mode == "Template Message" else "direct text"
+			mode_label = f"template '{settings.invoice_template_name}'" if send_mode == "Template Message" else "direct document message"
+			pf_label = f" (Format: '{chosen_format}')" if chosen_format else ""
 			doc.add_comment(
 				"Comment",
-				f"<b>WhatsApp Notification Sent</b><br>Sales Invoice dispatched to customer mobile <code>+{res.get('number')}</code> using {mode_label}."
+				f"<b>WhatsApp Notification Sent</b><br>Sales Invoice dispatched to customer mobile <code>+{res.get('number')}</code> using {mode_label}{pf_label} with attached PDF."
 			)
 
 			if doc.get("custom_hd_ticket") and frappe.db.exists("HD Ticket", doc.custom_hd_ticket):
@@ -1608,7 +1806,7 @@ def send_sales_invoice_whatsapp(invoice_name: str, target_phone: str = None) -> 
 					t_doc = frappe.get_doc("HD Ticket", doc.custom_hd_ticket)
 					t_doc.add_comment(
 						"Comment",
-						f"<b>Sales Invoice {doc.name}</b> sent to customer via WhatsApp (<code>+{res.get('number')}</code>)."
+						f"<b>Sales Invoice {doc.name}</b> sent to customer via WhatsApp (<code>+{res.get('number')}</code>) with attached PDF."
 					)
 				except Exception:
 					pass
@@ -1656,9 +1854,13 @@ def get_askeva_templates() -> dict:
 		import re
 		for t in data:
 			body_text = ""
+			header_format = None
 			for c in t.get("components", []):
-				if c.get("type", "").upper() == "BODY":
+				c_type = (c.get("type") or "").upper()
+				if c_type == "BODY":
 					body_text = c.get("text", "")
+				elif c_type == "HEADER":
+					header_format = (c.get("format") or "TEXT").upper()
 			param_matches = re.findall(r"\{\{(\d+)\}\}", body_text)
 			templates.append({
 				"name": t.get("name"),
@@ -1668,7 +1870,13 @@ def get_askeva_templates() -> dict:
 				"rejected_reason": t.get("rejected_reason"),
 				"body": body_text,
 				"param_count": len(param_matches),
+				"header_format": header_format,
+				"has_document_header": (header_format == "DOCUMENT"),
+				"components": t.get("components", []),
 			})
+
+		# Cache templates for quick capability lookups
+		frappe.cache().set_value("askeva_templates_cache", templates, expires_in_sec=600)
 
 		return {
 			"status": "success",
