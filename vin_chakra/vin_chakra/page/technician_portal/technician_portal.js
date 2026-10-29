@@ -929,7 +929,7 @@ class TechnicianPortal {
                         <td data-label="${__("Customer")}">${esc(t.custom_customer_name || '')}</td>
                         <td data-label="${__("Required Spares")}">${esc(t.custom_required_spares || '-')}</td>
                         <td data-label="${__("Location")}">${esc(t.location)}</td>
-                        <td data-label="${__("Resolved On")}" class="text-nowrap">${frappe.datetime.str_to_user((t.resolution_date || '').slice(0, 10))}</td>
+                        <td data-label="${__("Date")}" class="text-nowrap">${frappe.datetime.str_to_user((t.expense_date || '').slice(0, 10))}</td>
                         <td data-label="${__("Status")}">${esc(t.status)}</td>
                         <td data-label="${__("Expense Type")}">
                             <select class="form-control input-xs tp-expense-type ${type_changed ? 'is-dirty' : ''}" data-ticket="${esc(t.name)}" ${locked ? 'disabled' : ''}>
@@ -945,13 +945,13 @@ class TechnicianPortal {
                 `;
             }).join("");
 
-            let empty = range === "today" ? __("No resolved tickets today") : __("No resolved tickets in the last week");
+            let empty = range === "today" ? __("No resolved or pending tickets today") : __("No resolved or pending tickets in the last week");
             $wrap.html(`
                 <table class="table table-bordered tp-expense-table" id="tp-expense-table">
                     <thead>
                         <tr>
                             <th>${__("Ticket No")}</th><th>${__("Machine")}</th><th>${__("Customer")}</th><th>${__("Required Spares")}</th>
-                            <th>${__("Location")}</th><th>${__("Resolved On")}</th><th>${__("Status")}</th><th>${__("Expense Type")}</th>
+                            <th>${__("Location")}</th><th>${__("Date")}</th><th>${__("Status")}</th><th>${__("Expense Type")}</th>
                             <th>${__("Expense Amount")}</th>
                         </tr>
                     </thead>
