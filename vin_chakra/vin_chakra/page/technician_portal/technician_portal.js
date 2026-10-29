@@ -1,8 +1,8 @@
-frappe.pages['technician-portal'].on_page_load = function(wrapper) {
+frappe.pages['technician-portal'].on_page_load = function (wrapper) {
     wrapper._dashboard = new TechnicianPortal(wrapper);
 };
 
-frappe.pages['technician-portal'].on_page_show = function(wrapper) {
+frappe.pages['technician-portal'].on_page_show = function (wrapper) {
     if (wrapper._dashboard) {
         wrapper._dashboard.read_url_params();
         wrapper._dashboard.sync_ui_from_state();
@@ -59,10 +59,10 @@ class TechnicianPortal {
             title: 'Technician Portal',
             single_column: true
         });
-        
+
         // State variables
         this.view_type = localStorage.getItem("tp_portal_view_type") || "card"; // card, list, calendar
-        
+
         // Paginated tickets filter state
         this.tickets_start = 0;
         this.tickets_length = 10;
@@ -75,10 +75,10 @@ class TechnicianPortal {
         this.debounce_timer = null;
         this.calendar_date = new Date();
         this.current_user_fullname = "Technician";
-        
+
         this.init();
     }
-    
+
     init() {
         this.read_url_params();
         this.render_skeleton();
@@ -96,14 +96,14 @@ class TechnicianPortal {
         if (view && ["card", "list", "calendar"].includes(view)) {
             this.view_type = view;
         }
-        
+
         let page = parseInt(params.get("tickets_page") || params.get("page") || "1");
         if (!isNaN(page) && page > 0) {
             this.tickets_start = (page - 1) * this.tickets_length;
         } else {
             this.tickets_start = 0;
         }
-        
+
         this.filters.status = params.get("status") || "";
         this.filters.priority = params.get("priority") || "";
         this.search_query = params.get("search") || "";
@@ -112,7 +112,7 @@ class TechnicianPortal {
     update_url(push = false) {
         let params = new URLSearchParams(window.location.search);
         params.set("view", this.view_type);
-        
+
         let page = Math.floor(this.tickets_start / this.tickets_length) + 1;
         if (page > 1) {
             params.set("tickets_page", page);
@@ -120,14 +120,14 @@ class TechnicianPortal {
             params.delete("tickets_page");
             params.delete("page");
         }
-        
+
         if (this.filters.status) params.set("status", this.filters.status); else params.delete("status");
         if (this.filters.priority) params.set("priority", this.filters.priority); else params.delete("priority");
         if (this.search_query) params.set("search", this.search_query); else params.delete("search");
-        
+
         let queryString = params.toString();
         let newUrl = window.location.pathname + (queryString ? "?" + queryString : "") + window.location.hash;
-        
+
         if (newUrl !== (window.location.pathname + window.location.search + window.location.hash)) {
             if (push) {
                 history.pushState({ tickets_start: this.tickets_start }, "", newUrl);
@@ -141,7 +141,7 @@ class TechnicianPortal {
         if (!this.wrapper) return;
         this.wrapper.find(".tp-view-btn").removeClass("active");
         this.wrapper.find(`.tp-view-btn[data-view="${this.view_type}"]`).addClass("active");
-        
+
         this.wrapper.find("#tp-filter-status").val(this.filters.status || "");
         this.wrapper.find("#tp-filter-priority").val(this.filters.priority || "");
         this.wrapper.find("#tp-ticket-search").val(this.search_query || "");
@@ -149,7 +149,7 @@ class TechnicianPortal {
 
     bind_popstate() {
         let self = this;
-        $(window).off("popstate.tech_portal").on("popstate.tech_portal", function() {
+        $(window).off("popstate.tech_portal").on("popstate.tech_portal", function () {
             if (!self.wrapper || !$.contains(document.documentElement, self.wrapper[0])) {
                 $(window).off("popstate.tech_portal");
                 return;
@@ -160,12 +160,12 @@ class TechnicianPortal {
             self.load_data();
         });
     }
-    
+
     reset_pagination() {
         this.tickets_start = 0;
         this.update_url(false);
     }
-    
+
     fetch_user_fullname() {
         let self = this;
         frappe.call({
@@ -175,8 +175,8 @@ class TechnicianPortal {
                 filters: { name: frappe.session.user },
                 fieldname: 'full_name'
             },
-            callback: function(r) {
-                if(r.message && r.message.full_name) {
+            callback: function (r) {
+                if (r.message && r.message.full_name) {
                     self.current_user_fullname = r.message.full_name;
                     self.wrapper.find("#tp-welcome-user").text(self.current_user_fullname);
                 }
@@ -187,7 +187,7 @@ class TechnicianPortal {
         let self = this;
         frappe.call({
             method: "vin_chakra.technician_api.get_day_attendance_status",
-            callback: function(r) {
+            callback: function (r) {
                 if (r.message && r.message.status === "success") {
                     let btn = self.wrapper.find("#tp-day-attendance-btn");
                     btn.show();
@@ -210,7 +210,7 @@ class TechnicianPortal {
         let self = this;
         let btn = self.wrapper.find("#tp-day-attendance-btn");
         let action = btn.data("action");
-        
+
         if (!action) return;
 
         btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Processing...');
@@ -224,15 +224,15 @@ class TechnicianPortal {
                     longitude: coords.lng,
                     accuracy: coords.accuracy
                 },
-                callback: function(res) {
+                callback: function (res) {
                     if (res.message && res.message.status === "success") {
-                        frappe.show_alert({message: res.message.message, indicator: "green"});
+                        frappe.show_alert({ message: res.message.message, indicator: "green" });
                     } else {
                         frappe.msgprint(res.message ? res.message.message : "Error marking attendance.");
                     }
                     self.fetch_day_attendance_status();
                 },
-                error: function() {
+                error: function () {
                     self.fetch_day_attendance_status();
                 }
             });
@@ -242,10 +242,10 @@ class TechnicianPortal {
             frappe.msgprint(err.message);
         });
     }
-    
+
     render_skeleton() {
         this.page.main.addClass("tp-portal");
-        
+
         this.wrapper.find(".layout-main-section").html(`
             <div class="tp-container">
                 <!-- Welcome Banner -->
@@ -280,8 +280,8 @@ class TechnicianPortal {
                     </div>
                     
                     <div class="tp-view-selector">
-                        <button class="tp-filter-btn" id="tp-btn-today-tickets">
-                            <i class="fa fa-calendar-check-o"></i> Today's Tickets
+                        <button class="tp-filter-btn" id="tp-btn-expense-claim">
+                            <i class="fa fa-money"></i> Expense Claim
                         </button>
                         <button class="tp-view-btn ${this.view_type === 'card' ? 'active' : ''}" data-view="card"><i class="fa fa-th"></i> Card</button>
                         <button class="tp-view-btn ${this.view_type === 'list' ? 'active' : ''}" data-view="list"><i class="fa fa-list"></i> List</button>
@@ -349,10 +349,10 @@ class TechnicianPortal {
                 </div>
             </div>
         `);
-        
+
         this.render_view_structure();
     }
-    
+
     render_view_structure() {
         let content = this.wrapper.find("#tp-view-content");
         if (this.view_type === "calendar") {
@@ -366,43 +366,43 @@ class TechnicianPortal {
             `);
         }
     }
-    
+
     bind_events() {
         let self = this;
-        
+
         // HRMS Redirect
-        this.wrapper.on("click", "#tp-hrms-btn", function() {
+        this.wrapper.on("click", "#tp-hrms-btn", function () {
             window.location.href = "/hrms";
         });
-        
+
         // Day Attendance
-        this.wrapper.on("click", "#tp-day-attendance-btn", function() {
+        this.wrapper.on("click", "#tp-day-attendance-btn", function () {
             self.handle_day_attendance_click();
         });
-        this.wrapper.on("click", "#tp-btn-today-tickets", function() {
-            self.open_today_tickets_dialog();
+        this.wrapper.on("click", "#tp-btn-expense-claim", function () {
+            self.open_expense_claim_dialog();
         });
         // Toggle Filters
-        this.wrapper.on("click", "#tp-btn-filter-toggle", function() {
+        this.wrapper.on("click", "#tp-btn-filter-toggle", function () {
             $(this).toggleClass("active");
             self.wrapper.find("#tp-filters-panel").slideToggle(200);
         });
-        
+
         // Filters Change
-        this.wrapper.on("change", "#tp-filter-status", function() {
+        this.wrapper.on("change", "#tp-filter-status", function () {
             self.filters.status = $(this).val();
             self.reset_pagination();
             self.load_data();
         });
-        
-        this.wrapper.on("change", "#tp-filter-priority", function() {
+
+        this.wrapper.on("change", "#tp-filter-priority", function () {
             self.filters.priority = $(this).val();
             self.reset_pagination();
             self.load_data();
         });
-        
+
         // Search Input Debounce
-        this.wrapper.on("input", "#tp-ticket-search", function() {
+        this.wrapper.on("input", "#tp-ticket-search", function () {
             clearTimeout(self.debounce_timer);
             self.debounce_timer = setTimeout(() => {
                 self.search_query = $(this).val();
@@ -410,9 +410,9 @@ class TechnicianPortal {
                 self.load_data();
             }, 400);
         });
-        
+
         // Toggle view types
-        this.wrapper.on("click", ".tp-view-btn", function() {
+        this.wrapper.on("click", ".tp-view-btn", function () {
             let view = $(this).data("view");
             self.wrapper.find(".tp-view-btn").removeClass("active");
             $(this).addClass("active");
@@ -422,9 +422,9 @@ class TechnicianPortal {
             self.render_view_structure();
             self.load_data();
         });
-        
+
         // Pagination Buttons
-        this.wrapper.on("click", "#tp-tickets-pagination .tp-page-btn", function() {
+        this.wrapper.on("click", "#tp-tickets-pagination .tp-page-btn", function () {
             let action = $(this).data("action");
             if (action === "prev" && self.tickets_start > 0) {
                 self.tickets_start -= self.tickets_length;
@@ -435,19 +435,19 @@ class TechnicianPortal {
             self.load_data();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
-        
+
         // Calendar navigation
-        this.wrapper.on("click", ".tp-cal-prev", function() {
+        this.wrapper.on("click", ".tp-cal-prev", function () {
             self.calendar_date.setMonth(self.calendar_date.getMonth() - 1);
             self.load_data();
         });
-        this.wrapper.on("click", ".tp-cal-next", function() {
+        this.wrapper.on("click", ".tp-cal-next", function () {
             self.calendar_date.setMonth(self.calendar_date.getMonth() + 1);
             self.load_data();
         });
-        
+
         // Clicking Ticket cards/rows
-        this.wrapper.on("click", ".tp-ticket-card, .tp-ticket-list-row", function(e) {
+        this.wrapper.on("click", ".tp-ticket-card, .tp-ticket-list-row", function (e) {
             if ($(e.target).closest(".tp-btn-create-invoice, .tp-btn-send-invoice").length) {
                 return;
             }
@@ -456,9 +456,9 @@ class TechnicianPortal {
                 self.open_ticket_details(ticket_name);
             }
         });
-        
+
         // Create or View Invoice Button Click
-        this.wrapper.on("click", ".tp-btn-create-invoice", function(e) {
+        this.wrapper.on("click", ".tp-btn-create-invoice", function (e) {
             e.stopPropagation();
             e.preventDefault();
             let invoice = $(this).data("invoice");
@@ -473,7 +473,7 @@ class TechnicianPortal {
         });
 
         // Send Invoice via WhatsApp Button Click
-        this.wrapper.on("click", ".tp-btn-send-invoice", function(e) {
+        this.wrapper.on("click", ".tp-btn-send-invoice", function (e) {
             e.stopPropagation();
             e.preventDefault();
             let ticket_name = $(this).data("ticket");
@@ -482,9 +482,9 @@ class TechnicianPortal {
             let phone = $(this).data("phone");
             self.send_invoice_whatsapp(ticket_name, invoice_name, customer, phone);
         });
-        
+
         // Quick filter pill remove
-        this.wrapper.on("click", ".tp-pill-remove", function() {
+        this.wrapper.on("click", ".tp-pill-remove", function () {
             let filter = $(this).data("filter");
             if (filter === "status") {
                 self.filters.status = "";
@@ -496,9 +496,9 @@ class TechnicianPortal {
             self.reset_pagination();
             self.load_data();
         });
-        
+
         // Summary Cards click filter
-        this.wrapper.on("click", ".tp-summary-card", function() {
+        this.wrapper.on("click", ".tp-summary-card", function () {
             let status = $(this).data("status");
             self.filters.status = status;
             self.wrapper.find("#tp-filter-status").val(status);
@@ -506,10 +506,10 @@ class TechnicianPortal {
             self.load_data();
         });
     }
-    
+
     render_active_filters() {
         let container = this.wrapper.find("#tp-active-filters").empty();
-        
+
         // Sync active class on summary cards
         let current_status = this.filters.status || "";
         this.wrapper.find(".tp-summary-card").removeClass("active");
@@ -520,27 +520,27 @@ class TechnicianPortal {
                 <span class="tp-filter-pill">Status: ${this.filters.status} <i class="fa fa-times tp-pill-remove" data-filter="status"></i></span>
             `);
         }
-        
+
         if (this.filters.priority) {
             container.append(`
                 <span class="tp-filter-pill">Priority: ${this.filters.priority} <i class="fa fa-times tp-pill-remove" data-filter="priority"></i></span>
             `);
         }
     }
-    
+
     load_data() {
         let self = this;
         this.render_active_filters();
         this.wrapper.find("#tp-loader").show();
-        
+
         let limit_start = this.tickets_start;
         let limit_len = this.tickets_length;
-        
+
         if (this.view_type === "calendar") {
             limit_start = 0;
             limit_len = 1000;
         }
-        
+
         frappe.call({
             method: "vin_chakra.vin_chakra.page.technician_portal.technician_portal.get_portal_data",
             args: {
@@ -551,14 +551,14 @@ class TechnicianPortal {
                 limit_page_length: limit_len,
                 view: this.view_type
             },
-            callback: function(r) {
+            callback: function (r) {
                 self.wrapper.find("#tp-loader").hide();
                 if (r.message) {
                     let data = r.message;
                     self.tickets_total = data.total_count;
-                    
+
                     self.update_summary_row(data.summary);
-                    
+
                     if (self.view_type === "card") {
                         self.render_ticket_cards(data.tickets);
                         self.render_tickets_pagination();
@@ -572,7 +572,7 @@ class TechnicianPortal {
             }
         });
     }
-    
+
     update_summary_row(summary) {
         this.wrapper.find("#tp-summary-total").text(summary.Total);
         this.wrapper.find("#tp-summary-open").text(summary.Open);
@@ -580,7 +580,7 @@ class TechnicianPortal {
         this.wrapper.find("#tp-summary-pending").text(summary.Pending);
         this.wrapper.find("#tp-summary-resolved").text(summary.Resolved);
     }
-    
+
     render_ticket_cards(tickets) {
         let container = this.wrapper.find("#tp-tickets-container");
         if (!tickets || tickets.length === 0) {
@@ -593,7 +593,7 @@ class TechnicianPortal {
             `);
             return;
         }
-        
+
         let html = tickets.map(t => {
             let status_badge = `<span class="tp-badge tp-badge-status-${t.status.replace(/\s+/g, '')}">${t.status}</span>`;
             let priority_badge = `<span class="tp-badge tp-badge-priority-${t.priority}">${t.priority}</span>`;
@@ -603,7 +603,7 @@ class TechnicianPortal {
             let machine_display = (t.custom_machine_type_list && t.custom_machine_type_list.length > 0)
                 ? t.custom_machine_type_list.map(m => m.machine_name || m.machine_type).filter(Boolean).join(', ')
                 : (t.custom_machine_name || 'N/A');
-            
+
             let is_resolved = t.status && t.status.trim().toLowerCase() === 'resolved';
             let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
             let invoice_btn = '';
@@ -629,7 +629,7 @@ class TechnicianPortal {
                     `;
                 }
             }
-            
+
             return `
                 <div class="tp-ticket-card" data-name="${t.name}">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -649,10 +649,10 @@ class TechnicianPortal {
                 </div>
             `;
         }).join("");
-        
+
         container.removeClass("tp-tickets-list").addClass("tp-tickets-grid").html(html);
     }
-    
+
     render_ticket_list(tickets) {
         let container = this.wrapper.find("#tp-tickets-container");
         if (!tickets || tickets.length === 0) {
@@ -665,7 +665,7 @@ class TechnicianPortal {
             `);
             return;
         }
-        
+
         let html = tickets.map(t => {
             let status_badge = `<span class="tp-badge tp-badge-status-${t.status.replace(/\s+/g, '')}">${t.status}</span>`;
             let priority_badge = `<span class="tp-badge tp-badge-priority-${t.priority}">${t.priority}</span>`;
@@ -696,7 +696,7 @@ class TechnicianPortal {
                     `;
                 }
             }
-            
+
             return `
                 <div class="tp-ticket-list-row" data-name="${t.name}">
                     <div class="tp-list-subject-col">
@@ -716,19 +716,19 @@ class TechnicianPortal {
                 </div>
             `;
         }).join("");
-        
+
         container.removeClass("tp-tickets-grid").addClass("tp-tickets-list").html(html);
     }
-    
+
     render_ticket_calendar(tickets) {
         let container = this.wrapper.find("#tp-tickets-container");
         container.removeClass("tp-tickets-grid tp-tickets-list");
-        
+
         let month = this.calendar_date.getMonth();
         let year = this.calendar_date.getFullYear();
         let firstDay = new Date(year, month, 1).getDay();
         let daysInMonth = new Date(year, month + 1, 0).getDate();
-        
+
         let html = `
             <div class="tp-calendar-wrapper" style="background: white; border: 1px solid var(--tp-border); border-radius: var(--tp-radius); padding: 20px; box-shadow: var(--tp-shadow-sm); overflow-x: auto;">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 20px; align-items: center;">
@@ -748,7 +748,7 @@ class TechnicianPortal {
                     </tr></thead>
                     <tbody><tr>
         `;
-        
+
         let ticketsByDate = {};
         tickets.forEach(t => {
             let d_str = t.custom_date || t.creation;
@@ -761,7 +761,7 @@ class TechnicianPortal {
                 }
             }
         });
-        
+
         let d = 1;
         for (let i = 0; i < 42; i++) {
             if (i % 7 === 0 && i > 0) {
@@ -790,7 +790,7 @@ class TechnicianPortal {
                         </div>
                     `;
                 }).join("");
-                
+
                 html += `
                     <td style="height: 90px; vertical-align: top; position: relative; border: 1px solid #e2e8f0; padding: 6px;">
                         <div style="font-weight: 700; margin-bottom: 6px; font-size: 12px; color: var(--tp-text-muted); text-align: right;">${d}</div>
@@ -800,13 +800,13 @@ class TechnicianPortal {
                 d++;
             }
         }
-        
+
         html += `</tr></tbody></table></div>`;
         container.html(html);
-        
+
         // Calendar Event Click
         let self = this;
-        container.find(".tp-cal-event").on("click", function(e) {
+        container.find(".tp-cal-event").on("click", function (e) {
             if ($(e.target).closest(".tp-btn-create-invoice").length) {
                 return;
             }
@@ -817,188 +817,261 @@ class TechnicianPortal {
             }
         });
     }
-    
+
     render_tickets_pagination() {
         let container = this.wrapper.find("#tp-tickets-pagination");
         if (this.tickets_total <= this.tickets_length) {
             container.empty();
             return;
         }
-        
+
         let current_page = Math.floor(this.tickets_start / this.tickets_length) + 1;
         let total_pages = Math.ceil(this.tickets_total / this.tickets_length);
-        
+
         container.html(`
             <button class="tp-page-btn" data-action="prev" ${current_page === 1 ? "disabled" : ""}>Previous</button>
             <span class="tp-page-info">Page ${current_page} of ${total_pages}</span>
             <button class="tp-page-btn" data-action="next" ${current_page === total_pages ? "disabled" : ""}>Next</button>
         `);
     }
-    
+
     // --- Detailed View Dialog Modal ---
     open_ticket_details(ticket_name) {
         let self = this;
         frappe.call({
             method: "vin_chakra.technician_api.get_ticket_detail",
             args: { ticket_name: ticket_name },
-            callback: function(r) {
+            callback: function (r) {
                 if (r.message) {
                     self.show_ticket_detail_dialog(r.message);
                 }
             }
         });
     }
-    open_today_tickets_dialog() {
-    let self = this;
-    frappe.call({
-        method: "vin_chakra.vin_chakra.page.technician_portal.technician_portal.get_portal_data",
-        args: {
-            status: "",
-            priority: "",
-            search_query: "",
-            limit_start: 0,
-            limit_page_length: 1000,
-            view: "list"
-        },
-        callback: function(r) {
-            if (!r.message) return;
-            let today_str = frappe.datetime.get_today();
-            let allowed_status = ["Working", "Resolved", "Pending"];
-            let filtered = (r.message.tickets || []).filter(t => {
-                return t.custom_date === today_str && allowed_status.includes(t.status);
+    open_expense_claim_dialog() {
+        let self = this;
+        // Amounts and Expense Claim Types chosen but not yet in the Expense Claim. They survive
+        // range switches and reopening the popup, and are stored when Share (Excel) is clicked.
+        self.expense_amounts = self.expense_amounts || {};
+        self.expense_types = self.expense_types || {};
+        let amounts = self.expense_amounts;
+        let types = self.expense_types;
+        let stored = {};  // ticket -> amount already in the Expense Claim ("" when none)
+        let stored_types = {};  // ticket -> that line's Expense Claim Type ("" when none)
+        let range = "today";
+        let currency = frappe.boot.sysdefaults.currency;
+        let esc = frappe.utils.escape_html;
+
+        let dialog = new frappe.ui.Dialog({
+            title: __("Expense Claim"),
+            size: "large",
+            fields: [{ fieldtype: "HTML", fieldname: "expense_claim_html" }]
+        });
+        dialog.$wrapper.addClass("tp-expense-dialog");
+        dialog.onhide = () => {
+            dialog.$wrapper.remove();
+        };
+
+        let $body = dialog.get_field("expense_claim_html").$wrapper;
+        $body.html(`
+            <div class="tp-expense-toolbar">
+                <div class="tp-view-selector">
+                    <button class="tp-view-btn active" data-range="today">${__("Today")}</button>
+                    <button class="tp-view-btn" data-range="last_week">${__("Last 1 Week")}</button>
+                </div>
+                <span class="tp-expense-period"></span>
+                <button class="btn btn-success btn-sm tp-expense-share">
+                    <i class="fa fa-file-excel-o"></i> ${__("Share (Excel)")}
+                </button>
+            </div>
+            <div class="tp-expense-table-wrap"></div>
+            <div class="tp-expense-hint">${__("Expense amounts are added to your Expense Claim when you click Share (Excel).")}</div>
+        `);
+        let $wrap = $body.find(".tp-expense-table-wrap");
+        let $share = $body.find(".tp-expense-share");
+
+        // Typed and stored amounts compare as 2-decimal strings; "" means no expense
+        const amount_key = (value) => (value === "" || value === null || value === undefined) ? "" : flt(value, 2).toFixed(2);
+
+        const update_total = () => {
+            let total = 0;
+            $wrap.find(".tp-expense-input:not(.is-invalid)").each(function () {
+                total += flt(this.value);
             });
-            self.show_today_tickets_dialog(filtered);
-        }
-    });
-}
+            $wrap.find(".tp-expense-total").text(format_currency(total, currency));
+        };
 
-   show_today_tickets_dialog(tickets) {
-    let self = this;
-    let dialog = new frappe.ui.Dialog({
-        title: "View Tickets",
-        size: "extra-large",
-        fields: [{ fieldtype: "HTML", fieldname: "today_tickets_html" }]
-    });
-    dialog.onhide = () => {
-        dialog.$wrapper.remove();
-    };
+        const render = (data) => {
+            let tickets = data.tickets || [];
+            let expense_types = data.expense_types || [];
+            let from = frappe.datetime.str_to_user(data.from_date);
+            let to = frappe.datetime.str_to_user(data.to_date);
+            $body.find(".tp-expense-period").text(from === to ? from : `${from} – ${to}`);
 
-    let rows = tickets.map(t => {
-        let location = [t.custom_address, t.custom_city__district_].filter(Boolean).join(', ') || '';
-        let machine_display = (t.custom_machine_type_list && t.custom_machine_type_list.length > 0)
-            ? t.custom_machine_type_list.map(m => m.machine_name || m.machine_type).filter(Boolean).join(', ')
-            : (t.custom_machine_name || '');
-        let is_res = t.status && t.status.trim().toLowerCase() === 'resolved';
-        let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
-        let invoice_btn = '-';
-        if (is_res) {
-            if (t.sales_invoice) {
-                invoice_btn = `
-                    <div style="display:flex; gap:4px;">
-                        <button class="btn btn-xs btn-outline-secondary tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" data-invoice="${t.sales_invoice.name}" style="border-radius:4px; font-weight:700;">${t.sales_invoice.name}</button>
-                        <button class="btn btn-xs tp-btn-send-invoice" data-ticket="${t.name}" data-invoice="${t.sales_invoice.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:4px; font-weight:700; background-color: #25D366; border-color: #25D366; color: white;" title="Send Invoice via WhatsApp"><i class="fa fa-whatsapp"></i></button>
-                    </div>
+            let rows = tickets.map(t => {
+                stored[t.name] = amount_key(t.expense_amount);
+                stored_types[t.name] = t.expense_type || "";
+                // Lines in a submitted claim are read-only; HR owns them now
+                let locked = t.expense_claim_locked;
+                let typed = !locked && t.name in amounts;
+                let type_changed = !locked && t.name in types;
+                let type_value = type_changed ? types[t.name] : stored_types[t.name];
+                let type_options = [""].concat(expense_types, type_value && !expense_types.includes(type_value) ? [type_value] : [])
+                    .map(et => `<option value="${esc(et)}" ${et === type_value ? 'selected' : ''}>${et ? esc(__(et)) : __("Select type")}</option>`)
+                    .join("");
+                // data-label names each cell in the stacked phone layout
+                return `
+                    <tr>
+                        <td data-label="${__("Ticket No")}">
+                            <a href="javascript:void(0)" class="tp-expense-ticket-link" data-name="${esc(t.name)}" style="color:var(--tp-primary); font-weight:700; text-decoration:none;">${esc(t.name)}</a>
+                        </td>
+                        <td data-label="${__("Machine")}">${esc(t.machine_display)}</td>
+                        <td data-label="${__("Customer")}">${esc(t.custom_customer_name || '')}</td>
+                        <td data-label="${__("Required Spares")}">${esc(t.custom_required_spares || '-')}</td>
+                        <td data-label="${__("Location")}">${esc(t.location)}</td>
+                        <td data-label="${__("Resolved On")}" class="text-nowrap">${frappe.datetime.str_to_user((t.resolution_date || '').slice(0, 10))}</td>
+                        <td data-label="${__("Status")}">${esc(t.status)}</td>
+                        <td data-label="${__("Expense Type")}">
+                            <select class="form-control input-xs tp-expense-type ${type_changed ? 'is-dirty' : ''}" data-ticket="${esc(t.name)}" ${locked ? 'disabled' : ''}>
+                                ${type_options}
+                            </select>
+                        </td>
+                        <td data-label="${__("Expense Amount")}">
+                            <input type="number" class="form-control input-xs tp-expense-input ${typed ? 'is-dirty' : ''}"
+                                ${locked ? `disabled title="${esc(__("Already submitted to HR; it can't be changed here."))}"` : ''}
+                                data-ticket="${esc(t.name)}" value="${esc(typed ? amounts[t.name] : stored[t.name])}" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+                        </td>
+                    </tr>
                 `;
+            }).join("");
+
+            let empty = range === "today" ? __("No resolved tickets today") : __("No resolved tickets in the last week");
+            $wrap.html(`
+                <table class="table table-bordered tp-expense-table" id="tp-expense-table">
+                    <thead>
+                        <tr>
+                            <th>${__("Ticket No")}</th><th>${__("Machine")}</th><th>${__("Customer")}</th><th>${__("Required Spares")}</th>
+                            <th>${__("Location")}</th><th>${__("Resolved On")}</th><th>${__("Status")}</th><th>${__("Expense Type")}</th>
+                            <th>${__("Expense Amount")}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || `<tr><td colspan="9" class="tp-expense-empty">${empty}</td></tr>`}
+                    </tbody>
+                    ${tickets.length ? `<tfoot><tr><th colspan="8" class="text-right">${__("Total")}</th><th class="tp-expense-total"></th></tr></tfoot>` : ''}
+                </table>
+            `);
+            update_total();
+            $share.prop("disabled", !tickets.length);
+        };
+
+        const load = () => {
+            let requested = range;
+            $wrap.html(`<div class="tp-expense-empty">${__("Loading...")}</div>`);
+            $share.prop("disabled", true);
+            frappe.call({
+                method: "vin_chakra.vin_chakra.page.technician_portal.technician_portal.get_expense_claim_tickets",
+                args: { date_range: requested },
+                callback: function (r) {
+                    // Ignore a slower answer for a range the user has already switched away from
+                    if (r.message && requested === range) render(r.message);
+                }
+            });
+        };
+
+        $body.on("click", "[data-range]", function () {
+            let next = $(this).attr("data-range");
+            if (next === range) return;
+            range = next;
+            $body.find("[data-range]").removeClass("active");
+            $(this).addClass("active");
+            load();
+        });
+
+        $body.on("input", ".tp-expense-input", function () {
+            let ticket = $(this).attr("data-ticket");
+            let invalid = this.validity.badInput || (this.value !== "" && flt(this.value) < 0);
+            if (invalid || amount_key(this.value) === stored[ticket]) {
+                delete amounts[ticket];
             } else {
-                invoice_btn = `<button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:4px; font-weight:700; background-color: #10b981; border-color: #10b981; color: white;"><i class="fa fa-file-text-o"></i> Create Invoice</button>`;
+                amounts[ticket] = this.value;
             }
-        }
-        return `
-            <tr>
-                <td>
-                    <a href="javascript:void(0)" class="tp-today-ticket-link" data-name="${t.name}" style="color:var(--tp-primary); font-weight:700; text-decoration:none;">
-                        ${t.name}
-                    </a>
-                </td>
-                <td>${machine_display}</td>
-                <td>${t.custom_customer_name || ''}</td>
-                <td>${t.custom_required_spares || '-'}</td>
-                <td>${location}</td>
-                <td>${t.custom_date || ''}</td>
-                <td>${t.status}</td>
-                <td>${invoice_btn}</td>
-            </tr>
-        `;
-    }).join("");
+            $(this).toggleClass("is-invalid", invalid).toggleClass("is-dirty", ticket in amounts);
+            update_total();
+        });
 
-    let html = `
-        <div style="display:flex; justify-content:flex-end; margin-bottom:10px;">
-            <button class="btn btn-success btn-sm" id="tp-btn-share-excel">
-                <i class="fa fa-file-excel-o"></i> Share (Excel)
-            </button>
-        </div>
-        <div style="max-height:60vh; overflow:auto;">
-        <table class="table table-bordered" id="tp-today-table" style="width:100%;">
-            <thead>
-                <tr>
-                    <th>Ticket No</th><th>Machine</th><th>Customer</th><th>Required Spares</th><th>Location</th><th>Date</th><th>Status</th><th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rows || `<tr><td colspan="8" style="text-align:center;">No tickets found for today</td></tr>`}
-            </tbody>
-        </table>
-        </div>
-    `;
+        $body.on("change", ".tp-expense-type", function () {
+            let ticket = $(this).attr("data-ticket");
+            if (this.value === stored_types[ticket]) {
+                delete types[ticket];
+            } else {
+                types[ticket] = this.value;
+            }
+            $(this).removeClass("is-invalid").toggleClass("is-dirty", ticket in types);
+        });
 
-    dialog.get_field("today_tickets_html").$wrapper.html(html);
+        // Without stepper arrows, don't let the mouse wheel change an amount by accident
+        $body.on("wheel", ".tp-expense-input", function () {
+            if (document.activeElement === this) this.blur();
+        });
 
-    dialog.$wrapper.on("click", ".tp-btn-create-invoice", function(e) {
-        e.stopPropagation();
-        e.preventDefault();
-        let invoice = $(this).data("invoice");
-        if (invoice) {
+        $share.on("click", function () {
+            let $invalid = $wrap.find(".tp-expense-input.is-invalid");
+            if ($invalid.length) {
+                frappe.msgprint(__("Please enter valid, non-negative expense amounts."));
+                $invalid.first().focus();
+                return;
+            }
+
+            // Store the editable rows in the Expense Claim, then download the Excel of all rows
+            let values = {}, row_types = {}, editable = {}, editable_types = {};
+            let $untyped = null;
+            $wrap.find("tbody tr").each(function () {
+                let $input = $(this).find(".tp-expense-input");
+                if (!$input.length) return;  // the "no tickets" row
+                let ticket = $input.attr("data-ticket");
+                let $type = $(this).find(".tp-expense-type");
+                values[ticket] = $input.val();
+                row_types[ticket] = $type.val() || "";
+                if ($input.prop("disabled")) return;
+                editable[ticket] = values[ticket];
+                editable_types[ticket] = row_types[ticket];
+                if (values[ticket] !== "" && !row_types[ticket] && !$untyped) $untyped = $type;
+            });
+            if ($untyped) {
+                $untyped.addClass("is-invalid").focus();
+                frappe.msgprint(__("Select an Expense Claim Type for ticket {0}.", [$untyped.attr("data-ticket")]));
+                return;
+            }
+            frappe.call({
+                method: "vin_chakra.vin_chakra.page.technician_portal.technician_portal.save_to_expense_claim",
+                args: { amounts: JSON.stringify(editable), types: JSON.stringify(editable_types) },
+                freeze: true,
+                freeze_message: __("Saving to Expense Claim..."),
+                callback: function (r) {
+                    Object.keys(editable).forEach(ticket => {
+                        delete amounts[ticket];
+                        delete types[ticket];
+                    });
+                    if (r.message && r.message.changed) {
+                        frappe.show_alert({ message: __("Expense amounts saved to your Expense Claim"), indicator: "green" });
+                    }
+                    open_url_post("/api/method/vin_chakra.vin_chakra.page.technician_portal.technician_portal.download_expense_claim",
+                        { date_range: range, amounts: values, types: row_types });
+                    load();  // show the stored amounts
+                }
+            });
+        });
+
+        // Ticket No click -> open the same ticket detail dialog used elsewhere in the portal
+        $body.on("click", ".tp-expense-ticket-link", function () {
+            let ticket_name = $(this).attr("data-name");
             dialog.hide();
-            frappe.set_route("Form", "Sales Invoice", invoice);
-            return;
-        }
-        let ticket_name = $(this).data("name");
-        let customer = $(this).data("customer");
-        let phone = $(this).data("phone");
-        dialog.hide();
-        self.create_invoice(ticket_name, customer, phone);
-    });
+            self.open_ticket_details(ticket_name);
+        });
 
-    dialog.$wrapper.on("click", ".tp-btn-send-invoice", function(e) {
-        e.stopPropagation();
-        e.preventDefault();
-        let ticket_name = $(this).data("ticket");
-        let invoice_name = $(this).data("invoice");
-        let customer = $(this).data("customer");
-        let phone = $(this).data("phone");
-        dialog.hide();
-        self.send_invoice_whatsapp(ticket_name, invoice_name, customer, phone);
-    });
-
-    dialog.$wrapper.find("#tp-btn-share-excel").on("click", function() {
-        self.export_table_to_excel("tp-today-table", "today_tickets");
-    });
-
-    // Ticket No click -> open the same ticket detail dialog used elsewhere in the portal
-    dialog.$wrapper.find(".tp-today-ticket-link").on("click", function() {
-        let ticket_name = $(this).data("name");
-        dialog.hide();
-        self.open_ticket_details(ticket_name);
-    });
-
-    dialog.show();
-}
-
-    export_table_to_excel(table_id, filename) {
-        let table = document.getElementById(table_id);
-        let template = `
-            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-            <head><meta charset="UTF-8"></head>
-            <body>${table.outerHTML}</body>
-            </html>
-        `;
-        let blob = new Blob(['\ufeff' + template], { type: 'application/vnd.ms-excel' });
-        let link = document.createElement("a");
-        link.href = URL.createObjectURL(blob);
-        link.download = filename + "_" + frappe.datetime.get_today() + ".xls";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        dialog.show();
+        load();
     }
 
     show_ticket_detail_dialog(t) {
@@ -1010,10 +1083,10 @@ class TechnicianPortal {
         }
         let address = [t.custom_address, t.custom_city__district_, t.custom_state].filter(Boolean).join(', ') || '-';
         let date_str = t.custom_date ? frappe.datetime.global_date_format(t.custom_date) : '-';
-        
+
         let status_badge = `<span class="tp-badge tp-badge-status-${t.status.replace(/\s+/g, '')}">${t.status}</span>`;
         let priority_badge = `<span class="tp-badge tp-badge-priority-${t.priority}">${t.priority}</span>`;
-        
+
         let dialog = new frappe.ui.Dialog({
             title: `Ticket Details: ${t.name}`,
             size: "large",
@@ -1027,7 +1100,7 @@ class TechnicianPortal {
         dialog.onhide = () => {
             dialog.$wrapper.remove();
         };
-        
+
         // Machine Type List Table Section
         let machine_type_list = t.custom_machine_type_list || [];
         let machine_table_rows = machine_type_list.map((m, idx) => {
@@ -1080,7 +1153,7 @@ class TechnicianPortal {
                 `}
             </div>
         `;
-        
+
         // Build the HTML template for details, service action workflow, and activity timeline
         let html_content = `
             <div class="tp-modal-header">
@@ -1153,7 +1226,7 @@ class TechnicianPortal {
                 </div>
             </div>
         `;
-        
+
         dialog.get_field("detail_html").$wrapper.html(html_content);
 
         // Helper to prompt Phone Selection and trigger Checkin or Resend OTP
@@ -1225,17 +1298,17 @@ class TechnicianPortal {
 
             let $dialog_wrap = checkin_dialog.$wrapper;
 
-            $dialog_wrap.find(".tp-phone-card").on("click", function(e) {
+            $dialog_wrap.find(".tp-phone-card").on("click", function (e) {
                 if ($(e.target).is("input[type='text']")) return;
                 $(this).find("input[name='otp_phone_choice']").prop("checked", true);
             });
 
-            $dialog_wrap.find("#tp-sec-phone-input").on("focus input click change", function(e) {
+            $dialog_wrap.find("#tp-sec-phone-input").on("focus input click change", function (e) {
                 e.stopPropagation();
                 $dialog_wrap.find("input[name='otp_phone_choice'][value='secondary_custom']").prop("checked", true);
             });
 
-            $dialog_wrap.find("#tp-btn-confirm-checkin").on("click", function() {
+            $dialog_wrap.find("#tp-btn-confirm-checkin").on("click", function () {
                 let selected_radio = $dialog_wrap.find("input[name='otp_phone_choice']:checked");
                 let choice_val = selected_radio.val() || "primary";
                 let selected_phone_num = "";
@@ -1253,7 +1326,7 @@ class TechnicianPortal {
                 }
 
                 if (!selected_phone_num) {
-                    frappe.show_alert({message: __("Please select or enter a valid mobile number."), indicator: "red"});
+                    frappe.show_alert({ message: __("Please select or enter a valid mobile number."), indicator: "red" });
                     return;
                 }
 
@@ -1269,10 +1342,10 @@ class TechnicianPortal {
                             secondary_phone: selected_phone_num,
                             selected_phone: selected_phone_num
                         },
-                        callback: function(res) {
+                        callback: function (res) {
                             btn.prop("disabled", false);
                             if (res.message && res.message.status === "success") {
-                                frappe.show_alert({message: res.message.message, indicator: "green"});
+                                frappe.show_alert({ message: res.message.message, indicator: "green" });
                                 checkin_dialog.hide();
                             } else {
                                 frappe.msgprint(res.message ? res.message.message : __("Error resending OTP."));
@@ -1297,10 +1370,10 @@ class TechnicianPortal {
                                 secondary_phone: selected_phone_num,
                                 selected_phone: selected_phone_num
                             },
-                            callback: function(res) {
+                            callback: function (res) {
                                 btn.prop("disabled", false);
                                 if (res.message && res.message.status === "success") {
-                                    frappe.show_alert({message: res.message.message, indicator: "green"});
+                                    frappe.show_alert({ message: res.message.message, indicator: "green" });
                                     checkin_dialog.hide();
                                     dialog.hide();
                                     self.load_data();
@@ -1325,17 +1398,17 @@ class TechnicianPortal {
         function render_timeline_logs(logs) {
             let container = dialog.wrapper.find("#tp-dialog-timeline-logs");
             let section = dialog.wrapper.find("#tp-dialog-timeline-section");
-            
+
             if (!logs || logs.length === 0) {
                 section.hide();
                 return;
             }
-            
+
             section.show();
             let html = logs.map(l => {
                 let isOut = l.check_type === 'Check-out';
                 let time_str = frappe.datetime.global_date_format(l.timestamp) + " " + l.timestamp.split(" ")[1].substring(0, 5);
-                
+
                 return `
                     <div class="tp-timeline-item">
                         <div class="tp-timeline-icon ${isOut ? 'tp-timeline-out' : 'tp-timeline-in'}">
@@ -1351,18 +1424,18 @@ class TechnicianPortal {
             }).join("");
             container.html(html);
         }
-        
+
         // Render Active Service Actions
         function render_action_state(ticket) {
             let box = dialog.wrapper.find("#tp-dialog-action-box");
             box.removeClass("tp-action-working").empty();
-            
+
             let last_log = ticket.check_log && ticket.check_log.length > 0 ? ticket.check_log[ticket.check_log.length - 1] : null;
             let has_active_check_in = last_log && last_log.check_type === 'Check-in';
-            
+
             let is_resolved = ticket.status && ticket.status.trim().toLowerCase() === 'resolved';
             let is_closed = ticket.status && ticket.status.trim().toLowerCase() === 'closed';
-            
+
             if (is_resolved || is_closed) {
                 let inv = ticket.sales_invoice;
                 let phone = ticket.custom_customer_mobile_number || ticket.primary_phone || ticket.custom__secondary_phone_number || '';
@@ -1448,21 +1521,21 @@ class TechnicianPortal {
                     </button>
                 `);
             }
-            
+
             // Handle Check-in button click with Day Attendance Verification and Active Ticket Check
-            dialog.$wrapper.find("#tp-btn-checkin").on("click", function() {
+            dialog.$wrapper.find("#tp-btn-checkin").on("click", function () {
                 let btn = $(this);
                 btn.prop("disabled", true).html('<i class="fa fa-spinner fa-spin"></i> Checking Day Attendance...');
 
                 frappe.call({
                     method: "vin_chakra.technician_api.get_day_attendance_status",
-                    callback: function(r) {
+                    callback: function (r) {
                         if (r.message && r.message.status === "success" && r.message.state === "IN") {
                             btn.html('<i class="fa fa-spinner fa-spin"></i> Checking Active Tickets...');
                             frappe.call({
                                 method: "vin_chakra.technician_api.check_active_ticket",
                                 args: { current_ticket_name: ticket.name },
-                                callback: function(res) {
+                                callback: function (res) {
                                     btn.prop("disabled", false).html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
                                     if (res.message && res.message.has_active) {
                                         frappe.msgprint({
@@ -1484,10 +1557,10 @@ class TechnicianPortal {
                                                         accuracy: coords.accuracy,
                                                         skip_otp: 1
                                                     },
-                                                    callback: function(res) {
+                                                    callback: function (res) {
                                                         btn.prop("disabled", false);
                                                         if (res.message && res.message.status === "success") {
-                                                            frappe.show_alert({message: res.message.message, indicator: "green"});
+                                                            frappe.show_alert({ message: res.message.message, indicator: "green" });
                                                             dialog.hide();
                                                             self.load_data();
                                                             self.open_ticket_details(ticket.name);
@@ -1506,7 +1579,7 @@ class TechnicianPortal {
                                         }
                                     }
                                 },
-                                error: function() {
+                                error: function () {
                                     btn.prop("disabled", false).html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
                                 }
                             });
@@ -1519,75 +1592,75 @@ class TechnicianPortal {
                             });
                         }
                     },
-                    error: function() {
+                    error: function () {
                         btn.prop("disabled", false).html('<i class="fa fa-sign-in"></i> Check In to Customer Location');
                     }
                 });
             });
 
             // Resend OTP handler
-            dialog.$wrapper.find("#tp-btn-resend-otp").on("click", function() {
+            dialog.$wrapper.find("#tp-btn-resend-otp").on("click", function () {
                 trigger_checkin_flow(ticket, true);
             });
-            
+
             // Show OTP Check-out Panel
-            dialog.$wrapper.find("#tp-btn-show-checkout").on("click", function() {
+            dialog.$wrapper.find("#tp-btn-show-checkout").on("click", function () {
                 dialog.$wrapper.find("#tp-action-button-row").hide();
                 dialog.$wrapper.find("#tp-otp-box").show();
                 dialog.$wrapper.find("#tp-otp-input").focus();
             });
-            
-            dialog.$wrapper.find("#tp-btn-cancel-checkout").on("click", function() {
+
+            dialog.$wrapper.find("#tp-btn-cancel-checkout").on("click", function () {
                 dialog.$wrapper.find("#tp-otp-box").hide();
                 dialog.$wrapper.find("#tp-action-button-row").show();
             });
-            
+
             // Show Pending Panel
-            dialog.$wrapper.find("#tp-btn-show-pending").on("click", function() {
+            dialog.$wrapper.find("#tp-btn-show-pending").on("click", function () {
                 dialog.$wrapper.find("#tp-action-button-row").hide();
                 dialog.$wrapper.find("#tp-pending-box").show();
                 dialog.$wrapper.find("#tp-pending-reason-select").focus();
             });
-            
-            dialog.$wrapper.find("#tp-btn-cancel-pending").on("click", function() {
+
+            dialog.$wrapper.find("#tp-btn-cancel-pending").on("click", function () {
                 dialog.$wrapper.find("#tp-pending-box").hide();
                 dialog.$wrapper.find("#tp-action-button-row").show();
             });
-            
+
             // Handle reason select change
-            dialog.$wrapper.find("#tp-pending-reason-select").on("change", function() {
+            dialog.$wrapper.find("#tp-pending-reason-select").on("change", function () {
                 if ($(this).val() === "Others") {
                     dialog.$wrapper.find("#tp-custom-reason-box").show();
                 } else {
                     dialog.$wrapper.find("#tp-custom-reason-box").hide();
                 }
             });
-            
+
             // Submit Check-out with OTP and GPS location
-            dialog.$wrapper.find("#tp-btn-submit-checkout").on("click", function() {
+            dialog.$wrapper.find("#tp-btn-submit-checkout").on("click", function () {
                 let mopVal = dialog.$wrapper.find("#tp-mop-select").val();
                 let gstVal = dialog.$wrapper.find("#tp-gst-select").val();
                 let otpVal = dialog.$wrapper.find("#tp-otp-input").val().trim();
-                
+
                 if (!mopVal) {
-                    frappe.show_alert({message: __("Please select Mode of Payment"), indicator: "red"});
+                    frappe.show_alert({ message: __("Please select Mode of Payment"), indicator: "red" });
                     return;
                 }
                 if (!gstVal) {
-                    frappe.show_alert({message: __("Please select if GST Bill is required"), indicator: "red"});
+                    frappe.show_alert({ message: __("Please select if GST Bill is required"), indicator: "red" });
                     return;
                 }
                 if (!otpVal || otpVal.length !== 4) {
-                    frappe.show_alert({message: __("Please enter a valid 4-digit OTP"), indicator: "red"});
+                    frappe.show_alert({ message: __("Please enter a valid 4-digit OTP"), indicator: "red" });
                     return;
                 }
-                
+
                 let btn = $(this);
                 btn.prop("disabled", true).text("Locating GPS...");
-                
+
                 getLocationSafe().then(coords => {
                     btn.text("Checking Out...");
-                    
+
                     frappe.call({
                         method: "vin_chakra.technician_api.technician_checkout",
                         args: {
@@ -1599,10 +1672,10 @@ class TechnicianPortal {
                             longitude: coords.lng,
                             accuracy: coords.accuracy
                         },
-                        callback: function(res) {
+                        callback: function (res) {
                             btn.prop("disabled", false).text("Verify & Check Out");
                             if (res.message && res.message.status === "success") {
-                                frappe.show_alert({message: __("Checked out and ticket resolved successfully!"), indicator: "green"});
+                                frappe.show_alert({ message: __("Checked out and ticket resolved successfully!"), indicator: "green" });
                                 dialog.hide();
                                 self.load_data();
                                 self.open_ticket_details(ticket.name);
@@ -1617,28 +1690,28 @@ class TechnicianPortal {
                     frappe.msgprint(err.message);
                 });
             });
-            
+
             // Submit Pending
-            dialog.$wrapper.find("#tp-btn-submit-pending").on("click", function() {
+            dialog.$wrapper.find("#tp-btn-submit-pending").on("click", function () {
                 let reasonVal = dialog.$wrapper.find("#tp-pending-reason-select").val();
                 let customReasonVal = dialog.$wrapper.find("#tp-custom-reason").val().trim();
-                
+
                 if (!reasonVal) {
-                    frappe.show_alert({message: __("Please select a pending reason"), indicator: "red"});
+                    frappe.show_alert({ message: __("Please select a pending reason"), indicator: "red" });
                     return;
                 }
-                
+
                 if (reasonVal === "Others" && !customReasonVal) {
-                    frappe.show_alert({message: __("Please specify the custom reason"), indicator: "red"});
+                    frappe.show_alert({ message: __("Please specify the custom reason"), indicator: "red" });
                     return;
                 }
-                
+
                 let btn = $(this);
                 btn.prop("disabled", true).text("Locating GPS...");
-                
+
                 getLocationSafe().then(coords => {
                     btn.text("Submitting...");
-                    
+
                     frappe.call({
                         method: "vin_chakra.technician_api.technician_mark_pending",
                         args: {
@@ -1649,10 +1722,10 @@ class TechnicianPortal {
                             longitude: coords.lng,
                             accuracy: coords.accuracy
                         },
-                        callback: function(res) {
+                        callback: function (res) {
                             btn.prop("disabled", false).text("Submit & Leave");
                             if (res.message && res.message.status === "success") {
-                                frappe.show_alert({message: __("Ticket status set to Pending!"), indicator: "orange"});
+                                frappe.show_alert({ message: __("Ticket status set to Pending!"), indicator: "orange" });
                                 dialog.hide();
                                 self.load_data();
                                 self.open_ticket_details(ticket.name);
@@ -1667,11 +1740,11 @@ class TechnicianPortal {
                 });
             });
         }
-        
+
         render_action_state(t);
         render_timeline_logs(t.check_log);
 
-        dialog.$wrapper.on("click", ".tp-btn-create-invoice", function(e) {
+        dialog.$wrapper.on("click", ".tp-btn-create-invoice", function (e) {
             e.stopPropagation();
             e.preventDefault();
             let invoice = $(this).data("invoice");
@@ -1687,7 +1760,7 @@ class TechnicianPortal {
             self.create_invoice(ticket_name, customer, phone);
         });
 
-        dialog.$wrapper.on("click", ".tp-btn-send-invoice", function(e) {
+        dialog.$wrapper.on("click", ".tp-btn-send-invoice", function (e) {
             e.stopPropagation();
             e.preventDefault();
             let ticket_name = $(this).data("ticket");
@@ -1697,7 +1770,7 @@ class TechnicianPortal {
             dialog.hide();
             self.send_invoice_whatsapp(ticket_name, invoice_name, customer, phone);
         });
-        
+
         dialog.show();
     }
 
@@ -1710,28 +1783,28 @@ class TechnicianPortal {
                 ticket_name: ticket_name || "",
                 customer: cust
             },
-            callback: function(r) {
-                let res     = r.message || {};
+            callback: function (r) {
+                let res = r.message || {};
                 let cust_id = res.customer_id || cust || "";
-                let mop     = res.mode_of_payment || "";
-                let noj     = res.ticket_type || res.nature_of_job || "";
+                let mop = res.mode_of_payment || "";
+                let noj = res.ticket_type || res.nature_of_job || "";
                 let gst_req = (res.gst_bill_required === 1 || res.custom_gst_bill_required === 1) ? 1 : 0;
 
                 // Store scalar values — machines are fetched fresh by the invoice form
-                if (cust_id)     sessionStorage.setItem("tp_inv_customer", cust_id);
-                if (mop)         sessionStorage.setItem("tp_inv_mop", mop);
-                if (noj)         sessionStorage.setItem("tp_inv_noj", noj);
+                if (cust_id) sessionStorage.setItem("tp_inv_customer", cust_id);
+                if (mop) sessionStorage.setItem("tp_inv_mop", mop);
+                if (noj) sessionStorage.setItem("tp_inv_noj", noj);
                 sessionStorage.setItem("tp_inv_gst", String(gst_req));
                 if (ticket_name) sessionStorage.setItem("tp_inv_ticket", ticket_name);
                 sessionStorage.setItem("tp_inv_active", "1");
 
                 // Pass same keys via route_options so setup() can also capture them
                 let opts = { from_technician_portal: 1 };
-                if (cust_id)     opts.customer                  = cust_id;
-                if (mop)         opts.custom_mode_of_payment    = mop;
-                if (noj)         opts.custom_nature_of_job      = noj;
-                opts.custom_gst_bill_required                   = gst_req;
-                if (ticket_name) opts.ticket_name               = ticket_name;
+                if (cust_id) opts.customer = cust_id;
+                if (mop) opts.custom_mode_of_payment = mop;
+                if (noj) opts.custom_nature_of_job = noj;
+                opts.custom_gst_bill_required = gst_req;
+                if (ticket_name) opts.ticket_name = ticket_name;
 
                 frappe.new_doc("Sales Invoice", opts);
             }
@@ -1754,14 +1827,14 @@ class TechnicianPortal {
             args: { invoice_name: invoice_name, target_phone: phone || "" },
             freeze: true,
             freeze_message: __("Preparing WhatsApp invoice preview..."),
-            callback: function(r) {
+            callback: function (r) {
                 if (r.exc || !r.message) return;
                 let res = r.message;
 
                 let pf_options = (res.print_formats && res.print_formats.length) ? res.print_formats : [res.default_print_format || "Service invoice"];
                 let selected_pf = res.default_print_format || pf_options[0];
 
-                let _render_pdf_badge = function(pdf_link, pf) {
+                let _render_pdf_badge = function (pdf_link, pf) {
                     let esc_pf = frappe.utils.escape_html(pf || selected_pf || "Service invoice");
                     return `
                         <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:8px 12px; margin:4px 0 10px 0; display:flex; justify-content:space-between; align-items:center;">
@@ -1821,7 +1894,7 @@ class TechnicianPortal {
                             default: selected_pf,
                             reqd: 1,
                             description: __("Choose the print format for the attached invoice PDF"),
-                            change: function() {
+                            change: function () {
                                 let new_pf = (this.get_value() || "").trim();
                                 if (!new_pf) return;
                                 selected_pf = new_pf;
@@ -1838,7 +1911,7 @@ class TechnicianPortal {
                                         print_format: new_pf
                                     },
                                     freeze: false,
-                                    callback: function(r) {
+                                    callback: function (r) {
                                         if (r.message && r.message.pdf_link) {
                                             res.pdf_link = r.message.pdf_link;
                                             if (d.fields_dict.pdf_badge_html) {
@@ -1848,7 +1921,7 @@ class TechnicianPortal {
                                             }
                                         }
                                     },
-                                    error: function(err) {
+                                    error: function (err) {
                                         // Preserve user's format selection without throwing modal
                                     }
                                 });
@@ -1867,15 +1940,15 @@ class TechnicianPortal {
                                     ${res.send_mode === 'Template Message' ? __('Template Parameters Preview:') : __('Message Text Preview:')}
                                 </label>
                                 <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:10px; font-size:13px; white-space:pre-wrap; max-height:160px; overflow-y:auto; color:#1f2937;">
-                                    ${res.send_mode === 'Template Message' ? 
-                                        `<ol style="padding-left:18px; margin:0;">${(res.param_values || []).map(p => `<li><strong>${frappe.utils.escape_html(p)}</strong></li>`).join('')}</ol>` : 
-                                        frappe.utils.escape_html(res.rendered_text)}
+                                    ${res.send_mode === 'Template Message' ?
+                                    `<ol style="padding-left:18px; margin:0;">${(res.param_values || []).map(p => `<li><strong>${frappe.utils.escape_html(p)}</strong></li>`).join('')}</ol>` :
+                                    frappe.utils.escape_html(res.rendered_text)}
                                 </div>
                             `
                         }
                     ],
                     primary_action_label: __("Send via WhatsApp"),
-                    primary_action: function(values) {
+                    primary_action: function (values) {
                         let dest_phone = (values.target_phone || "").trim();
                         if (!dest_phone) {
                             frappe.msgprint(__("Please enter a mobile number."));
@@ -1892,7 +1965,7 @@ class TechnicianPortal {
                             },
                             freeze: true,
                             freeze_message: __("Dispatching invoice to WhatsApp..."),
-                            callback: function(resp) {
+                            callback: function (resp) {
                                 if (resp.message && resp.message.status === "success") {
                                     frappe.show_alert({
                                         message: resp.message.message || __("Invoice sent via WhatsApp!"),

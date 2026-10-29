@@ -1,5 +1,10 @@
+import json
+
 import frappe
 from vin_chakra.technician_api import enrich_tickets_customer_details
+
+# Whose attendance the Attendance tab shows; the first one is the default
+ATTENDANCE_PERSON_TYPES = ("Technician", "Sales Person")
 
 
 @frappe.whitelist()
@@ -24,7 +29,9 @@ def get_dashboard_data(
     search_query: str = None,
     limit_start: int = 0,
     limit_page_length: int = 10,
-    view: str = "tickets"
+    view: str = "tickets",
+    person_type: str = None,
+    sales_person: str = None
 ):
     if not (frappe.has_permission("HD Ticket", "read") and ("Chief Technician" in frappe.get_roles() or "System Manager" in frappe.get_roles())):
         frappe.throw("You are not permitted to access this dashboard.")
@@ -37,6 +44,8 @@ def get_dashboard_data(
     priority = priority if priority not in (None, "", "None", "null", "undefined") else None
     ticket_type = ticket_type if ticket_type not in (None, "", "None", "null", "undefined") else None
     search_query = search_query if search_query not in (None, "", "None", "null", "undefined") else None
+    person_type = person_type if person_type not in (None, "", "None", "null", "undefined") else None
+    sales_person = sales_person if sales_person not in (None, "", "None", "null", "undefined") else None
 
         
     # Construct base conditions for HD Tickets
@@ -117,40 +126,10 @@ def get_dashboard_data(
             WHERE {ticket_where}
         """, ticket_values, as_dict=True)
         total_count = total_count_row[0].count if total_count_row else 0
-        
+
         # Summary card metrics (total, open, working, resolved, pending)
-        status_counts_raw = frappe.db.sql(f"""
-            SELECT status, COUNT(name) as count
-            FROM `tabHD Ticket`
-            WHERE {summary_where}
-            GROUP BY status
-        """, summary_values, as_dict=True)
-        
-        # Fetch enabled ticket statuses (excluding Replied and Closed)
-        enabled_statuses = frappe.cache().get_value("enabled_hd_ticket_statuses")
-        if not enabled_statuses:
-            enabled_statuses = frappe.get_all(
-                "HD Ticket Status",
-                filters={
-                    "enabled": 1,
-                    "name": ["not in", ["Replied", "Closed"]]
-                },
-                fields=["name", "color"],
-                order_by="order asc, name asc"
-            )
-            frappe.cache().set_value("enabled_hd_ticket_statuses", enabled_statuses, expires_in_sec=3600)
-        else:
-            enabled_statuses = frappe.parse_json(enabled_statuses)
-            
-        summary = {"Total": 0}
-        for status_obj in enabled_statuses:
-            summary[status_obj.name] = 0
-            
-        for row in status_counts_raw:
-            if row.status in summary:
-                summary[row.status] = row.count
-            summary["Total"] += row.count
-            
+        _, summary, enabled_statuses = get_status_summary(summary_where, summary_values)
+
         result = {
             "tickets": tickets,
             "total_count": total_count,
@@ -160,14 +139,9 @@ def get_dashboard_data(
 
     # 2. ANALYTICS VIEW
     elif view == "analytics":
-        # Group status summary
-        status_summary = frappe.db.sql(f"""
-            SELECT status, COUNT(name) as count
-            FROM `tabHD Ticket`
-            WHERE {summary_where}
-            GROUP BY status
-        """, summary_values, as_dict=True)
-        
+        # Group status summary (also feeds the summary cards shown above the charts)
+        status_summary, summary, enabled_statuses = get_status_summary(summary_where, summary_values)
+
         # Group priority summary
         priority_summary = frappe.db.sql(f"""
             SELECT priority, COUNT(name) as count
@@ -175,60 +149,29 @@ def get_dashboard_data(
             WHERE {summary_where}
             GROUP BY priority
         """, summary_values, as_dict=True)
-        
-        # Leaderboard performance
-        todo_conditions = ["td.reference_type = 'HD Ticket'", "td.allocated_to IS NOT NULL", "td.allocated_to != ''"]
-        todo_values = {}
-        
-        if date_from or date_to:
-            date_conds = []
-            if date_from:
-                date_conds.append("COALESCE(t.custom_date, DATE(t.creation)) >= %(date_from)s")
-                todo_values["date_from"] = date_from
-            if date_to:
-                date_conds.append("COALESCE(t.custom_date, DATE(t.creation)) <= %(date_to)s")
-                todo_values["date_to"] = date_to
-                
-            subquery_conds = []
-            if date_from:
-                subquery_conds.append("DATE(timestamp) >= %(date_from)s")
-            if date_to:
-                subquery_conds.append("DATE(timestamp) <= %(date_to)s")
-                
-            working_conds = ["t.status = 'Working'"]
-            if date_from:
-                working_conds.append("%(today)s >= %(date_from)s")
-            if date_to:
-                working_conds.append("%(today)s <= %(date_to)s")
-            todo_values["today"] = frappe.utils.today()
-            
-            todo_conditions.append(f"""(
-                ({" AND ".join(date_conds)})
-                OR t.name IN (SELECT parent FROM `tabHD Ticket Check Log` WHERE {" AND ".join(subquery_conds)})
-                OR ({" AND ".join(working_conds)})
-            )""")
-        if technician:
-            todo_conditions.append("td.allocated_to = %(technician)s")
-            todo_values["technician"] = technician
-        if search_query:
-            search_escaped = f"%{search_query}%"
-            todo_conditions.append("(t.name LIKE %(search)s OR t.subject LIKE %(search)s OR t.custom_customer_name LIKE %(search)s)")
-            todo_values["search"] = search_escaped
-            
-        todo_where = " AND ".join(todo_conditions)
-        
-        performance = frappe.db.sql(f"""
-            SELECT 
-                td.allocated_to as assigned_to, 
-                COUNT(DISTINCT td.reference_name) as total_assigned,
-                SUM(CASE WHEN t.status='Resolved' THEN 1 ELSE 0 END) as total_resolved
-            FROM `tabToDo` td
-            INNER JOIN `tabHD Ticket` t ON td.reference_name = t.name
-            WHERE {todo_where}
-            GROUP BY td.allocated_to
-            ORDER BY total_resolved DESC
-        """, todo_values, as_dict=True)
-        
+
+        # Leaderboard performance: built from the same tickets as the summary cards and
+        # charts, and credited to each ticket's current assignees (`_assign`) — the same
+        # rule the Ticket Board's technician filter uses. ToDos cancelled when a ticket is
+        # reassigned are not counted, so a technician is never credited with tickets that
+        # were handed over to (and resolved by) someone else.
+        assigned_tickets = frappe.db.sql(f"""
+            SELECT name, status, _assign
+            FROM `tabHD Ticket`
+            WHERE {summary_where}
+        """, summary_values, as_dict=True)
+
+        performance_by_user = {}
+        for t in assigned_tickets:
+            for user in set(json.loads(t._assign or "[]") or []):
+                if technician and user != technician:
+                    continue
+                p = performance_by_user.setdefault(user, frappe._dict(assigned_to=user, total_assigned=0, total_resolved=0))
+                p.total_assigned += 1
+                if t.status == "Resolved":
+                    p.total_resolved += 1
+        performance = sorted(performance_by_user.values(), key=lambda p: p.total_resolved, reverse=True)
+
         filtered_performance = []
         if performance:
             # Fetch all users carrying the target roles in a single query
@@ -250,7 +193,9 @@ def get_dashboard_data(
         result = {
             "status_summary": status_summary,
             "priority_summary": priority_summary,
-            "performance": filtered_performance
+            "performance": filtered_performance,
+            "summary": summary,
+            "enabled_statuses": enabled_statuses
         }
 
     # 3. MOVEMENT VIEW
@@ -320,17 +265,59 @@ def get_dashboard_data(
     elif view == "attendance":
         attendance_conditions = ["1=1"]
         attendance_values = {}
-        
+
+        # Attendance is Employee Checkin, kept per Employee. A Technician is a User, matched
+        # through Employee.user_id; a Sales Person is matched through the Employee linked
+        # on the Sales Person record. Each type has its own parameter, and one sent for the
+        # other type is refused rather than reinterpreted.
+        person_type = person_type or ATTENDANCE_PERSON_TYPES[0]
+        if person_type not in ATTENDANCE_PERSON_TYPES:
+            frappe.throw(f"Invalid Person Type: {person_type}")
+        if person_type == "Technician" and sales_person:
+            frappe.throw("A Sales Person cannot be used to filter Technician attendance.")
+        if person_type == "Sales Person" and technician:
+            frappe.throw("A Technician cannot be used to filter Sales Person attendance.")
+        if date_from and date_to and frappe.utils.getdate(date_from) > frappe.utils.getdate(date_to):
+            frappe.throw("From Date cannot be after To Date.")
+
         if date_from:
             attendance_conditions.append("DATE(ec.time) >= %(date_from)s")
             attendance_values["date_from"] = date_from
         if date_to:
             attendance_conditions.append("DATE(ec.time) <= %(date_to)s")
             attendance_values["date_to"] = date_to
-        if technician:
-            attendance_conditions.append("e.user_id = %(technician)s")
-            attendance_values["technician"] = technician
-            
+
+        if person_type == "Technician":
+            if technician:
+                if not frappe.db.exists("User", technician):
+                    frappe.throw(f"Technician {technician} does not exist.")
+                attendance_conditions.append("e.user_id = %(technician)s")
+                attendance_values["technician"] = technician
+        else:
+            if not frappe.has_permission("Sales Person", "select"):
+                frappe.throw("You are not permitted to view Sales Persons.", frappe.PermissionError)
+            if sales_person:
+                sales_person_doc = frappe.db.get_value("Sales Person", sales_person, ["is_group", "employee"], as_dict=True)
+                if not sales_person_doc:
+                    frappe.throw(f"Sales Person {sales_person} does not exist.")
+                if sales_person_doc.is_group:
+                    frappe.throw(f"{sales_person} is a Sales Person group. Select an individual Sales Person.")
+                if not sales_person_doc.employee:
+                    # Nothing can be attributed to them — don't fall back to everyone's logs
+                    return {
+                        "attendance": [],
+                        "total_count": 0,
+                        "message": f"{sales_person} is not linked to an Employee, so no attendance can be shown. Set the Employee on the Sales Person record."
+                    }
+                attendance_conditions.append("ec.employee = %(employee)s")
+                attendance_values["employee"] = sales_person_doc.employee
+            else:
+                # No one selected: every individual Sales Person that has an Employee
+                attendance_conditions.append("""ec.employee IN (
+                    SELECT employee FROM `tabSales Person`
+                    WHERE is_group = 0 AND IFNULL(employee, '') != ''
+                )""")
+
         attendance_where = " AND ".join(attendance_conditions)
         
         attendance = frappe.db.sql(f"""
@@ -358,6 +345,43 @@ def get_dashboard_data(
         }
 
     return result
+
+
+def get_status_summary(where, values):
+    """Ticket counts per status for `where`, plus the summary-card dict built from them."""
+    status_counts = frappe.db.sql(f"""
+        SELECT status, COUNT(name) as count
+        FROM `tabHD Ticket`
+        WHERE {where}
+        GROUP BY status
+    """, values, as_dict=True)
+
+    # Fetch enabled ticket statuses (excluding Replied and Closed)
+    enabled_statuses = frappe.cache().get_value("enabled_hd_ticket_statuses")
+    if not enabled_statuses:
+        enabled_statuses = frappe.get_all(
+            "HD Ticket Status",
+            filters={
+                "enabled": 1,
+                "name": ["not in", ["Replied", "Closed"]]
+            },
+            fields=["name", "color"],
+            order_by="order asc, name asc"
+        )
+        frappe.cache().set_value("enabled_hd_ticket_statuses", enabled_statuses, expires_in_sec=3600)
+    else:
+        enabled_statuses = frappe.parse_json(enabled_statuses)
+
+    summary = {"Total": 0}
+    for status_obj in enabled_statuses:
+        summary[status_obj.name] = 0
+
+    for row in status_counts:
+        if row.status in summary:
+            summary[row.status] = row.count
+        summary["Total"] += row.count
+
+    return status_counts, summary, enabled_statuses
 
 
 @frappe.whitelist()

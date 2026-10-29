@@ -263,6 +263,27 @@
     background: #f8fafc;
 }
 
+/* "Clear Filters": last column of the filter panel, level with the inputs */
+.ct-filter-clear-item {
+    grid-column: -2;
+    justify-content: flex-end;
+    align-items: flex-end;
+}
+
+.ct-filter-clear-item .ct-filter-btn {
+    --icon-stroke: currentColor;
+}
+
+.ct-filter-clear-item .icon {
+    margin: 0;
+}
+
+/* On the Technician Map it ends the map's own filter row, on the right */
+.ct-map-filter-clear-item {
+    margin-left: auto;
+    align-self: stretch;
+}
+
 /* Active filter pills */
 .ct-active-filters {
     display: flex;
@@ -842,6 +863,12 @@
     }
     .ct-filters-panel {
         grid-template-columns: 1fr;
+    }
+    .ct-filter-clear-item {
+        align-items: stretch;
+    }
+    .ct-filter-clear-item .ct-filter-btn {
+        justify-content: center;
     }
     .ct-tabs-container {
         flex-wrap: wrap;
