@@ -171,6 +171,12 @@
                     100% { transform: rotate(360deg); }
                 }
                 .ct-combo-list-item:hover { background: #f1f5f9; }
+                .ct-modal-grid { container-type: inline-size; }
+                /* With three columns, Assignee takes the two cells beside Customer */
+                @container (min-width: 748px) {
+                    .ct-assignee-field-item { grid-column: span 2; }
+                }
+                .ct-assignee-box:focus-within { box-shadow: 0 0 0 1px #2563eb; }
             </style>
         `;
 
@@ -180,9 +186,10 @@
         document.getElementById('ct-modal-close-btn').onclick = () => overlay.remove();
         document.getElementById('ct-modal-cancel-btn').onclick = () => overlay.remove();
 
-        // Fetch data from backend
+        // Fetch data from backend (never from the HTTP cache: the popup must show the saved assignees)
         try {
             const resp = await fetch(`/api/method/vin_chakra.api.get_ticket_info?ticket_name=${encodeURIComponent(ticketId)}`, {
+                cache: 'no-store',
                 headers: {
                     'X-Frappe-CSRF-Token': getCsrfToken()
                 }
@@ -335,6 +342,253 @@
         }
     }
 
+    /* ── Assignee multi-select: the ticket's real assignees, as in the core Assignee panel ── */
+
+    function initAssigneeField(container, assignment) {
+        const fieldItem = container.querySelector('.ct-assignee-field-item');
+        if (!fieldItem) return null;
+
+        const box = fieldItem.querySelector('.ct-assignee-box');
+        const input = fieldItem.querySelector('.ct-assignee-input');
+        const clearBtn = fieldItem.querySelector('.ct-assignee-clear');
+        const note = fieldItem.querySelector('.ct-assignee-note');
+        const canAssign = !!assignment.can_assign;
+
+        // Current assignees are listed first and stay listed even if they could not be
+        // assigned anew (e.g. auto-assigned Chief Technicians without an HD Agent record),
+        // so nobody is dropped unless they are unticked.
+        const initial = (assignment.assignees || []).map(a => a.value);
+        const eligible = new Set((assignment.options || []).map(o => o.value));
+        const labels = {};
+        const options = [];
+        (assignment.assignees || []).concat(assignment.options || []).forEach(o => {
+            if (o.value in labels) return;
+            labels[o.value] = o.label || o.value;
+            options.push({ value: o.value, label: labels[o.value] });
+        });
+
+        let selected = [...initial];
+        let visible = [];
+        let highlighted = 0;
+
+        const getChanges = () => canAssign
+            ? { assign: selected.filter(v => !initial.includes(v)), unassign: initial.filter(v => !selected.includes(v)) }
+            : { assign: [], unassign: [] };
+        const describe = values => values.length <= 2
+            ? values.map(v => labels[v] || v).join(', ')
+            : `${values.length} people`;
+
+        const list = document.createElement('div');
+        list.className = 'ct-combo-list';
+        Object.assign(list.style, {
+            position: 'fixed', zIndex: '100002', background: '#fff',
+            border: '1px solid #cbd5e1', borderRadius: '8px',
+            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)',
+            maxHeight: '240px', overflowY: 'auto', display: 'none'
+        });
+        // Inside the overlay, so it is removed together with the modal
+        (fieldItem.closest('#ct-ticket-modal-overlay') || document.body).appendChild(list);
+        // Keep focus in the search input while clicking rows or the list's scrollbar
+        list.addEventListener('mousedown', e => e.preventDefault());
+
+        const renderNote = () => {
+            let text = '';
+            let color = '#64748b';
+            if (!canAssign) {
+                text = assignment.read_only_reason || '';
+            } else {
+                const { assign, unassign } = getChanges();
+                const parts = [];
+                if (assign.length) parts.push(`assign ${describe(assign)}`);
+                if (unassign.length) parts.push(`unassign ${describe(unassign)}`);
+                if (parts.length) {
+                    text = `On save: ${parts.join(' · ')}`;
+                    color = '#b45309';
+                }
+            }
+            note.textContent = text;
+            note.style.color = color;
+            note.style.display = text ? 'block' : 'none';
+        };
+
+        const renderChips = () => {
+            box.querySelectorAll('.ct-assignee-chip, .ct-assignee-empty').forEach(el => el.remove());
+            selected.forEach(value => {
+                const chip = document.createElement('span');
+                chip.className = 'ct-assignee-chip';
+                chip.title = value;
+                Object.assign(chip.style, {
+                    display: 'inline-flex', alignItems: 'center', gap: '2px', maxWidth: '100%',
+                    padding: canAssign ? '2px 4px 2px 9px' : '2px 9px', borderRadius: '999px',
+                    background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a',
+                    fontSize: '12px', fontWeight: '500', lineHeight: '18px', boxSizing: 'border-box'
+                });
+                const name = document.createElement('span');
+                name.textContent = labels[value] || value;
+                Object.assign(name.style, { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+                chip.appendChild(name);
+                if (canAssign) {
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.innerHTML = '&times;';
+                    remove.title = `Unassign ${labels[value] || value}`;
+                    Object.assign(remove.style, {
+                        padding: '0 3px', background: 'none', border: 'none', color: '#64748b',
+                        cursor: 'pointer', fontSize: '15px', lineHeight: '1'
+                    });
+                    // Don't let the box's mousedown focus the input and open the list
+                    remove.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+                    remove.addEventListener('click', () => toggle(value));
+                    chip.appendChild(remove);
+                }
+                box.insertBefore(chip, input);
+            });
+            if (!canAssign && !selected.length) {
+                const empty = document.createElement('span');
+                empty.className = 'ct-assignee-empty';
+                empty.textContent = 'No one assigned';
+                Object.assign(empty.style, { fontSize: '13px', color: '#94a3b8' });
+                box.insertBefore(empty, input);
+            }
+            input.placeholder = selected.length ? 'Add agent...' : 'No one assigned. Search agents...';
+            clearBtn.style.display = canAssign && selected.length ? 'inline' : 'none';
+            renderNote();
+        };
+
+        const renderList = () => {
+            const q = input.value.trim().toLowerCase();
+            visible = options.filter(o => !q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q));
+            highlighted = Math.max(0, Math.min(highlighted, visible.length - 1));
+            list.innerHTML = '';
+
+            if (!visible.length) {
+                const empty = document.createElement('div');
+                empty.textContent = options.length ? 'No matching agents' : 'No eligible agents available';
+                Object.assign(empty.style, { padding: '10px 12px', fontSize: '13px', color: '#64748b' });
+                list.appendChild(empty);
+                return;
+            }
+
+            visible.forEach((o, idx) => {
+                const row = document.createElement('div');
+                row.className = 'ct-combo-list-item';
+                Object.assign(row.style, {
+                    display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 12px',
+                    fontSize: '13px', cursor: 'pointer', background: idx === highlighted ? '#f1f5f9' : ''
+                });
+                const check = document.createElement('input');
+                check.type = 'checkbox';
+                check.tabIndex = -1;
+                check.checked = selected.includes(o.value);
+                Object.assign(check.style, { margin: '0', flexShrink: '0', pointerEvents: 'none' });
+                const name = document.createElement('span');
+                name.textContent = o.label;
+                Object.assign(name.style, { color: '#1e293b', whiteSpace: 'nowrap' });
+                row.append(check, name);
+                if (o.label !== o.value) {
+                    const id = document.createElement('span');
+                    id.textContent = o.value;
+                    Object.assign(id.style, {
+                        marginLeft: 'auto', minWidth: '0', color: '#94a3b8', fontSize: '11px',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                    });
+                    row.appendChild(id);
+                }
+                row.addEventListener('click', () => {
+                    highlighted = idx;
+                    toggle(o.value);
+                });
+                list.appendChild(row);
+            });
+        };
+
+        const positionList = () => {
+            const r = box.getBoundingClientRect();
+            list.style.left = r.left + 'px';
+            list.style.width = Math.max(r.width, 280) + 'px';
+            // Open upwards when there is no room below
+            const spaceBelow = window.innerHeight - r.bottom - 8;
+            const height = list.offsetHeight;
+            list.style.top = (height > spaceBelow && r.top > spaceBelow ? r.top - 4 - height : r.bottom + 4) + 'px';
+        };
+        const openList = () => {
+            renderList();
+            list.style.display = 'block';
+            positionList();
+        };
+        const closeList = () => {
+            list.style.display = 'none';
+            input.value = '';
+        };
+
+        const toggle = value => {
+            selected = selected.includes(value) ? selected.filter(v => v !== value) : [...selected, value];
+            renderChips();
+            if (list.style.display === 'block') {
+                renderList();
+                positionList();
+            }
+        };
+
+        if (canAssign) {
+            box.addEventListener('mousedown', e => {
+                if (e.target === input) return;
+                e.preventDefault();
+                input.focus();
+                openList();
+            });
+            input.addEventListener('focus', openList);
+            input.addEventListener('input', () => { highlighted = 0; openList(); });
+            input.addEventListener('blur', () => setTimeout(() => {
+                if (document.activeElement !== input) closeList();
+            }, 150));
+            input.addEventListener('keydown', e => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (list.style.display !== 'block') return openList();
+                    highlighted = Math.max(0, Math.min(visible.length - 1, highlighted + (e.key === 'ArrowDown' ? 1 : -1)));
+                    renderList();
+                    if (list.children[highlighted]) list.children[highlighted].scrollIntoView({ block: 'nearest' });
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (list.style.display === 'block' && visible[highlighted]) toggle(visible[highlighted].value);
+                } else if (e.key === 'Escape') {
+                    closeList();
+                }
+            });
+            clearBtn.addEventListener('click', () => {
+                selected = [];
+                renderChips();
+            });
+
+            // Follow the box when the modal body scrolls or the window resizes
+            const reposition = () => {
+                if (!list.isConnected) {
+                    window.removeEventListener('resize', reposition);
+                    return;
+                }
+                if (list.style.display === 'block') positionList();
+            };
+            container.addEventListener('scroll', reposition);
+            window.addEventListener('resize', reposition);
+        } else {
+            input.style.display = 'none';
+            Object.assign(box.style, { backgroundColor: '#f8fafc', cursor: 'default' });
+        }
+
+        renderChips();
+
+        return {
+            getChanges,
+            // The list only offers eligible agents (besides current assignees); the server re-checks
+            validate() {
+                const ineligible = getChanges().assign.filter(v => !eligible.has(v));
+                return ineligible.length ? `${describe(ineligible)} cannot be assigned to this ticket.` : '';
+            },
+            removesEveryone: () => canAssign && initial.length > 0 && selected.length === 0
+        };
+    }
+
     function renderModalFields(ticketData) {
         const doc = ticketData.doc || {};
         const fields = ticketData.fields || [];
@@ -357,6 +611,13 @@
             }
         });
 
+        // Assignee is not a ticket field: it edits the ticket's assignments, the same
+        // data as the core Assignee panel. It goes last among the core fields, beside Customer.
+        const assignment = ticketData.assignment;
+        if (assignment) {
+            coreGroup.push({ fieldname: 'assignee', label: 'Assignee', fieldtype: 'Assignee' });
+        }
+
         function createCustomerFieldHtml(f) {
             const val = doc[f.fieldname] !== undefined && doc[f.fieldname] !== null ? doc[f.fieldname] : '';
             return `
@@ -373,9 +634,28 @@
             `;
         }
 
+        function createAssigneeFieldHtml(f) {
+            return `
+                <div class="ct-modal-field-item ct-assignee-field-item" data-search="${escapeHtml((f.label + ' assigned agents technicians').toLowerCase())}" style="display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                        <label style="font-size: 12px; font-weight: 600; color: #334155;">${escapeHtml(f.label)}</label>
+                        <button type="button" class="ct-assignee-clear" style="display: none; padding: 0; background: none; border: none; color: #2563eb; font-size: 11px; font-weight: 600; cursor: pointer;">Clear all</button>
+                    </div>
+                    <div class="ct-assignee-box" style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 40px; padding: 5px 8px; border: 1px solid #cbd5e1; border-radius: 6px; background-color: #ffffff; box-sizing: border-box; cursor: text;">
+                        <input type="text" class="ct-assignee-input" autocomplete="off"
+                            style="flex: 1; min-width: 140px; height: 28px; padding: 0 2px; border: none; outline: none; box-shadow: none; background: transparent; font-size: 13px; line-height: 24px;">
+                    </div>
+                    <div class="ct-assignee-note" style="display: none; font-size: 11px; line-height: 1.4;"></div>
+                </div>
+            `;
+        }
+
         function createFieldHtml(f) {
             if (f.fieldname === 'customer') {
                 return createCustomerFieldHtml(f);
+            }
+            if (f.fieldtype === 'Assignee') {
+                return createAssigneeFieldHtml(f);
             }
 
             const val = doc[f.fieldname] !== undefined && doc[f.fieldname] !== null ? doc[f.fieldname] : '';
@@ -431,7 +711,7 @@
                     <h4 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 6px; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px;">
                         <span>${icon}</span> ${title}
                     </h4>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px;">
+                    <div class="ct-modal-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px;">
                         ${fieldsHtml}
                     </div>
                 </div>
@@ -571,6 +851,9 @@
         // Wire up the customer search combo + Customer Details card
         initCustomerField(bodyEl, doc, optionsMap.customer || []);
 
+        // Wire up the Assignee multi-select
+        const assigneeField = assignment ? initAssigneeField(bodyEl, assignment) : null;
+
         // Initialize table rows with doc existing data
         tableGroup.forEach(tf => {
             const tbody = bodyEl.querySelector(`tbody.ct-modal-table-tbody[data-table="${tf.fieldname}"]`);
@@ -615,6 +898,20 @@
         // Save button handler
         const saveBtn = document.getElementById('ct-modal-save-btn');
         saveBtn.onclick = async () => {
+            // Assignee checks run first, so backing out sends nothing
+            const assigneeChanges = assigneeField ? assigneeField.getChanges() : { assign: [], unassign: [] };
+            if (assigneeField) {
+                const problem = assigneeField.validate();
+                if (problem) {
+                    alert(`Error: ${problem}`);
+                    return;
+                }
+                if (assigneeField.removesEveryone() && !confirm('This will remove every assignee and leave the ticket unassigned. Continue?')) {
+                    return;
+                }
+            }
+            const assigneesChanged = assigneeChanges.assign.length > 0 || assigneeChanges.unassign.length > 0;
+
             saveBtn.disabled = true;
             saveBtn.innerHTML = `⏳ Saving...`;
             saveBtn.style.opacity = '0.7';
@@ -665,6 +962,14 @@
                 }
             });
 
+            // Assignee changes ride along in the same request, so fields and assignees save
+            // (or fail) together
+            const payload = { ticket_name: ticketData.ticket_name, values: updatedValues };
+            if (assigneesChanged) {
+                payload.assign = assigneeChanges.assign;
+                payload.unassign = assigneeChanges.unassign;
+            }
+
             try {
                 const resp = await fetch('/api/method/vin_chakra.api.update_ticket_info', {
                     method: 'POST',
@@ -672,10 +977,7 @@
                         'Content-Type': 'application/json',
                         'X-Frappe-CSRF-Token': getCsrfToken()
                     },
-                    body: JSON.stringify({
-                        ticket_name: ticketData.ticket_name,
-                        values: updatedValues
-                    })
+                    body: JSON.stringify(payload)
                 });
 
                 const res = await resp.json();
@@ -683,13 +985,15 @@
                     saveBtn.innerHTML = `✅ Saved!`;
                     saveBtn.style.backgroundColor = '#16a34a';
 
-                    showToast('Ticket Info updated successfully! Reloading...');
+                    showToast(assigneesChanged
+                        ? 'Ticket Info and assignees updated successfully! Reloading...'
+                        : 'Ticket Info updated successfully! Reloading...');
 
                     setTimeout(() => {
                         window.location.reload();
                     }, 600);
                 } else {
-                    const err = (res.message && res.message.message) || res.exception || "Failed to update ticket";
+                    const err = getErrorMessage(res, "Failed to update ticket");
                     alert(`Error: ${err}`);
                     saveBtn.disabled = false;
                     saveBtn.innerHTML = `💾 Save Changes`;
@@ -702,6 +1006,20 @@
                 saveBtn.style.opacity = '1';
             }
         };
+    }
+
+    // frappe.throw() text arrives in _server_messages; `exception` is the raw "module.Error: text"
+    function getErrorMessage(res, fallback) {
+        try {
+            const messages = JSON.parse(res._server_messages || '[]')
+                .map(m => JSON.parse(m).message)
+                .filter(Boolean)
+                .map(m => m.replace(/^Error:\s*/, ''));  // the alert adds its own "Error:"
+            if (messages.length) {
+                return new DOMParser().parseFromString(messages.join('\n'), 'text/html').body.textContent;
+            }
+        } catch (e) { /* fall back to the raw fields */ }
+        return (res.message && res.message.message) || res.exception || fallback;
     }
 
     function escapeHtml(str) {

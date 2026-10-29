@@ -34,13 +34,18 @@ class ChiefTechnicianDashboard {
         this.tickets_start = 0;
         this.tickets_length = 10;
         this.tickets_total = 0;
+        this.tickets_request = 0; // id of the latest Ticket Board request; older responses are dropped
+        this.analytics_request = 0; // id of the latest Analytics request, likewise
         this.filters = {
             date_from: "",
             date_to: "",
             technician: "",
             status: "",
             priority: "",
-            ticket_type: ""
+            ticket_type: "",
+            // Attendance tab only: whose attendance is shown, and the selected Sales Person
+            person_type: "Technician",
+            sales_person: ""
         };
         this.search_query = "";
         this.debounce_timer = null;
@@ -49,12 +54,14 @@ class ChiefTechnicianDashboard {
         this.movement_start = 0;
         this.movement_length = 10;
         this.movement_total = 0;
+        this.movement_request = 0; // id of the latest Technician Map request; older responses are dropped
         
         // Paginated attendance log state
         this.attendance_start = 0;
         this.attendance_length = 10;
         this.attendance_total = 0;
-        
+        this.attendance_request = 0; // id of the latest attendance request; older responses are dropped
+
         this.calendar_date = new Date();
         this.map_provider = localStorage.getItem("ct_map_provider") || "google";
         this.map = null;
@@ -65,15 +72,11 @@ class ChiefTechnicianDashboard {
         this.leaflet_polylines = [];
         this._open_info_window = null;
         this.tech_control = null;
+        this.sales_person_control = null;
         this.ticket_type_control = null;
         
         // Map specific state
-        this.map_filters = {
-            date: frappe.datetime.get_today(),
-            technician: "",
-            customer: "",
-            status: "Resolved"
-        };
+        this.map_filters = this.default_map_filters();
         this.map_tech_control = null;
         this.map_customer_control = null;
         
@@ -122,6 +125,10 @@ class ChiefTechnicianDashboard {
         this.filters.status = params.get("status") || "";
         this.filters.priority = params.get("priority") || "";
         this.filters.ticket_type = params.get("ticket_type") || "";
+        // A Sales Person is only restored together with its Person Type, so it can never
+        // be picked up as a filter while Technician attendance is shown
+        this.filters.person_type = params.get("person_type") === "Sales Person" ? "Sales Person" : "Technician";
+        this.filters.sales_person = this.filters.person_type === "Sales Person" ? (params.get("sales_person") || "") : "";
         this.search_query = params.get("search") || "";
     }
 
@@ -152,6 +159,9 @@ class ChiefTechnicianDashboard {
         if (this.filters.status) params.set("status", this.filters.status); else params.delete("status");
         if (this.filters.priority) params.set("priority", this.filters.priority); else params.delete("priority");
         if (this.filters.ticket_type) params.set("ticket_type", this.filters.ticket_type); else params.delete("ticket_type");
+        // Person Type is only kept in the URL when it isn't the default (Technician)
+        if (this.filters.person_type === "Sales Person") params.set("person_type", this.filters.person_type); else params.delete("person_type");
+        if (this.filters.sales_person) params.set("sales_person", this.filters.sales_person); else params.delete("sales_person");
         if (this.search_query) params.set("search", this.search_query); else params.delete("search");
         
         let queryString = params.toString();
@@ -176,13 +186,35 @@ class ChiefTechnicianDashboard {
         this.wrapper.find("#ct-filter-status").val(this.filters.status || "");
         this.wrapper.find("#ct-filter-priority").val(this.filters.priority || "");
         this.wrapper.find("#ct-ticket-search").val(this.search_query || "");
+        this.sync_person_filter_controls();
 
-        if (this.tech_control && this.filters.technician) {
-            this.tech_control.set_value(this.filters.technician);
+        if (this.ticket_type_control) {
+            this.ticket_type_control.set_value(this.filters.ticket_type || "");
         }
-        if (this.ticket_type_control && this.filters.ticket_type) {
-            this.ticket_type_control.set_value(this.filters.ticket_type);
+    }
+
+    // Show the Person Type / Technician / Sales Person state on their controls. The selectors
+    // are set even when empty so a cleared filter doesn't leave the old person on screen;
+    // their onchange handlers ignore values that already match the filter state.
+    sync_person_filter_controls() {
+        this.wrapper.find("#ct-filter-person-type").val(this.filters.person_type);
+        if (this.tech_control) {
+            this.tech_control.set_value(this.filters.technician || "");
         }
+        if (this.sales_person_control) {
+            this.sales_person_control.set_value(this.filters.sales_person || "");
+        }
+        this.toggle_attendance_filters();
+    }
+
+    // Person Type only exists on the Attendance tab, where the Technician or the Sales Person
+    // selector is shown to match the chosen Person Type.
+    toggle_attendance_filters() {
+        let on_attendance = this.current_tab === "attendance";
+        let sales_person_mode = on_attendance && this.filters.person_type === "Sales Person";
+        this.wrapper.find("#ct-filter-person-type-wrap").toggle(on_attendance);
+        this.wrapper.find("#ct-filter-technician-wrap").toggle(!sales_person_mode);
+        this.wrapper.find("#ct-filter-sales-person-wrap").toggle(sales_person_mode);
     }
 
     bind_popstate() {
@@ -253,9 +285,20 @@ class ChiefTechnicianDashboard {
                         <label>To Date</label>
                         <input type="date" id="ct-filter-date-to">
                     </div>
-                    <div class="ct-filter-item">
+                    <div class="ct-filter-item" id="ct-filter-person-type-wrap">
+                        <label>Person Type</label>
+                        <select id="ct-filter-person-type">
+                            <option value="Technician">Technician</option>
+                            <option value="Sales Person">Sales Person</option>
+                        </select>
+                    </div>
+                    <div class="ct-filter-item" id="ct-filter-technician-wrap">
                         <label>Technician</label>
                         <div id="ct-filter-technician-control"></div>
+                    </div>
+                    <div class="ct-filter-item" id="ct-filter-sales-person-wrap">
+                        <label>Sales Person</label>
+                        <div id="ct-filter-sales-person-control"></div>
                     </div>
                     <div class="ct-filter-item" id="ct-filter-status-wrap">
                         <label>Status</label>
@@ -277,6 +320,11 @@ class ChiefTechnicianDashboard {
                         <label>Ticket Type</label>
                         <div id="ct-filter-ticket-type-control"></div>
                     </div>
+                    <div class="ct-filter-item ct-filter-clear-item" id="ct-filter-clear-wrap">
+                        <button class="ct-filter-btn" id="ct-btn-clear-filters" title="Reset the filters on this tab">
+                            ${frappe.utils.icon("rotate-ccw", "sm")} Clear Filters
+                        </button>
+                    </div>
                 </div>
                 
                 <!-- Active Filters Area -->
@@ -292,6 +340,7 @@ class ChiefTechnicianDashboard {
         `);
         
         this.render_tech_filter_control();
+        this.render_sales_person_filter_control();
         this.render_ticket_type_filter_control();
         this.render_view_structure();
     }
@@ -304,7 +353,11 @@ class ChiefTechnicianDashboard {
                 options: "User",
                 placeholder: "Select Technician",
                 onchange: () => {
-                    self.filters.technician = self.tech_control.get_value();
+                    // set_value() always fires this, even when the value is unchanged —
+                    // only reload for an actual change of filter
+                    let value = self.tech_control.get_value() || "";
+                    if (value === self.filters.technician) return;
+                    self.filters.technician = value;
                     self.reset_pagination();
                     self.load_data();
                 }
@@ -329,6 +382,42 @@ class ChiefTechnicianDashboard {
         }, 100);
     }
     
+    render_sales_person_filter_control() {
+        let self = this;
+        this.sales_person_control = frappe.ui.form.make_control({
+            df: {
+                fieldtype: "Link",
+                options: "Sales Person",
+                placeholder: "Select Sales Person",
+                // Groups such as "Sales Team" are not people and have no attendance
+                get_query: () => ({ filters: { is_group: 0 } }),
+                onchange: () => {
+                    let value = self.sales_person_control.get_value() || "";
+                    if (value === self.filters.sales_person) return;
+                    self.filters.sales_person = value;
+                    self.reset_pagination();
+                    self.load_data();
+                }
+            },
+            parent: this.wrapper.find("#ct-filter-sales-person-control"),
+            render_input: true
+        });
+
+        setTimeout(() => {
+            this.sales_person_control.$wrapper.find('.form-group').css({'margin': '0'});
+            this.sales_person_control.$wrapper.find('.clearfix').hide();
+            this.sales_person_control.$input.css({
+                'background': '#fff',
+                'border': '1px solid #e2e8f0',
+                'border-radius': '6px',
+                'height': '36px',
+                'padding': '0 12px',
+                'box-shadow': 'none'
+            });
+            this.sales_person_control.$wrapper.css({'background': 'transparent'});
+        }, 100);
+    }
+
     render_ticket_type_filter_control() {
         let self = this;
         this.ticket_type_control = frappe.ui.form.make_control({
@@ -337,7 +426,11 @@ class ChiefTechnicianDashboard {
                 options: "HD Ticket Type",
                 placeholder: "All Ticket Types",
                 onchange: () => {
-                    self.filters.ticket_type = self.ticket_type_control.get_value();
+                    // set_value() always fires this, even when the value is unchanged —
+                    // only reload for an actual change of filter
+                    let value = self.ticket_type_control.get_value() || "";
+                    if (value === self.filters.ticket_type) return;
+                    self.filters.ticket_type = value;
                     self.reset_pagination();
                     self.load_data();
                 }
@@ -492,10 +585,12 @@ class ChiefTechnicianDashboard {
     render_view_structure() {
         this.destroy_maps();
 
-        // Status/Priority/TicketType filters only apply to the ticket list — hide them
-        // on the map tab and attendance tab so it's clear they have no effect there.
+        // Status narrows the ticket list; Priority/TicketType also scope the analytics
+        // charts and leaderboard. None of them apply to the map or attendance tabs —
+        // hide them there so it's clear they have no effect.
         this.wrapper.find("#ct-filter-status-wrap, #ct-filter-priority-wrap, #ct-filter-ticket-type-wrap")
             .toggle(this.current_tab !== "movement" && this.current_tab !== "attendance");
+        this.toggle_attendance_filters();
 
         // The quick time filter dropdown should only show for analytics and attendance
         this.wrapper.find("#ct-time-filter-dropdown")
@@ -590,8 +685,13 @@ class ChiefTechnicianDashboard {
                             ${map_status_options}
                         </select>
                     </div>
-                    <div class="ct-filter-item" style="margin: 0; display: flex; align-items: flex-end; height: 55px;">
+                    <div class="ct-filter-item" style="margin: 0; display: flex; align-items: flex-end; justify-content: flex-end; align-self: stretch;">
                         <button class="btn btn-primary btn-sm" id="ct-map-filter-apply" style="height: 36px; padding: 0 16px; font-weight: 600;">Apply Map Filters</button>
+                    </div>
+                    <div class="ct-filter-item ct-filter-clear-item ct-map-filter-clear-item">
+                        <button class="ct-filter-btn" id="ct-map-filter-clear" title="Reset the map filters">
+                            ${frappe.utils.icon("rotate-ccw", "sm")} Clear Filters
+                        </button>
                     </div>
                 </div>
 
@@ -620,7 +720,7 @@ class ChiefTechnicianDashboard {
         } else if (this.current_tab === "attendance") {
             content.html(`
                 <div class="ct-attendance-layout" style="background: white; border: 1px solid var(--ct-border); border-radius: var(--ct-radius); padding: 20px; box-shadow: var(--ct-shadow-sm);">
-                    <div class="ct-analytics-card-title" style="margin-bottom: 16px;"><i class="fa fa-clock-o"></i> Technician Day Attendance Logs</div>
+                    <div class="ct-analytics-card-title" style="margin-bottom: 16px;"><i class="fa fa-clock-o"></i> <span id="ct-attendance-title">${this.filters.person_type} Day Attendance Logs</span></div>
                     <div id="ct-attendance-list-container"></div>
                     <div class="ct-pagination" id="ct-attendance-pagination" style="margin-top: 20px;"></div>
                 </div>
@@ -915,7 +1015,20 @@ class ChiefTechnicianDashboard {
             self.reset_pagination();
             self.load_data();
         });
-        
+
+        this.wrapper.on("change", "#ct-filter-person-type", function() {
+            self.set_person_type($(this).val());
+        });
+
+        // Clear Filters resets the filters of the tab it is pressed on
+        this.wrapper.on("click", "#ct-btn-clear-filters", function() {
+            if (self.current_tab === "attendance") {
+                self.clear_attendance_filters();
+            } else {
+                self.clear_ticket_filters();
+            }
+        });
+
         // Toggle Filters Panel
         this.wrapper.on("click", "#ct-btn-filter-toggle", function() {
             $(this).toggleClass("active");
@@ -1061,6 +1174,10 @@ class ChiefTechnicianDashboard {
             }
         });
 
+        this.wrapper.on("click", "#ct-map-filter-clear", function() {
+            self.clear_map_filters();
+        });
+
         // Redirect to raise ticket page
         this.wrapper.on("click", "#ct-btn-raise-ticket", function() {
             window.location.href = "/ticket-support";
@@ -1104,6 +1221,8 @@ class ChiefTechnicianDashboard {
     
     load_tickets_data() {
         let self = this;
+        // Filters can change while a request is in flight; only the latest response is shown
+        let request_id = ++this.tickets_request;
         let limit_start = this.tickets_start;
         let limit_len = this.tickets_length;
         
@@ -1128,7 +1247,7 @@ class ChiefTechnicianDashboard {
                 view: "tickets"
             },
             callback: function(r) {
-                self.wrapper.find("#ct-loader").hide();
+                if (request_id !== self.tickets_request) return;
                 if (r.message) {
                     let data = r.message;
                     self.tickets_total = data.total_count;
@@ -1147,6 +1266,9 @@ class ChiefTechnicianDashboard {
                         self.wrapper.find("#ct-tickets-pagination").empty();
                     }
                 }
+            },
+            always: function() {
+                if (request_id === self.tickets_request) self.wrapper.find("#ct-loader").hide();
             }
         });
     }
@@ -1483,20 +1605,27 @@ class ChiefTechnicianDashboard {
     
     load_analytics_data() {
         let self = this;
+        let request_id = ++this.analytics_request;
         frappe.call({
             method: "vin_chakra.vin_chakra.page.chief_technician_das.chief_technician_das.get_dashboard_data",
             args: {
                 date_from: this.filters.date_from,
                 date_to: this.filters.date_to,
                 technician: this.filters.technician,
+                priority: this.filters.priority,
+                ticket_type: this.filters.ticket_type,
                 search_query: this.search_query,
                 view: "analytics"
             },
             callback: function(r) {
-                self.wrapper.find("#ct-loader").hide();
+                if (request_id !== self.analytics_request) return;
                 if (r.message) {
                     let data = r.message;
-                    
+
+                    // Summary cards are shown on this tab too — refresh them so they
+                    // don't keep counts from an earlier Ticket Board load
+                    self.update_summary_row(data.summary, data.enabled_statuses);
+
                     // Render Status Chart
                     let status_labels = data.status_summary.map(d => d.status);
                     let status_values = data.status_summary.map(d => d.count);
@@ -1530,6 +1659,9 @@ class ChiefTechnicianDashboard {
                     // Render Leaderboard
                     self.render_leaderboard(data.performance);
                 }
+            },
+            always: function() {
+                if (request_id === self.analytics_request) self.wrapper.find("#ct-loader").hide();
             }
         });
     }
@@ -1563,6 +1695,7 @@ class ChiefTechnicianDashboard {
     
     load_movement_data() {
         let self = this;
+        let request_id = ++this.movement_request;
         frappe.call({
             method: "vin_chakra.vin_chakra.page.chief_technician_das.chief_technician_das.get_technician_map_data",
             args: {
@@ -1572,7 +1705,7 @@ class ChiefTechnicianDashboard {
                 ticket_status: this.map_filters.status
             },
             callback: function(r) {
-                self.wrapper.find("#ct-loader").hide();
+                if (request_id !== self.movement_request) return;
                 if (r.message) {
                     let data = r.message;
                     
@@ -1596,6 +1729,9 @@ class ChiefTechnicianDashboard {
                         self.wrapper.find("#ct-map-timeline-container").show();
                     }
                 }
+            },
+            always: function() {
+                if (request_id === self.movement_request) self.wrapper.find("#ct-loader").hide();
             }
         });
     }
@@ -2042,17 +2178,30 @@ class ChiefTechnicianDashboard {
         this.wrapper.find(".ct-summary-card").removeClass("active");
         this.wrapper.find(`.ct-summary-card[data-status="${current_status}"]`).addClass("active");
 
+        // Only filters that apply to this tab get a pill, as in the filter panel: the Technician
+        // Map has its own filters, and Status, Priority, Ticket Type and the search only filter
+        // the Ticket Board and Analytics
+        let panel_tab = this.current_tab !== "movement";
+        let ticket_tab = this.current_tab === "tickets" || this.current_tab === "analytics";
+        // Sales Person attendance ignores the Technician filter, so show the person filters
+        // that actually apply to it instead
+        let sales_person_mode = this.current_tab === "attendance" && this.filters.person_type === "Sales Person";
+
         let pills_html = "";
-        if (this.filters.date_from) pills_html += `<span class="ct-filter-pill">From: ${this.filters.date_from} <i class="fa fa-times ct-filter-remove" data-key="date_from"></i></span>`;
-        if (this.filters.date_to) pills_html += `<span class="ct-filter-pill">To: ${this.filters.date_to} <i class="fa fa-times ct-filter-remove" data-key="date_to"></i></span>`;
-        if (this.filters.technician) {
+        if (panel_tab && this.filters.date_from) pills_html += `<span class="ct-filter-pill">From: ${this.filters.date_from} <i class="fa fa-times ct-filter-remove" data-key="date_from"></i></span>`;
+        if (panel_tab && this.filters.date_to) pills_html += `<span class="ct-filter-pill">To: ${this.filters.date_to} <i class="fa fa-times ct-filter-remove" data-key="date_to"></i></span>`;
+        if (panel_tab && this.filters.technician && !sales_person_mode) {
             let full_name = frappe.user.full_name(this.filters.technician) || this.filters.technician;
             pills_html += `<span class="ct-filter-pill">Tech: ${full_name} <i class="fa fa-times ct-filter-remove" data-key="technician"></i></span>`;
         }
-        if (this.filters.status) pills_html += `<span class="ct-filter-pill">Status: ${this.filters.status} <i class="fa fa-times ct-filter-remove" data-key="status"></i></span>`;
-        if (this.filters.priority) pills_html += `<span class="ct-filter-pill">Priority: ${this.filters.priority} <i class="fa fa-times ct-filter-remove" data-key="priority"></i></span>`;
-        if (this.filters.ticket_type) pills_html += `<span class="ct-filter-pill">Type: ${this.filters.ticket_type} <i class="fa fa-times ct-filter-remove" data-key="ticket_type"></i></span>`;
-        if (this.search_query) pills_html += `<span class="ct-filter-pill">Search: ${this.search_query} <i class="fa fa-times ct-filter-remove" data-key="search"></i></span>`;
+        if (sales_person_mode) {
+            pills_html += `<span class="ct-filter-pill">Person Type: Sales Person <i class="fa fa-times ct-filter-remove" data-key="person_type"></i></span>`;
+            if (this.filters.sales_person) pills_html += `<span class="ct-filter-pill">Sales Person: ${frappe.utils.escape_html(this.filters.sales_person)} <i class="fa fa-times ct-filter-remove" data-key="sales_person"></i></span>`;
+        }
+        if (ticket_tab && this.filters.status) pills_html += `<span class="ct-filter-pill">Status: ${this.filters.status} <i class="fa fa-times ct-filter-remove" data-key="status"></i></span>`;
+        if (ticket_tab && this.filters.priority) pills_html += `<span class="ct-filter-pill">Priority: ${this.filters.priority} <i class="fa fa-times ct-filter-remove" data-key="priority"></i></span>`;
+        if (ticket_tab && this.filters.ticket_type) pills_html += `<span class="ct-filter-pill">Type: ${this.filters.ticket_type} <i class="fa fa-times ct-filter-remove" data-key="ticket_type"></i></span>`;
+        if (ticket_tab && this.search_query) pills_html += `<span class="ct-filter-pill">Search: ${this.search_query} <i class="fa fa-times ct-filter-remove" data-key="search"></i></span>`;
         
         container.html(pills_html);
         
@@ -2066,6 +2215,14 @@ class ChiefTechnicianDashboard {
             }
             if (key === "ticket_type") {
                 self.ticket_type_control.set_value("");
+                return; // triggers onchange → reset_pagination + load_data
+            }
+            if (key === "person_type") {
+                self.set_person_type("Technician");
+                return; // also clears the selected person and reloads
+            }
+            if (key === "sales_person") {
+                self.sales_person_control.set_value("");
                 return; // triggers onchange → reset_pagination + load_data
             }
             if (key === "search") {
@@ -2118,38 +2275,127 @@ class ChiefTechnicianDashboard {
         d.show();
     }
     
+    set_person_type(person_type) {
+        this.filters.person_type = person_type === "Sales Person" ? "Sales Person" : "Technician";
+        // Drop the previous selection whichever way it switched, so a Technician can never
+        // be sent as a Sales Person (or the other way round)
+        this.filters.technician = "";
+        this.filters.sales_person = "";
+        this.sync_person_filter_controls();
+        this.reset_pagination();
+        this.load_data();
+    }
+
+    // Reset everything the Attendance tab filters on. Status, Priority, Ticket Type and the
+    // search box only apply to the other tabs and are left as they are.
+    clear_attendance_filters() {
+        this.filters.date_from = "";
+        this.filters.date_to = "";
+        this.filters.person_type = "Technician";
+        this.filters.technician = "";
+        this.filters.sales_person = "";
+        this.wrapper.find("#ct-filter-date-from, #ct-filter-date-to").val("");
+        this.sync_person_filter_controls();
+        this.reset_pagination(); // also drops the cleared values from the URL
+        this.load_data();
+    }
+
+    // Reset everything the Ticket Board and Analytics filter on: the filter panel and the ticket
+    // search. The Attendance-only Person Type / Sales Person and the map filters are kept.
+    clear_ticket_filters() {
+        clearTimeout(this.debounce_timer); // a search still being typed must not be applied afterwards
+        this.filters.date_from = "";
+        this.filters.date_to = "";
+        this.filters.technician = "";
+        this.filters.status = "";
+        this.filters.priority = "";
+        this.filters.ticket_type = "";
+        this.search_query = "";
+        this.sync_ui_from_state();
+        this.reset_pagination(); // also drops the cleared values from the URL
+        this.load_data();
+    }
+
+    // The Technician Map's filters when the page opens
+    default_map_filters() {
+        return {
+            date: frappe.datetime.get_today(),
+            technician: "",
+            customer: "",
+            status: "Resolved"
+        };
+    }
+
+    // Put the Technician Map back to its opening filters and reload it. Map View is a display
+    // choice rather than a filter, so it is kept.
+    clear_map_filters() {
+        this.map_filters = this.default_map_filters();
+        this.wrapper.find("#ct-map-filter-date").val(this.map_filters.date);
+        this.wrapper.find("#ct-map-filter-status").val(this.map_filters.status);
+        if (this.map_tech_control) this.map_tech_control.set_value("");
+        if (this.map_customer_control) this.map_customer_control.set_value("");
+        this.wrapper.find("#ct-loader").show();
+        this.load_movement_data();
+    }
+
     load_attendance_data() {
         let self = this;
+        // Filters can change while a request is in flight; only the latest response is shown
+        let request_id = ++this.attendance_request;
+        let sales_person_mode = this.filters.person_type === "Sales Person";
+
+        if (this.filters.date_from && this.filters.date_to && this.filters.date_from > this.filters.date_to) {
+            this.wrapper.find("#ct-loader").hide();
+            this.attendance_total = 0;
+            this.render_attendance_list([], "From Date cannot be later than To Date.");
+            this.render_attendance_pagination();
+            return;
+        }
+
         frappe.call({
             method: "vin_chakra.vin_chakra.page.chief_technician_das.chief_technician_das.get_dashboard_data",
             args: {
                 date_from: this.filters.date_from,
                 date_to: this.filters.date_to,
-                technician: this.filters.technician,
+                // Only the selector matching the Person Type is sent
+                person_type: this.filters.person_type,
+                technician: sales_person_mode ? "" : this.filters.technician,
+                sales_person: sales_person_mode ? this.filters.sales_person : "",
                 limit_start: this.attendance_start,
                 limit_page_length: this.attendance_length,
                 view: "attendance"
             },
             callback: function(r) {
-                self.wrapper.find("#ct-loader").hide();
+                if (request_id !== self.attendance_request) return;
                 if (r.message) {
                     let data = r.message;
                     self.attendance_total = data.total_count;
-                    self.render_attendance_list(data.attendance);
+                    self.render_attendance_list(data.attendance, data.message);
                     self.render_attendance_pagination();
                 }
+            },
+            error: function() {
+                // frappe.call shows the server's message; don't leave the previous results up
+                if (request_id !== self.attendance_request) return;
+                self.attendance_total = 0;
+                self.render_attendance_list([], "Could not load attendance for these filters.");
+                self.render_attendance_pagination();
+            },
+            always: function() {
+                if (request_id === self.attendance_request) self.wrapper.find("#ct-loader").hide();
             }
         });
     }
 
-    render_attendance_list(logs) {
+    render_attendance_list(logs, message) {
         let container = this.wrapper.find("#ct-attendance-list-container");
+        this.wrapper.find("#ct-attendance-title").text(`${this.filters.person_type} Day Attendance Logs`);
         if (!logs || logs.length === 0) {
             container.html(`
                 <div class="ct-empty-state">
                     <i class="fa fa-clock-o"></i>
                     <h3>No attendance records found</h3>
-                    <p>Try adjusting your filters.</p>
+                    <p>${frappe.utils.escape_html(message || "Try adjusting your filters.")}</p>
                 </div>
             `);
             return;

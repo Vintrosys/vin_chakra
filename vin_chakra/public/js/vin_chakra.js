@@ -19,7 +19,7 @@
 					url.searchParams.delete("quick_entry");
 					window.history.replaceState({}, document.title, url.toString());
 				}
-			} catch (e) {}
+			} catch (e) { }
 		}
 
 		if (window.__tk_quick_entry_open) return;
@@ -27,7 +27,7 @@
 		const targetJson = sessionStorage.getItem("tk_quick_entry_target");
 		let target = null;
 		if (targetJson) {
-			try { target = JSON.parse(targetJson); } catch (e) {}
+			try { target = JSON.parse(targetJson); } catch (e) { }
 		}
 
 		const params = new URLSearchParams(window.location.search);

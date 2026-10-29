@@ -1,7 +1,12 @@
 import frappe
 import json
 import random
-from typing import Union
+from typing import Optional, Union
+
+from frappe import _
+from frappe.desk.form.assign_to import add as add_assign
+
+from vin_chakra.vin_chakra.custom.hd_ticket import _is_technician
 
 
 @frappe.whitelist(allow_guest=True)
@@ -444,22 +449,38 @@ def get_ticket_info(ticket_name: str) -> dict:
 		"fields": fields_meta,
 		"options": options_map,
 		"core_fields": core_fieldnames,
-		"template_fields": template_fields
+		"template_fields": template_fields,
+		"assignment": _get_assignment_info(doc)
 	}
 
 
 
 @frappe.whitelist()
-def update_ticket_info(ticket_name: str, values: Union[dict, str]) -> dict:
-	"""Update HD Ticket fields from the popup modal."""
+def update_ticket_info(
+	ticket_name: str,
+	values: Union[dict, str],
+	assign: Union[list, str, None] = None,
+	unassign: Union[list, str, None] = None,
+) -> dict:
+	"""Update HD Ticket fields from the popup modal.
+
+	`assign` / `unassign` are the popup's Assignee changes (User IDs). They are
+	applied after the fields are saved and before the commit, so when either part
+	fails the request is rolled back and nothing is saved.
+	"""
 	if not ticket_name:
 		frappe.throw("Ticket ID is required")
 
 	if isinstance(values, str):
 		values = json.loads(values)
+	assign = _parse_user_ids(assign)
+	unassign = _parse_user_ids(unassign)
 
 	if not frappe.has_permission("HD Ticket", "write", doc=ticket_name):
 		frappe.throw("No permission to edit this ticket", frappe.PermissionError)
+
+	if assign or unassign:
+		_check_assignment_change(ticket_name, assign, unassign)
 
 	doc = frappe.get_doc("HD Ticket", ticket_name)
 	meta = frappe.get_meta("HD Ticket")
@@ -480,13 +501,141 @@ def update_ticket_info(ticket_name: str, values: Union[dict, str]) -> dict:
 
 	if updated_count > 0:
 		doc.save(ignore_permissions=True)
-		frappe.db.commit()
+
+	if assign or unassign:
+		_apply_assignment_changes(doc, assign, unassign)
+
+	frappe.db.commit()
 
 	return {
 		"status": "success",
 		"message": f"Updated {updated_count} fields successfully",
-		"ticket": doc.as_dict()
+		"ticket": doc.as_dict(),
+		"assignees": json.loads(frappe.db.get_value("HD Ticket", ticket_name, "_assign") or "[]")
 	}
+
+
+# Popup Assignee field. It edits the ticket's real assignments (open ToDos, mirrored
+# in `_assign`) through the same calls as the core Helpdesk Assignee panel.
+
+def _get_assignment_info(doc) -> dict:
+	"""Current assignees and assignable agents for the popup's Assignee field."""
+	from helpdesk.helpdesk.doctype.hd_ticket.api import get_ticket_assignees
+
+	read_only_reason = _get_assignment_lock_reason(doc.name)
+	return {
+		"assignees": [
+			{"value": a["name"], "label": a.get("agent_name") or frappe.utils.get_fullname(a["name"])}
+			for a in get_ticket_assignees(doc.name)
+		],
+		"options": [] if read_only_reason else [
+			{"value": a.name, "label": a.agent_name or a.name}
+			for a in _get_assignable_agents(doc.agent_group)
+		],
+		"can_assign": not read_only_reason,
+		"read_only_reason": read_only_reason
+	}
+
+
+def _get_assignment_lock_reason(ticket_name: str) -> str:
+	"""Why the session user may not change the ticket's assignees ("" if they may).
+
+	The core Assignee panel is for agents only, and validate_todo_assignment bars
+	technicians from assigning or unassigning tickets.
+	"""
+	from helpdesk.utils import is_agent
+
+	if _is_technician():
+		return _("Technicians are not allowed to assign or unassign tickets.")
+	if not is_agent() or not frappe.has_permission("HD Ticket", "write", doc=ticket_name):
+		return _("You do not have permission to change this ticket's assignees.")
+	return ""
+
+
+def _get_restricted_team(team: Optional[str]) -> Optional[str]:
+	"""The team whose members alone can be assigned, as in the core Assignee picker:
+	set only when HD Settings restricts tickets by team and assigns within the team."""
+	if (
+		team
+		and frappe.db.get_single_value("HD Settings", "restrict_tickets_by_agent_group")
+		and frappe.db.get_single_value("HD Settings", "assign_within_team")
+	):
+		return team
+	return None
+
+
+def _get_assignable_agents(team: Optional[str], users: Optional[list] = None) -> list:
+	"""Active HD Agents the ticket can be assigned to (the core Assignee picker's
+	list). `users` narrows the lookup to those User IDs."""
+	filters = [["is_active", "=", 1]]
+	restricted_team = _get_restricted_team(team)
+	if restricted_team:
+		members = frappe.get_all("HD Team Member", filters={"parent": restricted_team}, pluck="user")
+		filters.append(["name", "in", members or [""]])
+	if users is not None:
+		filters.append(["name", "in", users or [""]])
+	return frappe.get_all("HD Agent", filters=filters, fields=["name", "agent_name"], order_by="agent_name asc")
+
+
+def _parse_user_ids(users: Union[list, str, None]) -> list:
+	"""De-duplicated User IDs from an assign/unassign list."""
+	if isinstance(users, str):
+		try:
+			users = json.loads(users)
+		except ValueError:
+			pass  # not JSON: rejected by the list check below
+	if not users:
+		return []
+	if not isinstance(users, list) or not all(isinstance(u, str) for u in users):
+		frappe.throw(_("Assignees must be a list of User IDs."))
+	return list(dict.fromkeys(u.strip() for u in users if u.strip()))
+
+
+def _check_assignment_change(ticket_name: str, assign: list, unassign: list) -> None:
+	"""Reject the Assignee change before anything is saved."""
+	reason = _get_assignment_lock_reason(ticket_name)
+	if reason:
+		frappe.throw(reason, frappe.PermissionError)
+
+	conflicting = set(assign) & set(unassign)
+	if conflicting:
+		frappe.throw(_("Cannot both assign and unassign {0}.").format(", ".join(sorted(conflicting))))
+
+
+def _apply_assignment_changes(doc, assign: list, unassign: list) -> None:
+	"""Apply the popup's Assignee changes the way the core Assignee panel does:
+	removals through helpdesk's remove_assignments, then additions through
+	frappe.desk.form.assign_to.add.
+
+	The changes are compared with the live assignments, so users already in the
+	requested state are skipped (no duplicate ToDos) and other assignees, including
+	any added elsewhere after the popup was opened, are left alone.
+	"""
+	from helpdesk.api.doc import remove_assignments
+
+	current = json.loads(frappe.db.get_value("HD Ticket", doc.name, "_assign") or "[]")
+	to_remove = [u for u in unassign if u in current]
+	to_add = [u for u in assign if u not in current]
+
+	if to_add:
+		eligible = {a.name for a in _get_assignable_agents(doc.agent_group, to_add)}
+		ineligible = [u for u in to_add if u not in eligible]
+		if ineligible:
+			restricted_team = _get_restricted_team(doc.agent_group)
+			if restricted_team:
+				msg = _("Cannot assign {0}: only active agents of team {1} can be assigned to this ticket.").format(
+					", ".join(ineligible), restricted_team
+				)
+			else:
+				msg = _("Cannot assign {0}: tickets can only be assigned to active Helpdesk agents.").format(
+					", ".join(ineligible)
+				)
+			frappe.throw(msg)
+
+	if to_remove:
+		remove_assignments(doctype="HD Ticket", name=doc.name, assignees=to_remove)
+	if to_add:
+		add_assign({"assign_to": to_add, "doctype": "HD Ticket", "name": doc.name})
 
 
 @frappe.whitelist(allow_guest=True)
