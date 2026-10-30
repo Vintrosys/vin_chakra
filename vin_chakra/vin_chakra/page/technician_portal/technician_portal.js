@@ -945,7 +945,7 @@ class TechnicianPortal {
                 `;
             }).join("");
 
-            let empty = range === "today" ? __("No resolved or pending tickets today") : __("No resolved or pending tickets in the last week");
+            let empty = range === "today" ? __("No customer visits today") : __("No customer visits in the last week");
             $wrap.html(`
                 <table class="table table-bordered tp-expense-table" id="tp-expense-table">
                     <thead>

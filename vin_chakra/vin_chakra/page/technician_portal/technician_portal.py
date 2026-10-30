@@ -140,9 +140,9 @@ LINE_TICKET = re.compile(r"\bTicket\s+([^\s·<]+)")
 def get_expense_claim_tickets(date_range: str = "today"):
     """Tickets for the Expense Claim dialog.
 
-    A ticket is listed when the user checked out of it (did the field work) and it was
-    resolved within the range, or was left Pending at their check-out within the range.
-    "last_week" is the last 7 days including today.
+    A ticket is listed when the user visited it (checked in or out) within the range,
+    whatever its status, which is shown as it is on the ticket. "last_week" is the last
+    7 days including today.
     """
     user = frappe.session.user
     if user == "Guest":
@@ -196,7 +196,7 @@ def save_to_expense_claim(amounts: Union[dict, str], types: Union[dict, str, Non
     for ticket, value in amounts.items():
         t = tickets.get(str(ticket))
         if not t:
-            frappe.throw(_("Ticket {0} is not one of your resolved or pending tickets from the last week.").format(ticket))
+            frappe.throw(_("Ticket {0} is not a ticket you visited in the last week.").format(ticket))
         amount = parse_expense_amount(t["name"], value)
         expense_type = expense_types.get(ticket) or None
         if expense_type and expense_type not in allowed_types:
@@ -212,6 +212,7 @@ def save_to_expense_claim(amounts: Union[dict, str], types: Union[dict, str, Non
                 claim.remove(row)
             elif flt(row.amount) != amount or (expense_type and expense_type != row.expense_type):
                 row.amount = row.sanctioned_amount = amount
+                row.expense_date = getdate(t["expense_date"])
                 if expense_type and expense_type != row.expense_type:
                     row.expense_type = expense_type
                     row.default_account = None  # HRMS fetches the new type's account on save
@@ -411,28 +412,18 @@ def get_expense_claim_range(date_range):
 
 
 def get_claimable_tickets(user, from_date, to_date, columns):
-    """Tickets the user checked out of that were resolved between the dates (inclusive), or
-    left Pending at one of their check-outs between the dates. `expense_date` is the
-    resolved date, or for Pending tickets the user's last check-out."""
-    checkouts = """
+    """Tickets the user visited (a check-in or check-out at the customer) between the dates
+    (inclusive), whatever their status. `expense_date` is the user's last visit."""
+    visits = """
         FROM `tabHD Ticket Check Log` check_log
         WHERE check_log.parenttype = 'HD Ticket'
             AND check_log.parent = `tabHD Ticket`.name
             AND check_log.technician = %(user)s
-            AND check_log.check_type = 'Check-out'
     """
     return frappe.db.sql(f"""
-        SELECT {columns},
-            IF(status_category = 'Resolved', resolution_date, (SELECT MAX(check_log.timestamp) {checkouts})) AS expense_date
+        SELECT {columns}, (SELECT MAX(check_log.timestamp) {visits}) AS expense_date
         FROM `tabHD Ticket`
-        WHERE (
-            status_category = 'Resolved'
-            AND DATE(resolution_date) BETWEEN %(from_date)s AND %(to_date)s
-            AND EXISTS (SELECT 1 {checkouts})
-        ) OR (
-            status = 'Pending'
-            AND EXISTS (SELECT 1 {checkouts} AND DATE(check_log.timestamp) BETWEEN %(from_date)s AND %(to_date)s)
-        )
+        WHERE EXISTS (SELECT 1 {visits} AND DATE(check_log.timestamp) BETWEEN %(from_date)s AND %(to_date)s)
         ORDER BY expense_date DESC
     """, {"user": user, "from_date": from_date, "to_date": to_date}, as_dict=True)
 
