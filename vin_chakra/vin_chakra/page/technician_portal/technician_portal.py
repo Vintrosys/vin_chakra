@@ -140,8 +140,8 @@ LINE_TICKET = re.compile(r"\bTicket\s+([^\s·<]+)")
 def get_expense_claim_tickets(date_range: str = "today"):
     """Tickets for the Expense Claim dialog.
 
-    A ticket is listed when it was resolved (Resolved status category) within the range
-    and the user checked out of it, i.e. did the field work. "last_week" is the last
+    A ticket is listed when the user visited it (checked in or out) within the range,
+    whatever its status, which is shown as it is on the ticket. "last_week" is the last
     7 days including today.
     """
     user = frappe.session.user
@@ -196,7 +196,7 @@ def save_to_expense_claim(amounts: Union[dict, str], types: Union[dict, str, Non
     for ticket, value in amounts.items():
         t = tickets.get(str(ticket))
         if not t:
-            frappe.throw(_("Ticket {0} is not one of your resolved tickets from the last week.").format(ticket))
+            frappe.throw(_("Ticket {0} is not a ticket you visited in the last week.").format(ticket))
         amount = parse_expense_amount(t["name"], value)
         expense_type = expense_types.get(ticket) or None
         if expense_type and expense_type not in allowed_types:
@@ -212,6 +212,7 @@ def save_to_expense_claim(amounts: Union[dict, str], types: Union[dict, str, Non
                 claim.remove(row)
             elif flt(row.amount) != amount or (expense_type and expense_type != row.expense_type):
                 row.amount = row.sanctioned_amount = amount
+                row.expense_date = getdate(t["expense_date"])
                 if expense_type and expense_type != row.expense_type:
                     row.expense_type = expense_type
                     row.default_account = None  # HRMS fetches the new type's account on save
@@ -226,7 +227,7 @@ def save_to_expense_claim(amounts: Union[dict, str], types: Union[dict, str, Non
                 drafts.append(new_expense_claim(employee))
             claim = drafts[0]
             claim.append("expenses", {
-                "expense_date": getdate(t["resolution_date"]),
+                "expense_date": getdate(t["expense_date"]),
                 "expense_type": expense_type,
                 # "Ticket <name>" stays untranslated: it is how the line is found again
                 "description": " · ".join(filter(None, (f"Ticket {t['name']}", t.get("custom_customer_name"), t["machine_display"]))),
@@ -274,7 +275,7 @@ def get_expense_claim_rows(user, date_range):
     """(tickets, from_date, to_date) shown in the Expense Claim dialog and its Excel file,
     each with the amount already in the user's Expense Claim, if any."""
     from_date, to_date = get_expense_claim_range(date_range)
-    tickets = get_claimable_tickets(user, from_date, to_date, f"{TICKET_COLUMNS}, resolution_date")
+    tickets = get_claimable_tickets(user, from_date, to_date, TICKET_COLUMNS)
     tickets = enrich_tickets_customer_details(tickets)
     attach_machines_and_invoices(tickets)
     employee = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "name")
@@ -352,7 +353,7 @@ def new_expense_claim(employee):
 # Share (Excel) sheet columns: header, width
 EXPENSE_CLAIM_COLUMNS = (
     ("Ticket No", 12), ("Machine", 34), ("Customer", 24), ("Required Spares", 18),
-    ("Location", 42), ("Resolved On", 15), ("Status", 12), ("Expense Type", 15), ("Expense Amount", 18),
+    ("Location", 42), ("Date", 15), ("Status", 12), ("Expense Type", 15), ("Expense Amount", 18),
 )
 
 
@@ -374,7 +375,7 @@ def build_expense_claim_xlsx(user, tickets, from_date, to_date, amounts, expense
     for t in tickets:
         ws.append([
             t["name"], t["machine_display"], t.get("custom_customer_name") or "", t.get("custom_required_spares") or "-",
-            t["location"], getdate(t["resolution_date"]), t.get("status"), expense_types.get(t["name"]), amounts.get(t["name"]),
+            t["location"], getdate(t["expense_date"]), t.get("status"), expense_types.get(t["name"]), amounts.get(t["name"]),
         ])
     ws.append([None] * 7 + [_("Total"), sum(flt(amounts.get(t["name"])) for t in tickets)])
 
@@ -411,20 +412,19 @@ def get_expense_claim_range(date_range):
 
 
 def get_claimable_tickets(user, from_date, to_date, columns):
-    """Tickets resolved between the dates (inclusive) that the user checked out of."""
+    """Tickets the user visited (a check-in or check-out at the customer) between the dates
+    (inclusive), whatever their status. `expense_date` is the user's last visit."""
+    visits = """
+        FROM `tabHD Ticket Check Log` check_log
+        WHERE check_log.parenttype = 'HD Ticket'
+            AND check_log.parent = `tabHD Ticket`.name
+            AND check_log.technician = %(user)s
+    """
     return frappe.db.sql(f"""
-        SELECT {columns}
+        SELECT {columns}, (SELECT MAX(check_log.timestamp) {visits}) AS expense_date
         FROM `tabHD Ticket`
-        WHERE status_category = 'Resolved'
-            AND DATE(resolution_date) BETWEEN %(from_date)s AND %(to_date)s
-            AND EXISTS (
-                SELECT 1 FROM `tabHD Ticket Check Log` check_log
-                WHERE check_log.parenttype = 'HD Ticket'
-                    AND check_log.parent = `tabHD Ticket`.name
-                    AND check_log.technician = %(user)s
-                    AND check_log.check_type = 'Check-out'
-            )
-        ORDER BY resolution_date DESC
+        WHERE EXISTS (SELECT 1 {visits} AND DATE(check_log.timestamp) BETWEEN %(from_date)s AND %(to_date)s)
+        ORDER BY expense_date DESC
     """, {"user": user, "from_date": from_date, "to_date": to_date}, as_dict=True)
 
 
