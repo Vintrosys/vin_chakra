@@ -7,6 +7,15 @@ from vin_chakra.technician_api import enrich_tickets_customer_details
 ATTENDANCE_PERSON_TYPES = ("Technician", "Sales Person")
 
 
+def get_branch_filter(branch):
+    """The Branch to filter on, or None for All Branches. A Branch that does not exist is refused."""
+    if branch in (None, "", "None", "null", "undefined"):
+        return None
+    if not frappe.db.exists("Branch", branch):
+        frappe.throw("The selected Branch does not exist.")
+    return branch
+
+
 @frappe.whitelist()
 def get_google_maps_api_key() -> str:
 	"""Return the Google Maps API key stored in Google Maps Settings DocType."""
@@ -31,7 +40,8 @@ def get_dashboard_data(
     limit_page_length: int = 10,
     view: str = "tickets",
     person_type: str = None,
-    sales_person: str = None
+    sales_person: str = None,
+    branch: str = None
 ):
     if not (frappe.has_permission("HD Ticket", "read") and ("Chief Technician" in frappe.get_roles() or "System Manager" in frappe.get_roles())):
         frappe.throw("You are not permitted to access this dashboard.")
@@ -46,6 +56,7 @@ def get_dashboard_data(
     search_query = search_query if search_query not in (None, "", "None", "null", "undefined") else None
     person_type = person_type if person_type not in (None, "", "None", "null", "undefined") else None
     sales_person = sales_person if sales_person not in (None, "", "None", "null", "undefined") else None
+    branch = get_branch_filter(branch)
 
         
     # Construct base conditions for HD Tickets
@@ -88,6 +99,9 @@ def get_dashboard_data(
     if ticket_type:
         summary_conditions.append("ticket_type = %(ticket_type)s")
         summary_values["ticket_type"] = ticket_type
+    if branch:
+        summary_conditions.append("custom_branch = %(branch)s")
+        summary_values["branch"] = branch
     if search_query:
         search_escaped = f"%{search_query}%"
         summary_conditions.append("(name LIKE %(search)s OR subject LIKE %(search)s OR custom_customer_name LIKE %(search)s OR customer LIKE %(search)s)")
@@ -111,7 +125,7 @@ def get_dashboard_data(
         
         # Paginated tickets query
         tickets = frappe.db.sql(f"""
-            SELECT name, subject, status, priority, custom_customer_name, custom_customer_mobile_number, custom__secondary_phone_number, custom_address, custom_city__district_, custom_state, custom_machine_name, custom_date, resolution_date, modified, _assign, customer, contact
+            SELECT name, subject, status, priority, custom_customer_name, custom_customer_mobile_number, custom__secondary_phone_number, custom_address, custom_city__district_, custom_state, custom_machine_name, custom_date, resolution_date, modified, _assign, customer, contact, custom_branch
             FROM `tabHD Ticket`
             WHERE {ticket_where}
             ORDER BY creation DESC
@@ -212,6 +226,9 @@ def get_dashboard_data(
         if technician:
             movement_conditions.append("cl.technician = %(technician)s")
             movement_values["technician"] = technician
+        if branch:
+            movement_conditions.append("t.custom_branch = %(branch)s")
+            movement_values["branch"] = branch
         if search_query:
             search_escaped = f"%{search_query}%"
             movement_conditions.append("(t.name LIKE %(search)s OR t.subject LIKE %(search)s OR t.custom_customer_name LIKE %(search)s)")
@@ -286,6 +303,10 @@ def get_dashboard_data(
         if date_to:
             attendance_conditions.append("DATE(ec.time) <= %(date_to)s")
             attendance_values["date_to"] = date_to
+        # Check-ins have no ticket, so this is the branch on the person's Employee record
+        if branch:
+            attendance_conditions.append("e.branch = %(branch)s")
+            attendance_values["branch"] = branch
 
         if person_type == "Technician":
             if technician:
@@ -385,7 +406,7 @@ def get_status_summary(where, values):
 
 
 @frappe.whitelist()
-def get_technician_map_data(date, technician=None, customer=None, ticket_status=None):
+def get_technician_map_data(date, technician=None, customer=None, ticket_status=None, branch: str = None):
     if not (frappe.has_permission("HD Ticket", "read") and ("Chief Technician" in frappe.get_roles() or "System Manager" in frappe.get_roles())):
         frappe.throw("You are not permitted to access this dashboard.")
         
@@ -393,6 +414,7 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
     date_str = date if date not in (None, "", "None", "null", "undefined") else frappe.utils.today()
     technician = technician if technician not in (None, "", "None", "null", "undefined") else None
     customer = customer if customer not in (None, "", "None", "null", "undefined") else None
+    branch = get_branch_filter(branch)
     
     # Normalize ticket_status (None vs empty string "")
     if ticket_status in (None, "None", "null", "undefined"):
@@ -412,6 +434,9 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         if ticket_status:
             conditions.append("t.status = %(ticket_status)s")
             values["ticket_status"] = ticket_status
+        if branch:
+            conditions.append("t.custom_branch = %(branch)s")
+            values["branch"] = branch
             
         where_clause = " AND ".join(conditions)
         
@@ -420,7 +445,7 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
             SELECT 
                 cl.name, cl.technician as user, cl.latitude, cl.longitude, cl.timestamp as creation, 
                 cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name, t.customer, t.contact,
-                t.custom_address
+                t.custom_address, t.custom_branch
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {where_clause}
@@ -468,6 +493,10 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         else:
             # Defaults to 'Resolved' if None
             conditions.append("t.status = 'Resolved'")
+
+        if branch:
+            conditions.append("t.custom_branch = %(branch)s")
+            values["branch"] = branch
             
         where_clause = " AND ".join(conditions)
         
@@ -475,7 +504,7 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
             SELECT 
                 cl.name, cl.check_type, cl.latitude, cl.longitude, cl.timestamp, 
                 cl.parent as ticket, cl.location_address, t.status, t.custom_customer_name, t.customer, t.contact,
-                t.custom_address
+                t.custom_address, t.custom_branch
             FROM `tabHD Ticket Check Log` cl
             LEFT JOIN `tabHD Ticket` t ON cl.parent = t.name
             WHERE {where_clause}
@@ -498,6 +527,7 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
                 tickets_map[t_id] = {
                     "ticket": t_id,
                     "customer": log.customer,
+                    "branch": log.custom_branch,
                     "status": log.status,
                     "check_in": None,
                     "check_out": None,

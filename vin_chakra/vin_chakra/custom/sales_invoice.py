@@ -129,6 +129,42 @@ def set_technician(doc, method=None):
 	doc.flags.technician_abbr = technician.custom_abbr
 
 
+def get_new_invoice_branch(ticket: str | None, user: str) -> str | None:
+	"""The branch of a new invoice for `ticket` raised by `user`: the ticket's branch, otherwise the
+	branch of the user's Employee (the invoice's technician). None if neither has one."""
+	branch = frappe.db.get_value("HD Ticket", ticket, "custom_branch") if ticket else None
+	return branch or frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "branch")
+
+
+def set_branch(doc, method=None):
+	"""before_validate: the invoice's Branch is the branch of the transaction it bills.
+
+	An invoice for an HD Ticket takes the ticket's branch. Without one, a branch the invoice
+	already has is kept (the form fills it in, or the user picks one when nothing gives a
+	branch), and an empty one gets the technician's (get_new_invoice_branch).
+	"""
+	ticket = doc.get("custom_hd_ticket")
+	if doc.get("custom_branch"):
+		# An existing branch only gives way to the ticket's own
+		branch = frappe.db.get_value("HD Ticket", ticket, "custom_branch") if ticket else None
+		if not branch:
+			return
+	else:
+		branch = get_new_invoice_branch(ticket, doc.owner or frappe.session.user)
+
+	if (branch or None) == (doc.get("custom_branch") or None):
+		return
+	doc.custom_branch = branch
+
+	# Frappe checked the user's permissions before the branch was set here
+	if branch and not doc.flags.ignore_permissions and not doc.has_permission("create" if doc.is_new() else "write"):
+		frappe.throw(
+			_("This invoice belongs to Branch {0}, which your User Permissions do not allow.").format(frappe.bold(branch)),
+			frappe.PermissionError,
+			title=_("Branch Not Allowed"),
+		)
+
+
 def set_invoice_name(doc, method=None):
 	"""autoname: SI/{YY}/{EMPLOYEE_ABBR}/{GLOBAL_SEQUENCE}.
 

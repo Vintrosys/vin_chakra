@@ -29,7 +29,8 @@ TICKET_COLUMNS = """
     modified,
     _assign,
     customer,
-    contact
+    contact,
+    custom_branch
 """
 
 @frappe.whitelist()

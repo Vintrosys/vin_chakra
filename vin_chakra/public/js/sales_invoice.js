@@ -76,6 +76,11 @@ frappe.ui.form.on("Sales Invoice", {
 						frm.set_value("custom_nature_of_job", ticket_noj);
 					}
 
+					// Branch is read-only on a ticket invoice and hidden while empty, so show it now
+					if ((frm.doc.custom_branch || "") !== (res.branch || "")) {
+						frm.set_value("custom_branch", res.branch || "");
+					}
+
 					let ticket_mop = res.mode_of_payment || "";
 					if (ticket_mop && (!frm.doc.custom_mode_of_payment || frm.doc.custom_mode_of_payment !== ticket_mop)) {
 						frm.set_value("custom_mode_of_payment", ticket_mop);

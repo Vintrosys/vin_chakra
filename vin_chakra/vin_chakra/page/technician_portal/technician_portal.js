@@ -644,6 +644,7 @@ class TechnicianPortal {
                         <div><i class="fa fa-cogs"></i> <span>Machine: ${machine_display}</span></div>
                         ${t.custom_required_spares ? `<div><i class="fa fa-wrench"></i> <span>Required Spares: ${t.custom_required_spares}</span></div>` : ''}
                         <div><i class="fa fa-calendar"></i> <span>Date: ${date_str}</span></div>
+                        ${t.custom_branch ? `<div><i class="fa fa-building-o"></i> <span>Branch: ${frappe.utils.escape_html(t.custom_branch)}</span></div>` : ''}
                     </div>
                     ${invoice_btn}
                 </div>
@@ -711,6 +712,7 @@ class TechnicianPortal {
                         <div><strong>Cust:</strong> ${customer}</div>
                         <div><strong>Loc:</strong> <span style="display:inline-block; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom;">${address}</span></div>
                         ${t.custom_required_spares ? `<div><strong>Spares:</strong> ${t.custom_required_spares}</div>` : ''}
+                        ${t.custom_branch ? `<div><strong>Branch:</strong> ${frappe.utils.escape_html(t.custom_branch)}</div>` : ''}
                     </div>
                     ${invoice_btn}
                 </div>
@@ -1196,6 +1198,10 @@ class TechnicianPortal {
                     <div class="tp-meta-item">
                         <span class="tp-meta-label">Scheduled Date</span>
                         <span class="tp-meta-value">${date_str}</span>
+                    </div>
+                    <div class="tp-meta-item">
+                        <span class="tp-meta-label">Branch</span>
+                        <span class="tp-meta-value">${t.custom_branch ? frappe.utils.escape_html(t.custom_branch) : '-'}</span>
                     </div>
                 </div>
             </div>

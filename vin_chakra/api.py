@@ -30,6 +30,13 @@ def get_item_details(item_code: str) -> dict:
 	}
 
 
+@frappe.whitelist()
+def get_branches() -> list:
+	"""Branch names for the Branch dropdowns, which every desk user sees, though only HR
+	roles can read the Branch doctype."""
+	return frappe.get_all("Branch", pluck="name", order_by="name asc", ignore_permissions=True)
+
+
 @frappe.whitelist(allow_guest=True)
 def get_form_schema(template_name: str = None) -> dict:
 	"""Return the field schema grouped by steps and sections for dynamic form rendering."""
@@ -144,6 +151,8 @@ def get_form_schema(template_name: str = None) -> dict:
 					options_list = [{"value": item.name, "label": item.item_name or item.name, "item_name": item.item_name or item.name, "brand": item.brand or "", "model_no": item.custom_model_no or ""} for item in items]
 				except Exception:
 					options_list = []
+			elif df.options == "Branch":
+				options_list = get_branches()
 			else:
 				try:
 					options_list = frappe.get_all(df.options, pluck="name", ignore_permissions=True)
@@ -164,11 +173,16 @@ def get_form_schema(template_name: str = None) -> dict:
 
 		from vin_chakra.vin_chakra.doctype.support_form_template.support_form_template import get_display_label
 
+		reqd = int(row.reqd) if row.reqd is not None else int(default_reqd or 0)
+		# See _get_branch_error: with no Branch records there is nothing to choose
+		if row.fieldname == "custom_branch" and not options_list:
+			reqd = 0
+
 		field_info = {
 			"fieldname": row.fieldname,
 			"fieldtype": fieldtype,
 			"label": get_display_label(row, df),
-			"reqd": int(row.reqd) if row.reqd is not None else int(default_reqd or 0),
+			"reqd": reqd,
 			"options": df.options if (df and df.fieldtype == "Table") else options_list,
 			"child_fields": child_fields,
 			"icon": row.icon or "tag"
@@ -243,7 +257,7 @@ def _get_legacy_form_schema() -> dict:
 			"icon": "calendar"
 		})
 
-	step1_keys = {"custom_customer_name", "custom_customer_mobile_number", "custom_state", "custom_city__district_", "custom_address", "custom_date"}
+	step1_keys = {"custom_customer_name", "custom_customer_mobile_number", "custom_state", "custom_city__district_", "custom_address", "custom_date", "custom_branch"}
 	step1_fields = [f for f in form_fields if f["fieldname"] in step1_keys]
 	step2_fields = [f for f in form_fields if f["fieldname"] not in step1_keys]
 
@@ -266,6 +280,20 @@ def _get_legacy_form_schema() -> dict:
 
 
 
+def _get_branch_error(branch) -> str:
+	"""Why a ticket from the public form cannot use this Branch ("" if it can).
+
+	Branch is mandatory on that form only, not on the doctype: older tickets and tickets
+	from other channels (WhatsApp, Helpdesk) have none and must stay saveable. It is not
+	demanded while the site has no Branch records, or no ticket could be raised at all.
+	"""
+	if not branch:
+		return _("Please select a Branch.") if frappe.db.count("Branch") else ""
+	if not isinstance(branch, str) or not frappe.db.exists("Branch", branch):
+		return _("Please select a valid Branch.")
+	return ""
+
+
 @frappe.whitelist(allow_guest=True)
 def submit_ticket(data: Union[dict, str]) -> dict:
 	"""Create a new HD Ticket from the public form submission."""
@@ -273,6 +301,10 @@ def submit_ticket(data: Union[dict, str]) -> dict:
 		data = json.loads(data)
 
 	try:
+		branch_error = _get_branch_error(data.get("custom_branch"))
+		if branch_error:
+			return {"status": "error", "message": branch_error}
+
 		# VULNERABILITY FIX: Prevent Mass Assignment by validating against Web Form fields
 		web_form = frappe.get_doc("Web Form", "raise-a-ticket")
 		allowed_fields = [f.fieldname for f in web_form.web_form_fields if not getattr(f, 'hidden', 0)]
@@ -282,6 +314,8 @@ def submit_ticket(data: Union[dict, str]) -> dict:
 			allowed_fields.append("custom_machine_type_list")
 		if "customer" not in allowed_fields:
 			allowed_fields.append("customer")
+		if "custom_branch" not in allowed_fields:
+			allowed_fields.append("custom_branch")
 
 		doc = frappe.new_doc("HD Ticket")
 		meta = frappe.get_meta("HD Ticket")
@@ -362,7 +396,7 @@ def get_ticket_info(ticket_name: str) -> dict:
 			order_by="idx"
 		)
 
-	core_fieldnames = ["subject", "status", "priority", "ticket_type", "agent_group", "raised_by", "customer"]
+	core_fieldnames = ["subject", "status", "priority", "ticket_type", "agent_group", "raised_by", "customer", "custom_branch"]
 
 	ignored_fieldtypes = ["Section Break", "Column Break", "Tab Break", "HTML", "Button", "Fold"]
 	ignored_fieldnames = ["amended_from", "docstatus", "name", "owner", "creation", "modified", "modified_by"]
@@ -399,6 +433,10 @@ def get_ticket_info(ticket_name: str) -> dict:
 			"read_only": df.read_only,
 			"hidden": df.hidden
 		}
+
+		# Technicians can see a ticket's Branch but not change it (validate_ticket enforces this)
+		if df.fieldname == "custom_branch" and _is_technician():
+			field_info["read_only"] = 1
 
 		if df.fieldtype == "Table" and df.options:
 			try:
@@ -437,7 +475,10 @@ def get_ticket_info(ticket_name: str) -> dict:
 			options_map[df.fieldname] = opts
 		elif df.fieldtype == "Link" and df.options:
 			try:
-				link_opts = frappe.get_all(df.options, pluck="name", limit_page_length=500, ignore_permissions=True)
+				if df.options == "Branch":
+					link_opts = get_branches()
+				else:
+					link_opts = frappe.get_all(df.options, pluck="name", limit_page_length=500, ignore_permissions=True)
 				options_map[df.fieldname] = link_opts
 			except Exception:
 				options_map[df.fieldname] = []
