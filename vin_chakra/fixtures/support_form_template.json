@@ -28,6 +28,14 @@
     "step": 1
    },
    {
+    "fieldname": "custom_branch",
+    "icon": "pin",
+    "label": null,
+    "reqd": 1,
+    "section": "Customer & Location Info",
+    "step": 1
+   },
+   {
     "fieldname": "subject",
     "icon": "tag",
     "label": null,
@@ -53,7 +61,7 @@
    }
   ],
   "is_default": 1,
-  "modified": "2026-09-28 10:31:05.383678",
+  "modified": "2026-11-02 18:00:00",
   "name": "Default",
   "template_name": "Default"
  }

@@ -80,7 +80,7 @@ def validate_ticket(doc, method=None):
 	"""
 	Doctype level validation rules for HD Ticket:
 	1. Only one Working ticket at a time per technician assignee.
-	2. Restrict technicians from modifying details like assignee, team (agent_group) or status in Desk.
+	2. Restrict technicians from modifying details like assignee, team (agent_group), branch or status in Desk.
 	3. Validate check-in/check-out location (lat, long) and timestamp logs.
 	"""
 	# 1. Enforce one Working ticket at a time per technician assignee
@@ -105,14 +105,18 @@ def validate_ticket(doc, method=None):
 						.format(assignee, active_ticket[0][0])
 					)
 
-	# 2. Restrict technicians from modifying key ticket details (team/agent_group, status) directly in Desk
+	# 2. Restrict technicians from modifying key ticket details (team/agent_group, branch, status) directly in Desk
 	if _is_technician(frappe.session.user):
 		old_doc = doc.get_doc_before_save()
 		if old_doc:
 			# Prevent team/agent_group modification
 			if doc.agent_group != old_doc.agent_group:
 				frappe.throw(_("Technicians are not allowed to change the Team (Agent Group)."))
-			
+
+			# Prevent branch modification (no branch is NULL on older tickets, "" once cleared)
+			if (doc.get("custom_branch") or "") != (old_doc.get("custom_branch") or ""):
+				frappe.throw(_("Technicians are not allowed to change the Branch."))
+
 			# Prevent status modification directly in Desk
 			if doc.status != old_doc.status and not doc.flags.from_technician_api:
 				frappe.throw(_("Technicians are not allowed to change the ticket status directly. Please use the Technician Portal."))

@@ -172,9 +172,13 @@
                 }
                 .ct-combo-list-item:hover { background: #f1f5f9; }
                 .ct-modal-grid { container-type: inline-size; }
-                /* With three columns, Assignee takes the two cells beside Customer */
+                /* With three columns, Assignee takes the two cells beside Customer and Branch
+                   sits under it, beside the Customer Details card. The last row is the flexible
+                   one, so that card's height goes below Branch instead of between the two. */
+                .ct-modal-grid:has(.ct-customer-field-item) { grid-template-rows: auto auto auto 1fr; }
                 @container (min-width: 748px) {
                     .ct-assignee-field-item { grid-column: span 2; }
+                    .ct-customer-field-item { grid-row: span 2; }
                 }
                 .ct-assignee-box:focus-within { box-shadow: 0 0 0 1px #2563eb; }
             </style>
@@ -595,7 +599,7 @@
         const optionsMap = ticketData.options || {};
         const bodyEl = document.getElementById('ct-modal-body');
 
-        const coreFieldnames = ticketData.core_fields || ["subject", "status", "priority", "ticket_type", "agent_group", "raised_by", "customer"];
+        const coreFieldnames = ticketData.core_fields || ["subject", "status", "priority", "ticket_type", "agent_group", "raised_by", "customer", "custom_branch"];
 
         const coreGroup = [];
         const templateGroup = [];
@@ -612,16 +616,17 @@
         });
 
         // Assignee is not a ticket field: it edits the ticket's assignments, the same
-        // data as the core Assignee panel. It goes last among the core fields, beside Customer.
+        // data as the core Assignee panel. It goes right after Customer, so it sits beside it.
         const assignment = ticketData.assignment;
         if (assignment) {
-            coreGroup.push({ fieldname: 'assignee', label: 'Assignee', fieldtype: 'Assignee' });
+            const customerIndex = coreGroup.findIndex(f => f.fieldname === 'customer');
+            coreGroup.splice(customerIndex + 1, 0, { fieldname: 'assignee', label: 'Assignee', fieldtype: 'Assignee' });
         }
 
         function createCustomerFieldHtml(f) {
             const val = doc[f.fieldname] !== undefined && doc[f.fieldname] !== null ? doc[f.fieldname] : '';
             return `
-                <div class="ct-modal-field-item" data-search="${escapeHtml((f.label + ' ' + f.fieldname).toLowerCase())}" style="display: flex; flex-direction: column; gap: 4px; position: relative;">
+                <div class="ct-modal-field-item ct-customer-field-item" data-search="${escapeHtml((f.label + ' ' + f.fieldname).toLowerCase())}" style="display: flex; flex-direction: column; gap: 4px; position: relative;">
                     <label style="font-size: 12px; font-weight: 600; color: #334155;">
                         ${escapeHtml(f.label)} ${f.reqd ? '<span style="color: #ef4444;">*</span>' : ''}
                     </label>

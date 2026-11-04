@@ -4,6 +4,8 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from vin_chakra.vin_chakra.custom.sales_invoice import get_new_invoice_branch
+
 
 def _is_technician(user=None):
 	"""Returns True if the user is a regular agent/technician (not a manager/admin)."""
@@ -225,7 +227,9 @@ def get_invoice_init_details(ticket_name: str = None, customer: str = None, phon
 		"ticket_type": ticket_type,
 		"nature_of_job": ticket_type,
 		"gst_bill_required": gst_bill_required,
-		"custom_gst_bill_required": gst_bill_required
+		"custom_gst_bill_required": gst_bill_required,
+		# Shown on the new invoice form; the same rule sets it again on save
+		"branch": get_new_invoice_branch(ticket_name, frappe.session.user),
 	}
 
 
@@ -480,6 +484,7 @@ def get_ticket_detail(ticket_name: str) -> dict:
 		"custom_mode_of_payment": ticket.get("custom_mode_of_payment") or "",
 		"custom_gst_bill_required": ticket.get("custom_gst_bill_required") or "",
 		"ticket_type": ticket.get("ticket_type") or "",
+		"custom_branch": ticket.get("custom_branch") or "",
 		"custom_machine_type_list": machine_type_list,
 		"check_log": check_log,
 		"pending_reason_options": pending_reason_options,

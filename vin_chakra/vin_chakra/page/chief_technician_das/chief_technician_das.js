@@ -43,6 +43,7 @@ class ChiefTechnicianDashboard {
             status: "",
             priority: "",
             ticket_type: "",
+            branch: "", // applies to every tab, the Technician Map included
             // Attendance tab only: whose attendance is shown, and the selected Sales Person
             person_type: "Technician",
             sales_person: ""
@@ -71,6 +72,7 @@ class ChiefTechnicianDashboard {
         this.leaflet_markers = [];
         this.leaflet_polylines = [];
         this._open_info_window = null;
+        this.branches = [];
         this.tech_control = null;
         this.sales_person_control = null;
         this.ticket_type_control = null;
@@ -89,6 +91,7 @@ class ChiefTechnicianDashboard {
         this.sync_ui_from_state();
         this.bind_events();
         this.bind_popstate();
+        this.load_branches();
         this.load_data();
     }
 
@@ -125,6 +128,7 @@ class ChiefTechnicianDashboard {
         this.filters.status = params.get("status") || "";
         this.filters.priority = params.get("priority") || "";
         this.filters.ticket_type = params.get("ticket_type") || "";
+        this.filters.branch = params.get("branch") || "";
         // A Sales Person is only restored together with its Person Type, so it can never
         // be picked up as a filter while Technician attendance is shown
         this.filters.person_type = params.get("person_type") === "Sales Person" ? "Sales Person" : "Technician";
@@ -159,6 +163,7 @@ class ChiefTechnicianDashboard {
         if (this.filters.status) params.set("status", this.filters.status); else params.delete("status");
         if (this.filters.priority) params.set("priority", this.filters.priority); else params.delete("priority");
         if (this.filters.ticket_type) params.set("ticket_type", this.filters.ticket_type); else params.delete("ticket_type");
+        if (this.filters.branch) params.set("branch", this.filters.branch); else params.delete("branch");
         // Person Type is only kept in the URL when it isn't the default (Technician)
         if (this.filters.person_type === "Sales Person") params.set("person_type", this.filters.person_type); else params.delete("person_type");
         if (this.filters.sales_person) params.set("sales_person", this.filters.sales_person); else params.delete("sales_person");
@@ -187,10 +192,43 @@ class ChiefTechnicianDashboard {
         this.wrapper.find("#ct-filter-priority").val(this.filters.priority || "");
         this.wrapper.find("#ct-ticket-search").val(this.search_query || "");
         this.sync_person_filter_controls();
+        this.sync_branch_filter_controls();
 
         if (this.ticket_type_control) {
             this.ticket_type_control.set_value(this.filters.ticket_type || "");
         }
+    }
+
+    // The Branch filter has two dropdowns, as the Technician Map has its own filter row. Both
+    // show the same filter. A branch that came from the URL is listed even if it isn't among
+    // the options, so what is on screen always matches what is being applied.
+    sync_branch_filter_controls() {
+        let branches = this.branches.slice();
+        if (this.filters.branch && !branches.includes(this.filters.branch)) {
+            branches.push(this.filters.branch);
+        }
+        let options_html = '<option value="">All Branches</option>' + branches.map(branch => {
+            let value = frappe.utils.escape_html(branch);
+            return `<option value="${value}">${value}</option>`;
+        }).join("");
+        this.wrapper.find("#ct-filter-branch, #ct-map-filter-branch").html(options_html).val(this.filters.branch);
+    }
+
+    load_branches() {
+        frappe.call({
+            method: "vin_chakra.api.get_branches",
+            callback: (r) => {
+                this.branches = r.message || [];
+                this.sync_branch_filter_controls();
+            }
+        });
+    }
+
+    set_branch(branch) {
+        this.filters.branch = branch || "";
+        this.sync_branch_filter_controls();
+        this.reset_pagination(); // also keeps the URL in step
+        this.load_data();
     }
 
     // Show the Person Type / Technician / Sales Person state on their controls. The selectors
@@ -319,6 +357,12 @@ class ChiefTechnicianDashboard {
                     <div class="ct-filter-item" id="ct-filter-ticket-type-wrap">
                         <label>Ticket Type</label>
                         <div id="ct-filter-ticket-type-control"></div>
+                    </div>
+                    <div class="ct-filter-item" id="ct-filter-branch-wrap">
+                        <label>Branch</label>
+                        <select id="ct-filter-branch">
+                            <option value="">All Branches</option>
+                        </select>
                     </div>
                     <div class="ct-filter-item ct-filter-clear-item" id="ct-filter-clear-wrap">
                         <button class="ct-filter-btn" id="ct-btn-clear-filters" title="Reset the filters on this tab">
@@ -685,6 +729,10 @@ class ChiefTechnicianDashboard {
                             ${map_status_options}
                         </select>
                     </div>
+                    <div class="ct-filter-item" style="margin: 0; min-width: 140px;">
+                        <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Branch</label>
+                        <select id="ct-map-filter-branch" style="width: 100%; height: 36px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 10px; font-size: 13px; background: white;"></select>
+                    </div>
                     <div class="ct-filter-item" style="margin: 0; display: flex; align-items: flex-end; justify-content: flex-end; align-self: stretch;">
                         <button class="btn btn-primary btn-sm" id="ct-map-filter-apply" style="height: 36px; padding: 0 16px; font-weight: 600;">Apply Map Filters</button>
                     </div>
@@ -715,6 +763,7 @@ class ChiefTechnicianDashboard {
                     </div>
                 </div>
             `);
+            this.sync_branch_filter_controls();
             this.render_map_filter_controls();
             this.init_map();
         } else if (this.current_tab === "attendance") {
@@ -1020,6 +1069,12 @@ class ChiefTechnicianDashboard {
             self.set_person_type($(this).val());
         });
 
+        // Applies at once, also on the Technician Map: it is shared with the other tabs, so it
+        // can't wait for Apply Map Filters
+        this.wrapper.on("change", "#ct-filter-branch, #ct-map-filter-branch", function() {
+            self.set_branch($(this).val());
+        });
+
         // Clear Filters resets the filters of the tab it is pressed on
         this.wrapper.on("click", "#ct-btn-clear-filters", function() {
             if (self.current_tab === "attendance") {
@@ -1241,6 +1296,7 @@ class ChiefTechnicianDashboard {
                 status: this.filters.status,
                 priority: this.filters.priority,
                 ticket_type: this.filters.ticket_type,
+                branch: this.filters.branch,
                 search_query: this.search_query,
                 limit_start: limit_start,
                 limit_page_length: limit_len,
@@ -1428,6 +1484,7 @@ class ChiefTechnicianDashboard {
                     <div class="ct-card-meta">
                         <div><i class="fa fa-user"></i> <span>Customer: <strong>${t.custom_customer_name || t.customer || 'N/A'}</strong></span></div>
                         <div><i class="fa fa-calendar-o"></i> <span>Date: ${t.custom_date ? frappe.datetime.global_date_format(t.custom_date) : 'N/A'}</span></div>
+                        ${t.custom_branch ? `<div><i class="fa fa-building-o"></i> <span>Branch: <strong>${frappe.utils.escape_html(t.custom_branch)}</strong></span></div>` : ""}
                         ${res_date_html}
                     </div>
                     
@@ -1484,6 +1541,7 @@ class ChiefTechnicianDashboard {
                     </div>
                     <div class="ct-list-meta-col">
                         <div><strong>Cust:</strong> ${t.custom_customer_name || t.customer || 'N/A'}</div>
+                        ${t.custom_branch ? `<div><strong>Branch:</strong> ${frappe.utils.escape_html(t.custom_branch)}</div>` : ""}
                         ${res_date_html}
                     </div>
                     <div class="ct-list-assignees-col">
@@ -1557,7 +1615,7 @@ class ChiefTechnicianDashboard {
                     let bg_color = is_resolved ? "rgba(16, 185, 129, 0.12)" : "var(--ct-primary-light)";
                     let text_color = is_resolved ? "#15803d" : "var(--ct-primary)";
                     let border_color = is_resolved ? "rgba(16, 185, 129, 0.3)" : "rgba(99, 102, 241, 0.2)";
-                    let tooltip = t.subject + (res_date ? ` (Resolved: ${res_date}${resolved_by ? ` by ${resolved_by}` : ""})` : "");
+                    let tooltip = t.subject + (t.custom_branch ? ` (Branch: ${frappe.utils.escape_html(t.custom_branch)})` : "") + (res_date ? ` (Resolved: ${res_date}${resolved_by ? ` by ${resolved_by}` : ""})` : "");
                     return `
                         <div class="ct-cal-event" onclick="window.location.href='/helpdesk/tickets/${t.name}'" 
                              style="background: ${bg_color}; color: ${text_color}; padding: 3px 6px; border-radius: 4px; font-size: 11px; margin-bottom: 4px; cursor: pointer; border: 1px solid ${border_color}; font-weight:600;" 
@@ -1614,6 +1672,7 @@ class ChiefTechnicianDashboard {
                 technician: this.filters.technician,
                 priority: this.filters.priority,
                 ticket_type: this.filters.ticket_type,
+                branch: this.filters.branch,
                 search_query: this.search_query,
                 view: "analytics"
             },
@@ -1702,7 +1761,8 @@ class ChiefTechnicianDashboard {
                 date: this.map_filters.date,
                 technician: this.map_filters.technician,
                 customer: this.map_filters.customer,
-                ticket_status: this.map_filters.status
+                ticket_status: this.map_filters.status,
+                branch: this.filters.branch
             },
             callback: function(r) {
                 if (request_id !== self.movement_request) return;
@@ -1734,6 +1794,10 @@ class ChiefTechnicianDashboard {
                 if (request_id === self.movement_request) self.wrapper.find("#ct-loader").hide();
             }
         });
+    }
+
+    get_branch_popup_line(branch) {
+        return branch ? `<strong>Branch:</strong> ${frappe.utils.escape_html(branch)}<br>` : "";
     }
 
     render_all_tech_osm_map(markers) {
@@ -1778,6 +1842,7 @@ class ChiefTechnicianDashboard {
                 <div style="font-size:12px;line-height:1.4;border-top:1px solid #f1f5f9;padding-top:6px;">
                     <strong>Ticket:</strong> <a href="/helpdesk/tickets/${log.ticket}" style="color:#6366f1;font-weight:700;">${log.ticket}</a><br>
                     <strong>Customer:</strong> ${log.customer || "N/A"}<br>
+                    ${self.get_branch_popup_line(log.custom_branch)}
                     <strong>Status:</strong> ${log.status || "N/A"}<br>
                     <strong>Address:</strong> <span style="color:#475569;">${log.display_address || "N/A"}</span><br>
                     <strong>Lat & Long:</strong> <a href="#" class="ct-popup-gmap-link" data-lat="${lat}" data-lng="${lng}" style="color:#6366f1;font-weight:700;text-decoration:underline;" title="View on Google Maps"><i class="fa fa-map-marker"></i> ${lat.toFixed(5)}, ${lng.toFixed(5)}</a>
@@ -1876,6 +1941,7 @@ class ChiefTechnicianDashboard {
                 <div style="font-size:12px;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:6px;">
                     <strong>Ticket ID:</strong> <a href="/helpdesk/tickets/${v.ticket}" style="color:#6366f1;font-weight:700;">${v.ticket}</a><br>
                     <strong>Customer:</strong> ${v.customer || "N/A"}<br>
+                    ${self.get_branch_popup_line(v.branch)}
                     <strong>Status:</strong> ${v.status}<br>
                     <strong>In:</strong> ${fmt(v.check_in)} | <strong>Out:</strong> ${fmt(v.check_out)}<br>
                     <strong>Time Spent:</strong> ${dur}<br>
@@ -1956,6 +2022,7 @@ class ChiefTechnicianDashboard {
                 <div style="font-size:12px;line-height:1.4;border-top:1px solid #f1f5f9;padding-top:6px;">
                     <strong>Ticket:</strong> <a href="/helpdesk/tickets/${log.ticket}" style="color:#6366f1;font-weight:700;">${log.ticket}</a><br>
                     <strong>Customer:</strong> ${log.customer || "N/A"}<br>
+                    ${self.get_branch_popup_line(log.custom_branch)}
                     <strong>Status:</strong> ${log.status || "N/A"}<br>
                     <strong>Address:</strong> <span style="color:#475569;">${log.display_address || "N/A"}</span><br>
                     <strong>Lat & Long:</strong> <a href="#" class="ct-popup-gmap-link" data-lat="${lat_num}" data-lng="${lng_num}" style="color:#6366f1;font-weight:700;text-decoration:underline;" title="View on Google Maps"><i class="fa fa-map-marker"></i> ${lat_num.toFixed(5)}, ${lng_num.toFixed(5)}</a>
@@ -2043,6 +2110,7 @@ class ChiefTechnicianDashboard {
                 <div style="font-size:12px;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:6px;">
                     <strong>Ticket ID:</strong> <a href="/helpdesk/tickets/${v.ticket}" style="color:#6366f1;font-weight:700;">${v.ticket}</a><br>
                     <strong>Customer:</strong> ${v.customer || "N/A"}<br>
+                    ${self.get_branch_popup_line(v.branch)}
                     <strong>Status:</strong> ${v.status}<br>
                     <strong>In:</strong> ${fmt(v.check_in)} | <strong>Out:</strong> ${fmt(v.check_out)}<br>
                     <strong>Time Spent:</strong> ${dur}<br>
@@ -2180,7 +2248,7 @@ class ChiefTechnicianDashboard {
 
         // Only filters that apply to this tab get a pill, as in the filter panel: the Technician
         // Map has its own filters, and Status, Priority, Ticket Type and the search only filter
-        // the Ticket Board and Analytics
+        // the Ticket Board and Analytics. Branch applies to every tab.
         let panel_tab = this.current_tab !== "movement";
         let ticket_tab = this.current_tab === "tickets" || this.current_tab === "analytics";
         // Sales Person attendance ignores the Technician filter, so show the person filters
@@ -2188,6 +2256,7 @@ class ChiefTechnicianDashboard {
         let sales_person_mode = this.current_tab === "attendance" && this.filters.person_type === "Sales Person";
 
         let pills_html = "";
+        if (this.filters.branch) pills_html += `<span class="ct-filter-pill">Branch: ${frappe.utils.escape_html(this.filters.branch)} <i class="fa fa-times ct-filter-remove" data-key="branch"></i></span>`;
         if (panel_tab && this.filters.date_from) pills_html += `<span class="ct-filter-pill">From: ${this.filters.date_from} <i class="fa fa-times ct-filter-remove" data-key="date_from"></i></span>`;
         if (panel_tab && this.filters.date_to) pills_html += `<span class="ct-filter-pill">To: ${this.filters.date_to} <i class="fa fa-times ct-filter-remove" data-key="date_to"></i></span>`;
         if (panel_tab && this.filters.technician && !sales_person_mode) {
@@ -2209,6 +2278,10 @@ class ChiefTechnicianDashboard {
         let self = this;
         container.off("click", ".ct-filter-remove").on("click", ".ct-filter-remove", function() {
             let key = $(this).data("key");
+            if (key === "branch") {
+                self.set_branch("");
+                return; // also syncs both dropdowns and reloads
+            }
             if (key === "technician") {
                 self.tech_control.set_value("");
                 return; // tech_control.set_value("") triggers onchange, which handles pagination reset and load_data
@@ -2294,8 +2367,10 @@ class ChiefTechnicianDashboard {
         this.filters.person_type = "Technician";
         this.filters.technician = "";
         this.filters.sales_person = "";
+        this.filters.branch = "";
         this.wrapper.find("#ct-filter-date-from, #ct-filter-date-to").val("");
         this.sync_person_filter_controls();
+        this.sync_branch_filter_controls();
         this.reset_pagination(); // also drops the cleared values from the URL
         this.load_data();
     }
@@ -2310,6 +2385,7 @@ class ChiefTechnicianDashboard {
         this.filters.status = "";
         this.filters.priority = "";
         this.filters.ticket_type = "";
+        this.filters.branch = "";
         this.search_query = "";
         this.sync_ui_from_state();
         this.reset_pagination(); // also drops the cleared values from the URL
@@ -2327,9 +2403,14 @@ class ChiefTechnicianDashboard {
     }
 
     // Put the Technician Map back to its opening filters and reload it. Map View is a display
-    // choice rather than a filter, so it is kept.
+    // choice rather than a filter, so it is kept. Branch is reset too, on every tab: it is the
+    // same filter there.
     clear_map_filters() {
         this.map_filters = this.default_map_filters();
+        this.filters.branch = "";
+        this.sync_branch_filter_controls();
+        this.update_url(false);
+        this.render_active_filters();
         this.wrapper.find("#ct-map-filter-date").val(this.map_filters.date);
         this.wrapper.find("#ct-map-filter-status").val(this.map_filters.status);
         if (this.map_tech_control) this.map_tech_control.set_value("");
@@ -2361,6 +2442,7 @@ class ChiefTechnicianDashboard {
                 person_type: this.filters.person_type,
                 technician: sales_person_mode ? "" : this.filters.technician,
                 sales_person: sales_person_mode ? this.filters.sales_person : "",
+                branch: this.filters.branch,
                 limit_start: this.attendance_start,
                 limit_page_length: this.attendance_length,
                 view: "attendance"

@@ -21,7 +21,7 @@
  "list_columns": [],
  "login_required": 0,
  "max_attachment_size": 0,
- "modified": "2026-09-28 10:31:05.443690",
+ "modified": "2026-11-02 18:00:00",
  "modified_by": "Administrator",
  "module": "vin_chakra",
  "name": "raise-a-ticket",
@@ -73,6 +73,20 @@
    "precision": "",
    "read_only": 0,
    "reqd": 0,
+   "show_in_filter": 0
+  },
+  {
+   "allow_read_on_all_link_options": 0,
+   "fieldname": "custom_branch",
+   "fieldtype": "Link",
+   "hidden": 0,
+   "label": "Branch",
+   "max_length": 0,
+   "max_value": 0,
+   "options": "Branch",
+   "precision": "",
+   "read_only": 0,
+   "reqd": 1,
    "show_in_filter": 0
   },
   {
