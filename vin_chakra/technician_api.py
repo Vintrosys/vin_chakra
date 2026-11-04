@@ -275,31 +275,38 @@ def get_my_tickets() -> list:
 	return enrich_tickets_customer_details(tickets)
 
 
+def _get_latest_employee_checkin(employee_id):
+	"""Return the employee's most recent Employee Checkin log (any date), or None.
+
+	The *current* attendance state is the log_type of the latest checkin
+	regardless of calendar date — this is exactly how HRMS determines whether an
+	employee is currently checked in or out. Restricting this to "today" made the
+	technician portal disagree with HRMS whenever the last check-in happened on a
+	previous day (an overnight shift, or a missed check-out): HRMS showed IN while
+	the portal found no log for today and asked the technician to check in again.
+	Basing the state on the latest log fixes that mismatch and also avoids any
+	midnight/timezone boundary issue from the hardcoded day window.
+	"""
+	logs = frappe.get_all(
+		"Employee Checkin",
+		filters={"employee": employee_id},
+		fields=["log_type", "latitude", "longitude", "custom_accuracy", "device_id", "time"],
+		order_by="time desc",
+		limit=1
+	)
+	return logs[0] if logs else None
+
+
 def _verify_day_attendance(user):
-	"""Verify if user has checked in for today (log_type == 'IN' on current date)."""
+	"""Return True if the user is currently checked in (latest Employee Checkin log_type == 'IN'), matching HRMS."""
 	if user == "Administrator":
 		return True
 	employees = frappe.get_all("Employee", filters={"user_id": user, "status": "Active"}, pluck="name")
 	if not employees:
 		return False
-	
-	employee_id = employees[0]
-	today_start = f"{frappe.utils.today()} 00:00:00"
-	today_end = f"{frappe.utils.today()} 23:59:59"
 
-	# Get the latest check-in log for today from HRMS / Employee Checkin
-	logs_today = frappe.get_all(
-		"Employee Checkin",
-		filters={
-			"employee": employee_id,
-			"time": ["between", [today_start, today_end]]
-		},
-		fields=["log_type"],
-		order_by="time desc",
-		limit=1
-	)
-	
-	return bool(logs_today and logs_today[0].log_type == "IN")
+	latest = _get_latest_employee_checkin(employees[0])
+	return bool(latest and latest.log_type == "IN")
 
 
 def _send_otp_sms(ticket, target_mobile_number):
@@ -887,34 +894,21 @@ def get_day_attendance_status() -> dict:
 		return {"status": "error", "message": "No active Employee found for current user."}
 	
 	employee_id = employees[0]
-	today_start = f"{frappe.utils.today()} 00:00:00"
-	today_end = f"{frappe.utils.today()} 23:59:59"
 
-	# Get the latest check-in log for today from HRMS / Employee Checkin
-	logs_today = frappe.get_all(
-		"Employee Checkin",
-		filters={
-			"employee": employee_id,
-			"time": ["between", [today_start, today_end]]
-		},
-		fields=["log_type", "latitude", "longitude", "custom_accuracy", "device_id", "time"],
-		order_by="time desc",
-		limit=1
-	)
-	
-	if logs_today and logs_today[0].log_type == "IN":
-		log = logs_today[0]
+	# Current state mirrors HRMS: the log_type of the latest checkin, regardless of date.
+	latest_log = _get_latest_employee_checkin(employee_id)
+
+	if latest_log and latest_log.log_type == "IN":
 		return {
 			"status": "success",
 			"state": "IN",
-			"device_id": log.device_id or "hrms",
-			"latitude": log.latitude,
-			"longitude": log.longitude,
-			"accuracy": log.custom_accuracy,
-			"time": str(log.time)
+			"device_id": latest_log.device_id or "hrms",
+			"latitude": latest_log.latitude,
+			"longitude": latest_log.longitude,
+			"accuracy": latest_log.custom_accuracy,
+			"time": str(latest_log.time)
 		}
-	
-	latest_log = logs_today[0] if logs_today else None
+
 	return {
 		"status": "success",
 		"state": "OUT",
@@ -940,22 +934,13 @@ def mark_day_attendance(log_type: str, latitude: float = None, longitude: float 
 	
 	employee_id = employees[0]
 
-	# Enforce a valid IN/OUT transition based on the employee's actual last log today,
-	# so a stale client button (or a duplicate/retried request) can never record a
-	# state the employee isn't really in.
-	today_start = f"{frappe.utils.today()} 00:00:00"
-	today_end = f"{frappe.utils.today()} 23:59:59"
-	last_log = frappe.get_all(
-		"Employee Checkin",
-		filters={
-			"employee": employee_id,
-			"time": ["between", [today_start, today_end]]
-		},
-		fields=["log_type"],
-		order_by="time desc",
-		limit=1
-	)
-	current_state = last_log[0].log_type if last_log else "OUT"
+	# Enforce a valid IN/OUT transition against the employee's actual current state
+	# (the latest Employee Checkin log, regardless of date — the same definition HRMS
+	# and the portal status use), so a stale client button or a duplicate/retried
+	# request can never record a state the employee isn't really in, and so an
+	# overnight "IN" is correctly treated as still checked in.
+	latest_log = _get_latest_employee_checkin(employee_id)
+	current_state = latest_log.log_type if latest_log else "OUT"
 
 	if log_type == current_state:
 		if log_type == "IN":

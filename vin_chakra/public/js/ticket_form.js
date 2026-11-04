@@ -458,13 +458,15 @@
       if (editBtn) {
         editBtn.addEventListener('click', (e) => {
           e.preventDefault();
-          if (this._saveDraftToSession) {
-            this._saveDraftToSession();
-          }
-          sessionStorage.setItem('tk_return_to_ticket_support', '1');
-          sessionStorage.removeItem('tk_quick_entry_target');
-          sessionStorage.removeItem('tk_is_quick_entry');
-          window.location.assign(`/app/customer/${encodeURIComponent(customerId)}`);
+          const custInp = this._form ? this._form.querySelector('[name="customer"]') : null;
+          const comboWrap = custInp ? custInp.closest('.tk-combo') : null;
+          this._openCustomerQuickEntryModal({
+            customerId: customerId,
+            customerData: customerData,
+            selectOpt: comboWrap && comboWrap._selectOpt ? comboWrap._selectOpt : null,
+            wrap: comboWrap,
+            input: custInp
+          });
         });
       }
 
@@ -500,6 +502,476 @@
         .catch(err => console.warn('Could not fetch customer details:', err));
     }
 
+    _showToast(html, duration = 4500) {
+      let toast = document.getElementById('tk-floating-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'tk-floating-toast';
+        toast.className = 'tk-toast';
+        document.body.appendChild(toast);
+      }
+      toast.innerHTML = `<span class="tk-toast-icon">${ICONS.ok}</span><span>${html}</span>`;
+      toast.classList.add('show');
+      clearTimeout(this._toastTimer);
+      this._toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, duration);
+    }
+
+    _openCustomerQuickEntryModal(params = {}) {
+      const { customerId, customerData, selectOpt, wrap, input, initialName } = params;
+      const isEdit = !!customerId;
+
+      // Close open combo lists
+      document.querySelectorAll('.tk-combo-list.open').forEach(l => l.classList.remove('open'));
+
+      const existingOverlay = document.getElementById('tk-customer-modal-overlay');
+      if (existingOverlay) existingOverlay.remove();
+
+      let nameVal = '';
+      let mobileVal = '';
+      let secPhoneVal = '';
+      let emailVal = '';
+      let addrVal = '';
+      let cityVal = '';
+      let stateVal = 'Tamil Nadu';
+      let pincodeVal = '';
+      let gstinVal = '';
+      let typeVal = 'Individual';
+
+      if (isEdit && customerData) {
+        nameVal = typeof customerData === 'object' ? (customerData.customer_name || customerData.label || customerId) : customerId;
+        mobileVal = typeof customerData === 'object' ? (customerData.mobile_no || '') : '';
+        secPhoneVal = typeof customerData === 'object' ? (customerData.secondary_phone || customerData.custom_secondary_phone || '') : '';
+        emailVal = typeof customerData === 'object' ? (customerData.email_id || '') : '';
+        addrVal = typeof customerData === 'object' ? (customerData.address_line1 || '') : '';
+        cityVal = typeof customerData === 'object' ? (customerData.city || '') : '';
+        stateVal = typeof customerData === 'object' ? (customerData.state || 'Tamil Nadu') : 'Tamil Nadu';
+        pincodeVal = typeof customerData === 'object' ? (customerData.pincode || '') : '';
+      } else {
+        nameVal = (initialName || '').trim();
+        if (nameVal.toLowerCase().startsWith('+ create')) {
+          nameVal = '';
+        }
+        if (this._form) {
+          const mInput = this._form.querySelector('[name="custom_customer_mobile_number"]');
+          if (mInput && mInput.value) mobileVal = mInput.value.replace(/\D/g, '').slice(-10);
+
+          const sInput = this._form.querySelector('[name="custom__secondary_phone_number"]');
+          if (sInput && sInput.value) secPhoneVal = sInput.value.replace(/\D/g, '').slice(-10);
+
+          const aInput = this._form.querySelector('[name="custom_address"]');
+          if (aInput && aInput.value) addrVal = aInput.value.trim();
+
+          const cInput = this._form.querySelector('[name="custom_city__district_"]');
+          if (cInput && cInput.value) cityVal = cInput.value.trim();
+
+          const stInput = this._form.querySelector('[name="custom_state"]');
+          if (stInput && stInput.value) stateVal = stInput.value.trim();
+        }
+      }
+
+      const overlay = el('div', 'tk-modal-overlay');
+      overlay.id = 'tk-customer-modal-overlay';
+
+      const stateOptionsHtml = ALL_STATES.map(st =>
+        `<option value="${this._escape(st)}" ${st === stateVal ? 'selected' : ''}>${this._escape(st)}</option>`
+      ).join('');
+
+      overlay.innerHTML = `
+        <div class="tk-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="tk-modal-title">
+          <div class="tk-modal-header">
+            <div class="tk-modal-header-text">
+              <h3 id="tk-modal-title" class="tk-modal-title">
+                <span class="tk-modal-title-icon">${ICONS.user}</span>
+                <span>${isEdit ? 'Edit Customer Details' : 'New Customer Quick Entry'}</span>
+              </h3>
+              <p class="tk-modal-subtitle">${isEdit ? 'Update details for this customer.' : 'Add a new customer without leaving the ticket form.'}</p>
+            </div>
+            <button type="button" class="tk-modal-close-btn" title="Close" aria-label="Close modal">&times;</button>
+          </div>
+
+          <div class="tk-modal-error" style="display:none;"></div>
+
+          <form class="tk-modal-form">
+            <div class="tk-modal-body">
+              <div class="tk-modal-grid">
+                <!-- Customer Name -->
+                <div class="tk-field full">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.user}</span>Customer / Contact Name <span class="req">*</span></label>
+                  <div class="tk-input-wrap">
+                    <input type="text" name="customer_name" class="tk-control" required placeholder="e.g. Sri Murugan Textiles or Ravi Kumar" value="${this._escape(nameVal)}">
+                  </div>
+                </div>
+
+                <!-- Customer Type -->
+                <div class="tk-field">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.tag}</span>Customer Type</label>
+                  <select name="customer_type" class="tk-control">
+                    <option value="Individual" ${typeVal === 'Individual' ? 'selected' : ''}>Individual</option>
+                    <option value="Company" ${typeVal === 'Company' ? 'selected' : ''}>Company</option>
+                  </select>
+                </div>
+
+                <!-- Primary Mobile -->
+                <div class="tk-field">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.phone}</span>Mobile Number <span class="req">*</span></label>
+                  <div class="tk-input-wrap">
+                    <span class="tk-input-prefix">${ICONS.phone}</span>
+                    <input type="tel" name="mobile_no" class="tk-control" required placeholder="10-digit mobile number" maxlength="10" value="${this._escape(mobileVal)}">
+                  </div>
+                </div>
+
+                <!-- Secondary Phone -->
+                <div class="tk-field">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.phone}</span>Secondary Phone</label>
+                  <div class="tk-input-wrap">
+                    <span class="tk-input-prefix">${ICONS.phone}</span>
+                    <input type="tel" name="secondary_phone" class="tk-control" placeholder="Optional 10-digit phone" maxlength="10" value="${this._escape(secPhoneVal)}">
+                  </div>
+                </div>
+
+                <!-- Email ID -->
+                <div class="tk-field">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.info}</span>Email Address</label>
+                  <div class="tk-input-wrap">
+                    <input type="email" name="email_id" class="tk-control" placeholder="customer@example.com" value="${this._escape(emailVal)}">
+                  </div>
+                </div>
+
+                <!-- Address Line 1 -->
+                <div class="tk-field full">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.home}</span>Address Line 1 <span class="req">*</span></label>
+                  <div class="tk-input-wrap">
+                    <input type="text" name="address_line1" class="tk-control" required placeholder="Door No., Street / Building name" value="${this._escape(addrVal)}">
+                  </div>
+                </div>
+
+                <!-- City / District -->
+                <div class="tk-field">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.pin}</span>City / District <span class="req">*</span></label>
+                  <div class="tk-input-wrap">
+                    <input type="text" name="city" class="tk-control" required placeholder="e.g. Coimbatore, Tiruppur" value="${this._escape(cityVal)}">
+                  </div>
+                </div>
+
+                <!-- State -->
+                <div class="tk-field">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.map}</span>State <span class="req">*</span></label>
+                  <select name="state" class="tk-control" required>
+                    ${stateOptionsHtml}
+                  </select>
+                </div>
+
+                <!-- Pincode -->
+                <div class="tk-field">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.tag}</span>Pincode</label>
+                  <div class="tk-input-wrap">
+                    <input type="text" name="pincode" class="tk-control" placeholder="6-digit pincode" maxlength="6" value="${this._escape(pincodeVal)}">
+                  </div>
+                </div>
+
+                <!-- GSTIN -->
+                <div class="tk-field">
+                  <label class="tk-label"><span class="tk-label-icon">${ICONS.file}</span>GSTIN (Optional)</label>
+                  <div class="tk-input-wrap">
+                    <input type="text" name="gstin" class="tk-control" placeholder="15-character GSTIN" maxlength="15" value="${this._escape(gstinVal)}" style="text-transform:uppercase;">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tk-modal-footer">
+              <button type="button" class="tk-modal-btn tk-modal-btn-cancel">Cancel</button>
+              <button type="submit" class="tk-modal-btn tk-modal-btn-save">
+                <span class="tk-modal-spinner" style="display:none;"></span>
+                <span class="tk-modal-btn-text">${isEdit ? 'Update Customer' : 'Create & Select Customer'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      const modalForm = overlay.querySelector('.tk-modal-form');
+      const closeBtn = overlay.querySelector('.tk-modal-close-btn');
+      const cancelBtn = overlay.querySelector('.tk-modal-btn-cancel');
+      const errBox = overlay.querySelector('.tk-modal-error');
+      const saveBtn = overlay.querySelector('.tk-modal-btn-save');
+      const btnText = overlay.querySelector('.tk-modal-btn-text');
+      const spinner = overlay.querySelector('.tk-modal-spinner');
+
+      const closeModal = () => {
+        document.removeEventListener('keydown', onKeyDown);
+        overlay.classList.remove('show');
+        overlay.remove();
+      };
+
+      const onKeyDown = (e) => {
+        if (e.key === 'Escape') closeModal();
+      };
+      document.addEventListener('keydown', onKeyDown);
+
+      closeBtn.addEventListener('click', closeModal);
+      cancelBtn.addEventListener('click', closeModal);
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeModal();
+      });
+
+      // Filter digit inputs
+      const mobInput = modalForm.querySelector('[name="mobile_no"]');
+      const secInput = modalForm.querySelector('[name="secondary_phone"]');
+      const pinInput = modalForm.querySelector('[name="pincode"]');
+      const gstinInput = modalForm.querySelector('[name="gstin"]');
+
+      if (mobInput) {
+        mobInput.addEventListener('input', () => {
+          mobInput.value = mobInput.value.replace(/\D/g, '').slice(0, 10);
+        });
+      }
+      if (secInput) {
+        secInput.addEventListener('input', () => {
+          secInput.value = secInput.value.replace(/\D/g, '').slice(0, 10);
+        });
+      }
+      if (pinInput) {
+        pinInput.addEventListener('input', () => {
+          pinInput.value = pinInput.value.replace(/\D/g, '').slice(0, 6);
+        });
+      }
+      if (gstinInput) {
+        gstinInput.addEventListener('input', () => {
+          gstinInput.value = gstinInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15);
+        });
+      }
+
+      // If in edit mode, fetch full details asynchronously to populate any missing inputs
+      if (isEdit && customerId) {
+        fetch(`/api/method/vin_chakra.api.get_customer_details?customer=${encodeURIComponent(customerId)}`)
+          .then(r => r.json())
+          .then(res => {
+            if (res && res.message && res.message.status === 'success' && res.message.customer) {
+              const c = res.message.customer;
+              if (c.customer_name && !modalForm.customer_name.value) modalForm.customer_name.value = c.customer_name;
+              if (c.mobile_no && !modalForm.mobile_no.value) modalForm.mobile_no.value = c.mobile_no.replace(/\D/g, '').slice(-10);
+              if (c.secondary_phone && !modalForm.secondary_phone.value) modalForm.secondary_phone.value = c.secondary_phone.replace(/\D/g, '').slice(-10);
+              if (c.email_id && !modalForm.email_id.value) modalForm.email_id.value = c.email_id;
+              if (c.address_line1 && !modalForm.address_line1.value) modalForm.address_line1.value = c.address_line1;
+              if (c.city && !modalForm.city.value) modalForm.city.value = c.city;
+              if (c.state && modalForm.state) modalForm.state.value = c.state;
+            }
+          })
+          .catch(() => {});
+      }
+
+      // Initial focus
+      setTimeout(() => {
+        const firstInp = modalForm.querySelector('[name="customer_name"]');
+        if (firstInp) {
+          firstInp.focus();
+          if (firstInp.value) firstInp.select();
+        }
+      }, 50);
+
+      // Submit handler
+      modalForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        errBox.style.display = 'none';
+
+        const cName = (modalForm.customer_name.value || '').trim();
+        const cMobile = (modalForm.mobile_no.value || '').replace(/\D/g, '');
+        const cSecPhone = (modalForm.secondary_phone.value || '').replace(/\D/g, '');
+
+        if (!cName) {
+          errBox.innerHTML = `${ICONS.err}<span>Please enter Customer Name.</span>`;
+          errBox.style.display = 'flex';
+          modalForm.customer_name.focus();
+          return;
+        }
+
+        if (cMobile.length < 10) {
+          errBox.innerHTML = `${ICONS.err}<span>Please enter a valid 10-digit Mobile Number.</span>`;
+          errBox.style.display = 'flex';
+          modalForm.mobile_no.focus();
+          return;
+        }
+
+        if (cSecPhone && cSecPhone.length < 10) {
+          errBox.innerHTML = `${ICONS.err}<span>Secondary Phone must be a valid 10-digit number.</span>`;
+          errBox.style.display = 'flex';
+          modalForm.secondary_phone.focus();
+          return;
+        }
+
+        const cAddress = (modalForm.address_line1.value || '').trim();
+        const cCity = (modalForm.city.value || '').trim();
+        const cState = (modalForm.state.value || '').trim();
+
+        if (!cAddress) {
+          errBox.innerHTML = `${ICONS.err}<span>Please enter Address Line 1.</span>`;
+          errBox.style.display = 'flex';
+          modalForm.address_line1.focus();
+          return;
+        }
+
+        if (!cCity) {
+          errBox.innerHTML = `${ICONS.err}<span>Please enter City / District.</span>`;
+          errBox.style.display = 'flex';
+          modalForm.city.focus();
+          return;
+        }
+
+        if (!cState) {
+          errBox.innerHTML = `${ICONS.err}<span>Please select a State.</span>`;
+          errBox.style.display = 'flex';
+          modalForm.state.focus();
+          return;
+        }
+
+        saveBtn.disabled = true;
+        spinner.style.display = 'inline-block';
+        btnText.textContent = isEdit ? 'Updating…' : 'Saving…';
+
+        const payload = {
+          customer_id: customerId || undefined,
+          customer_name: cName,
+          customer_type: modalForm.customer_type.value,
+          mobile_no: cMobile,
+          secondary_phone: cSecPhone,
+          email_id: (modalForm.email_id.value || '').trim(),
+          address_line1: (modalForm.address_line1.value || '').trim(),
+          city: (modalForm.city.value || '').trim(),
+          state: modalForm.state.value,
+          pincode: (modalForm.pincode.value || '').trim(),
+          gstin: (modalForm.gstin.value || '').trim()
+        };
+
+        const handleSuccess = (res) => {
+          saveBtn.disabled = false;
+          spinner.style.display = 'none';
+          btnText.textContent = isEdit ? 'Update Customer' : 'Create & Select Customer';
+
+          if (res && res.status === 'success' && res.customer) {
+            const cust = res.customer;
+            closeModal();
+
+            const newOpt = {
+              value: cust.name,
+              label: cust.label || (cust.customer_name + ' (' + cust.name + ')'),
+              customer_name: cust.customer_name,
+              mobile_no: cust.mobile_no || '',
+              secondary_phone: cust.secondary_phone || '',
+              email_id: cust.email_id || '',
+              address_line1: cust.address_line1 || '',
+              city: cust.city || '',
+              state: cust.state || ''
+            };
+
+            // Update combo options list so it appears in the dropdown
+            if (wrap && wrap._options) {
+              const existingIdx = wrap._options.findIndex(o => o.value === newOpt.value);
+              if (existingIdx >= 0) {
+                wrap._options[existingIdx] = Object.assign(wrap._options[existingIdx], newOpt);
+              } else {
+                wrap._options.unshift(newOpt);
+              }
+            }
+
+            // Call selectOpt on combo
+            if (selectOpt) {
+              selectOpt(newOpt);
+            } else if (wrap && wrap._selectOpt) {
+              wrap._selectOpt(newOpt);
+            }
+
+            // Also update form inputs directly to ensure instant sync
+            if (this._form) {
+              const customerInput = this._form.querySelector('[name="customer"]');
+              if (customerInput) {
+                customerInput.value = newOpt.label;
+                customerInput.dataset.value = newOpt.value;
+                customerInput.dataset.customerName = newOpt.customer_name;
+                this._clearError(customerInput, customerInput.closest('.tk-field') || customerInput);
+              }
+
+              const nameInput = this._form.querySelector('[name="custom_customer_name"]');
+              if (nameInput) {
+                nameInput.value = newOpt.customer_name;
+                this._clearError(nameInput, nameInput.closest('.tk-field') || nameInput);
+              }
+
+              const phoneInput = this._form.querySelector('[name="custom_customer_mobile_number"]');
+              if (phoneInput && newOpt.mobile_no) {
+                phoneInput.value = newOpt.mobile_no.replace(/\D/g, '').slice(-10);
+                this._clearError(phoneInput, phoneInput.closest('.tk-field') || phoneInput);
+              }
+
+              const secPhoneInput = this._form.querySelector('[name="custom__secondary_phone_number"]');
+              if (secPhoneInput && newOpt.secondary_phone) {
+                secPhoneInput.value = newOpt.secondary_phone.replace(/\D/g, '').slice(-10);
+                this._clearError(secPhoneInput, secPhoneInput.closest('.tk-field') || secPhoneInput);
+              }
+
+              const addrInput = this._form.querySelector('[name="custom_address"]');
+              if (addrInput && newOpt.address_line1) {
+                addrInput.value = newOpt.address_line1;
+                this._clearError(addrInput, addrInput.closest('.tk-field') || addrInput);
+              }
+
+              const cityInput = this._form.querySelector('[name="custom_city__district_"]');
+              if (cityInput && newOpt.city) {
+                cityInput.value = newOpt.city;
+                this._clearError(cityInput, cityInput.closest('.tk-field') || cityInput);
+              }
+
+              if (newOpt.state && this._stateSelect) {
+                this._stateSelect.value = newOpt.state;
+                this._stateSelect.dispatchEvent(new Event('change'));
+              }
+
+              const parentWrap = customerInput ? (customerInput.closest('.tk-field') || customerInput.parentElement) : null;
+              this._renderCustomerDetailsCard(newOpt, parentWrap);
+            }
+
+            this._showToast(`Customer <strong>${this._escape(newOpt.customer_name)}</strong> ${isEdit ? 'updated' : 'created'} and selected successfully!`);
+          } else {
+            errBox.innerHTML = `${ICONS.err}<span>${this._escape((res && res.message) ? res.message : 'Failed to save customer.')}</span>`;
+            errBox.style.display = 'flex';
+          }
+        };
+
+        const handleError = (err) => {
+          saveBtn.disabled = false;
+          spinner.style.display = 'none';
+          btnText.textContent = isEdit ? 'Update Customer' : 'Create & Select Customer';
+          const msg = (err && (err.message || (err.responseJSON && err.responseJSON.message))) || 'Network or server error. Please try again.';
+          errBox.innerHTML = `${ICONS.err}<span>${this._escape(msg)}</span>`;
+          errBox.style.display = 'flex';
+        };
+
+        if (window.frappe && frappe.call) {
+          frappe.call({
+            method: 'vin_chakra.api.create_customer_quick_entry',
+            args: payload,
+            callback: (r) => handleSuccess(r.message || r),
+            error: (err) => handleError(err)
+          });
+        } else {
+          fetch('/api/method/vin_chakra.api.create_customer_quick_entry', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Frappe-CSRF-Token': window.csrf_token || ''
+            },
+            body: JSON.stringify(payload)
+          })
+            .then(r => r.json())
+            .then(res => handleSuccess(res.message || res))
+            .catch(err => handleError(err));
+        }
+      });
+    }
 
     _fetchSchema() {
       return new Promise((resolve, reject) => {
@@ -780,6 +1252,16 @@
           e.preventDefault();
           closeList();
           const doctype = opts.doctype || 'Item';
+
+          if (doctype === 'Customer') {
+            this._openCustomerQuickEntryModal({
+              initialName: input.value || '',
+              selectOpt: selectOpt,
+              wrap: wrap,
+              input: input
+            });
+            return;
+          }
 
           const row = wrap.closest('tr.tk-table-row');
           const rowIndex = row ? Array.from(row.parentNode.children).indexOf(row) : null;
