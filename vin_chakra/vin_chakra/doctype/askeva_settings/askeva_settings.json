@@ -34,19 +34,18 @@
   {
    "fieldname": "inbound_section",
    "fieldtype": "Section Break",
-   "label": "Inbound Webhook (Chatbot -> Ticket)"
+   "label": "Legacy / Fallback Token"
   },
   {
-   "description": "Shared secret AskEva must send as the ?token= query parameter (or X-Askeva-Token header) when posting form submissions.",
+   "description": "Optional. Legacy token kept only as a fallback send-message credential when the Send Message API Token below is not set. The inbound chatbot intake has been removed, so this is no longer used as a webhook secret.",
    "fieldname": "webhook_token",
    "fieldtype": "Password",
-   "label": "Webhook Secret Token",
-   "reqd": 1
+   "label": "Fallback API Token"
   },
   {
    "fieldname": "inbound_description",
    "fieldtype": "HTML",
-   "options": "<div class=\"alert alert-info\" style=\"font-size:13px; line-height:1.6;\">\n  <strong>&#128276; WhatsApp Chatbot Ticket Intake</strong><br>\n  Configure the AskEva chatbot's <em>flow submitted</em> step to POST to:<br>\n  <code>/api/method/vin_chakra.whatsapp_api.receive_form?token=&lt;Webhook Secret Token&gt;</code><br>\n  with the form fields and the sender's <code>userNumber</code>. Submissions are logged under <strong>WhatsApp Form Submission</strong>.\n</div>"
+   "options": "<div class=\"alert alert-warning\" style=\"font-size:13px; line-height:1.6;\">\n  <strong>&#9888;&#65039; Inbound chatbot ticket intake has been removed.</strong><br>\n  WhatsApp Flow form submissions are no longer received and no HD Tickets / Customers are created from WhatsApp. This app now only sends outbound Sales Invoice notifications (configured below).\n</div>"
   },
   {
    "fieldname": "outbound_section",

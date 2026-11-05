@@ -585,3 +585,240 @@ select.tk-control:disabled {
   color: var(--charcoal);
   font-weight: 600;
 }
+
+/* Quick Customer Entry Modal */
+.tk-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(22, 33, 28, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000;
+  padding: clamp(12px, 3vw, 24px);
+  overflow-y: auto;
+  animation: tk-fade-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tk-modal-dialog {
+  background: #ffffff;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 48px rgba(28, 36, 32, 0.24), 0 8px 16px rgba(28, 36, 32, 0.12);
+  width: 100%;
+  max-width: 640px;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: tk-pop-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes tk-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tk-pop-in {
+  from { opacity: 0; transform: scale(0.95) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.tk-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, #fdfdfc 0%, #f7f8f5 100%);
+}
+
+.tk-modal-header-text {
+  flex: 1;
+}
+
+.tk-modal-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--charcoal);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tk-modal-title-icon svg {
+  width: 20px;
+  height: 20px;
+  color: var(--brass);
+}
+
+.tk-modal-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.tk-modal-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: var(--transition);
+}
+
+.tk-modal-close-btn:hover {
+  background: #edece8;
+  color: var(--charcoal);
+}
+
+.tk-modal-form {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex: 1;
+}
+
+.tk-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.tk-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.tk-modal-grid .full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 580px) {
+  .tk-modal-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tk-modal-error {
+  background: var(--thread-bg);
+  border: 1px solid var(--thread-border);
+  color: var(--thread);
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin: 16px 24px 0;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tk-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  background: #fbfbf9;
+}
+
+.tk-modal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.tk-modal-btn-cancel {
+  background: #ffffff;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.tk-modal-btn-cancel:hover {
+  background: #f2f3ef;
+  color: var(--charcoal);
+}
+
+.tk-modal-btn-save {
+  background: linear-gradient(135deg, var(--brass) 0%, var(--brass-dark) 100%);
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 2px 6px rgba(184, 134, 58, 0.35);
+}
+
+.tk-modal-btn-save:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 4px 12px rgba(184, 134, 58, 0.45);
+}
+
+.tk-modal-btn-save:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.tk-modal-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: tk-spin 0.6s linear infinite;
+}
+
+/* Floating Toast Notification */
+.tk-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: var(--charcoal-deep);
+  color: #ffffff;
+  padding: 12px 20px;
+  border-radius: 99px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28);
+  font-size: 13.5px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 100001;
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(184, 134, 58, 0.4);
+}
+
+.tk-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tk-toast-icon {
+  width: 18px;
+  height: 18px;
+  color: #5fbf8f;
+  display: flex;
+  align-items: center;
+}
+
+.tk-toast-icon svg {
+  width: 100%;
+  height: 100%;
+}

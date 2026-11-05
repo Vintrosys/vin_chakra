@@ -754,3 +754,312 @@ def get_customer_details(customer: str) -> dict:
 		return {"status": "error", "message": str(e), "customer": {"name": customer, "customer_name": customer}}
 
 
+def _default_customer_group() -> str:
+	return (
+		frappe.db.get_default("customer_group")
+		or frappe.db.get_value("Customer Group", {"is_group": 0}, "name")
+		or "All Customer Groups"
+	)
+
+
+def _default_territory() -> str:
+	return (
+		frappe.db.get_default("territory")
+		or frappe.db.get_value("Territory", {"is_group": 0}, "name")
+		or "All Territories"
+	)
+
+
+def _find_customer_by_phone(phone: str) -> Optional[str]:
+	"""Look up a Customer by the last 10 digits of their mobile number."""
+	clean_digits = "".join(filter(str.isdigit, str(phone or "")))
+	p10 = clean_digits[-10:] if len(clean_digits) >= 10 else clean_digits
+	if not p10 or len(p10) < 10:
+		return None
+
+	# 1. Customer.mobile_no ending in these 10 digits
+	c = frappe.db.sql(
+		"""
+		SELECT name FROM `tabCustomer`
+		WHERE REPLACE(REPLACE(REPLACE(IFNULL(mobile_no, ''), '+', ''), '-', ''), ' ', '') LIKE %s
+		LIMIT 1
+		""",
+		f"%{p10}",
+	)
+	if c:
+		return c[0][0]
+
+	# 2. Contact linked to Customer with this phone
+	c = frappe.db.sql(
+		"""
+		SELECT dl.link_name
+		FROM `tabContact Phone` cp
+		JOIN `tabDynamic Link` dl ON dl.parent = cp.parent AND dl.parenttype = 'Contact'
+		WHERE dl.link_doctype = 'Customer'
+		  AND REPLACE(REPLACE(REPLACE(IFNULL(cp.phone, ''), '+', ''), '-', ''), ' ', '') LIKE %s
+		LIMIT 1
+		""",
+		f"%{p10}",
+	)
+	if c:
+		return c[0][0]
+
+	return None
+
+
+@frappe.whitelist(allow_guest=True)
+def create_customer_quick_entry(
+	customer_name: Optional[str] = None,
+	mobile_no: Optional[str] = None,
+	customer_type: Optional[str] = "Individual",
+	secondary_phone: Optional[str] = None,
+	email_id: Optional[str] = None,
+	address_line1: Optional[str] = None,
+	address_line2: Optional[str] = None,
+	city: Optional[str] = None,
+	state: Optional[str] = "Tamil Nadu",
+	pincode: Optional[str] = None,
+	gstin: Optional[str] = None,
+	customer_id: Optional[str] = None,
+	data: Union[dict, str, None] = None,
+	**kwargs,
+) -> dict:
+	"""Quick entry endpoint to create or update a Customer from the public ticket-support form."""
+	try:
+		if isinstance(customer_name, dict):
+			data = customer_name
+			customer_name = None
+		elif isinstance(customer_name, str) and customer_name.strip().startswith("{"):
+			try:
+				data = json.loads(customer_name)
+				customer_name = None
+			except Exception:
+				pass
+
+		if isinstance(data, str):
+			try:
+				data = json.loads(data)
+			except Exception:
+				data = {}
+		if isinstance(data, dict):
+			customer_name = data.get("customer_name") or customer_name
+			mobile_no = data.get("mobile_no") or mobile_no
+			customer_type = data.get("customer_type") or customer_type
+			secondary_phone = data.get("secondary_phone") or secondary_phone
+			email_id = data.get("email_id") or email_id
+			address_line1 = data.get("address_line1") or address_line1
+			address_line2 = data.get("address_line2") or address_line2
+			city = data.get("city") or city
+			state = data.get("state") or state
+			pincode = data.get("pincode") or pincode
+			gstin = data.get("gstin") or gstin
+			customer_id = data.get("customer_id") or customer_id
+
+		# Also inspect kwargs / frappe.form_dict
+		form = getattr(frappe, "form_dict", {}) or {}
+		customer_name = customer_name or kwargs.get("customer_name") or form.get("customer_name")
+		mobile_no = mobile_no or kwargs.get("mobile_no") or form.get("mobile_no")
+		customer_type = customer_type or kwargs.get("customer_type") or form.get("customer_type")
+		secondary_phone = secondary_phone or kwargs.get("secondary_phone") or form.get("secondary_phone")
+		email_id = email_id or kwargs.get("email_id") or form.get("email_id")
+		address_line1 = address_line1 or kwargs.get("address_line1") or form.get("address_line1")
+		address_line2 = address_line2 or kwargs.get("address_line2") or form.get("address_line2")
+		city = city or kwargs.get("city") or form.get("city")
+		state = state or kwargs.get("state") or form.get("state")
+		pincode = pincode or kwargs.get("pincode") or form.get("pincode")
+		gstin = gstin or kwargs.get("gstin") or form.get("gstin")
+		customer_id = customer_id or kwargs.get("customer_id") or form.get("customer_id")
+
+		customer_name = (customer_name or "").strip()
+		if not customer_name:
+			return {"status": "error", "message": _("Customer Name is required.")}
+
+		clean_mobile = "".join(filter(str.isdigit, str(mobile_no or "")))
+		if len(clean_mobile) == 12 and clean_mobile.startswith("91"):
+			clean_mobile = clean_mobile[2:]
+		elif len(clean_mobile) > 10:
+			clean_mobile = clean_mobile[-10:]
+
+		if len(clean_mobile) < 10:
+			return {"status": "error", "message": _("Please enter a valid 10-digit mobile number.")}
+
+		clean_sec = "".join(filter(str.isdigit, str(secondary_phone or "")))
+		if len(clean_sec) == 12 and clean_sec.startswith("91"):
+			clean_sec = clean_sec[2:]
+		elif len(clean_sec) > 10:
+			clean_sec = clean_sec[-10:]
+		elif len(clean_sec) < 10:
+			clean_sec = ""
+
+		customer_type = (customer_type or "Individual").strip()
+		if customer_type not in ["Individual", "Company"]:
+			customer_type = "Individual"
+
+		email_id = (email_id or "").strip()
+		gstin = (gstin or "").strip().upper()
+		address_line1 = (address_line1 or "").strip()
+		address_line2 = (address_line2 or "").strip()
+		city = (city or "").strip()
+		state = (state or "Tamil Nadu").strip()
+		pincode = (pincode or "").strip()
+
+		is_existing = False
+
+		# 1. Edit existing customer if customer_id given
+		if customer_id and frappe.db.exists("Customer", customer_id):
+			cust = frappe.get_doc("Customer", customer_id)
+			cust.customer_name = customer_name
+			cust.customer_type = customer_type
+			if cust.meta.has_field("mobile_no"):
+				cust.mobile_no = clean_mobile
+			if clean_sec and cust.meta.has_field("custom_secondary_phone"):
+				cust.custom_secondary_phone = clean_sec
+			if email_id and cust.meta.has_field("email_id"):
+				cust.email_id = email_id
+			if gstin and cust.meta.has_field("gstin"):
+				cust.gstin = gstin
+			cust.flags.ignore_mandatory = True
+			cust.save(ignore_permissions=True)
+			is_existing = True
+		else:
+			# 2. Check if customer already exists by phone
+			existing_id = _find_customer_by_phone(clean_mobile)
+			if existing_id:
+				cust = frappe.get_doc("Customer", existing_id)
+				is_existing = True
+				if clean_sec and not cust.get("custom_secondary_phone") and cust.meta.has_field("custom_secondary_phone"):
+					cust.custom_secondary_phone = clean_sec
+				if email_id and not cust.get("email_id") and cust.meta.has_field("email_id"):
+					cust.email_id = email_id
+				if gstin and not cust.get("gstin") and cust.meta.has_field("gstin"):
+					cust.gstin = gstin
+				cust.flags.ignore_mandatory = True
+				cust.save(ignore_permissions=True)
+			else:
+				# 3. Create new customer
+				cust = frappe.new_doc("Customer")
+				cust.customer_name = customer_name
+				cust.customer_type = customer_type
+				cust.customer_group = _default_customer_group()
+				cust.territory = _default_territory()
+				if cust.meta.has_field("mobile_no"):
+					cust.mobile_no = clean_mobile
+				if clean_sec and cust.meta.has_field("custom_secondary_phone"):
+					cust.custom_secondary_phone = clean_sec
+				if email_id and cust.meta.has_field("email_id"):
+					cust.email_id = email_id
+				if gstin and cust.meta.has_field("gstin"):
+					cust.gstin = gstin
+				cust.flags.ignore_mandatory = True
+				cust.insert(ignore_permissions=True)
+
+		# 4. Handle Address
+		if address_line1 or city or state or pincode:
+			primary_addr = getattr(cust, "customer_primary_address", None)
+			if primary_addr and frappe.db.exists("Address", primary_addr):
+				addr = frappe.get_doc("Address", primary_addr)
+				if address_line1:
+					addr.address_line1 = address_line1
+				if address_line2:
+					addr.address_line2 = address_line2
+				if city:
+					addr.city = city
+				if state:
+					addr.state = state
+				if pincode:
+					addr.pincode = pincode
+				addr.flags.ignore_mandatory = True
+				addr.save(ignore_permissions=True)
+			else:
+				addr = frappe.get_doc({
+					"doctype": "Address",
+					"address_title": (cust.customer_name or cust.name)[:140],
+					"address_type": "Billing",
+					"address_line1": address_line1 or city or "Main Road",
+					"address_line2": address_line2 or None,
+					"city": city or None,
+					"state": state or "Tamil Nadu",
+					"pincode": pincode or None,
+					"country": "India",
+					"links": [{"link_doctype": "Customer", "link_name": cust.name}],
+				})
+				addr.flags.ignore_mandatory = True
+				addr.insert(ignore_permissions=True)
+				frappe.db.set_value("Customer", cust.name, "customer_primary_address", addr.name)
+
+		# 5. Handle Contact
+		primary_contact = getattr(cust, "customer_primary_contact", None)
+		if primary_contact and frappe.db.exists("Contact", primary_contact):
+			contact = frappe.get_doc("Contact", primary_contact)
+			phones = [str(r.phone).strip() for r in (contact.phone_nos or []) if getattr(r, "phone", None)]
+			if clean_mobile not in phones:
+				contact.append("phone_nos", {
+					"phone": clean_mobile,
+					"is_primary_phone": 1,
+					"is_primary_mobile_no": 1,
+				})
+			if clean_sec and clean_sec not in phones:
+				contact.append("phone_nos", {
+					"phone": clean_sec,
+					"is_primary_phone": 0,
+					"is_primary_mobile_no": 0,
+				})
+			if email_id and hasattr(contact, "email_ids"):
+				emails = [str(e.email_id).strip().lower() for e in (contact.email_ids or []) if getattr(e, "email_id", None)]
+				if email_id.lower() not in emails:
+					contact.append("email_ids", {"email_id": email_id, "is_primary": 1})
+			contact.flags.ignore_mandatory = True
+			contact.save(ignore_permissions=True)
+		else:
+			contact = frappe.get_doc({
+				"doctype": "Contact",
+				"first_name": (cust.customer_name or cust.name)[:140],
+				"links": [{"link_doctype": "Customer", "link_name": cust.name}],
+				"phone_nos": [
+					{"phone": clean_mobile, "is_primary_phone": 1, "is_primary_mobile_no": 1}
+				],
+			})
+			if clean_sec and clean_sec != clean_mobile:
+				contact.append("phone_nos", {
+					"phone": clean_sec,
+					"is_primary_phone": 0,
+					"is_primary_mobile_no": 0,
+				})
+			if email_id and hasattr(contact, "email_ids"):
+				contact.append("email_ids", {
+					"email_id": email_id,
+					"is_primary": 1,
+				})
+			contact.flags.ignore_mandatory = True
+			contact.insert(ignore_permissions=True)
+			frappe.db.set_value("Customer", cust.name, "customer_primary_contact", contact.name)
+
+		frappe.db.commit()
+
+		label = f"{cust.customer_name} ({cust.name})" if cust.customer_name and cust.customer_name != cust.name else (cust.customer_name or cust.name)
+
+		return {
+			"status": "success",
+			"message": _("Customer found and selected") if is_existing else _("Customer created successfully"),
+			"is_existing": is_existing,
+			"customer": {
+				"name": cust.name,
+				"value": cust.name,
+				"label": label,
+				"customer_name": cust.customer_name or cust.name,
+				"mobile_no": clean_mobile,
+				"secondary_phone": clean_sec or cust.get("custom_secondary_phone") or "",
+				"email_id": email_id or cust.get("email_id") or "",
+				"address_line1": address_line1 or "",
+				"address_line2": address_line2 or "",
+				"city": city or "",
+				"state": state or "Tamil Nadu",
+				"pincode": pincode or "",
+			},
+		}
+	except Exception as e:
+		frappe.log_error(frappe.get_traceback(), "Customer Quick Entry Error")
+		return {"status": "error", "message": str(e)}
+
+
+
