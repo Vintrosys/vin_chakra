@@ -1057,7 +1057,7 @@
 
       } else if (['Select', 'Link'].includes(f.fieldtype)) {
         ctrl = el('select', 'tk-control');
-        ctrl.innerHTML = `<option value="" disabled selected>Select ${f.label}</option>`;
+        ctrl.innerHTML = `<option value="" disabled selected>${f.placeholder || `Select ${f.label}`}</option>`;
         (f.options || []).forEach(o => {
           const opt = document.createElement('option');
           opt.value = o; opt.textContent = o;

@@ -199,9 +199,8 @@ class ChiefTechnicianDashboard {
         }
     }
 
-    // The Branch filter has two dropdowns, as the Technician Map has its own filter row. Both
-    // show the same filter. A branch that came from the URL is listed even if it isn't among
-    // the options, so what is on screen always matches what is being applied.
+    // A branch that came from the URL is listed even if it isn't among the options, so what is
+    // on screen always matches what is being applied.
     sync_branch_filter_controls() {
         let branches = this.branches.slice();
         if (this.filters.branch && !branches.includes(this.filters.branch)) {
@@ -211,7 +210,7 @@ class ChiefTechnicianDashboard {
             let value = frappe.utils.escape_html(branch);
             return `<option value="${value}">${value}</option>`;
         }).join("");
-        this.wrapper.find("#ct-filter-branch, #ct-map-filter-branch").html(options_html).val(this.filters.branch);
+        this.wrapper.find("#ct-filter-branch").html(options_html).val(this.filters.branch);
     }
 
     load_branches() {
@@ -729,10 +728,6 @@ class ChiefTechnicianDashboard {
                             ${map_status_options}
                         </select>
                     </div>
-                    <div class="ct-filter-item" style="margin: 0; min-width: 140px;">
-                        <label style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--ct-text-muted); margin-bottom: 4px; display: block;">Branch</label>
-                        <select id="ct-map-filter-branch" style="width: 100%; height: 36px; border: 1px solid #e2e8f0; border-radius: 6px; padding: 0 10px; font-size: 13px; background: white;"></select>
-                    </div>
                     <div class="ct-filter-item" style="margin: 0; display: flex; align-items: flex-end; justify-content: flex-end; align-self: stretch;">
                         <button class="btn btn-primary btn-sm" id="ct-map-filter-apply" style="height: 36px; padding: 0 16px; font-weight: 600;">Apply Map Filters</button>
                     </div>
@@ -763,7 +758,6 @@ class ChiefTechnicianDashboard {
                     </div>
                 </div>
             `);
-            this.sync_branch_filter_controls();
             this.render_map_filter_controls();
             this.init_map();
         } else if (this.current_tab === "attendance") {
@@ -1069,9 +1063,7 @@ class ChiefTechnicianDashboard {
             self.set_person_type($(this).val());
         });
 
-        // Applies at once, also on the Technician Map: it is shared with the other tabs, so it
-        // can't wait for Apply Map Filters
-        this.wrapper.on("change", "#ct-filter-branch, #ct-map-filter-branch", function() {
+        this.wrapper.on("change", "#ct-filter-branch", function() {
             self.set_branch($(this).val());
         });
 
@@ -1761,8 +1753,7 @@ class ChiefTechnicianDashboard {
                 date: this.map_filters.date,
                 technician: this.map_filters.technician,
                 customer: this.map_filters.customer,
-                ticket_status: this.map_filters.status,
-                branch: this.filters.branch
+                ticket_status: this.map_filters.status
             },
             callback: function(r) {
                 if (request_id !== self.movement_request) return;
@@ -2248,7 +2239,7 @@ class ChiefTechnicianDashboard {
 
         // Only filters that apply to this tab get a pill, as in the filter panel: the Technician
         // Map has its own filters, and Status, Priority, Ticket Type and the search only filter
-        // the Ticket Board and Analytics. Branch applies to every tab.
+        // the Ticket Board and Analytics
         let panel_tab = this.current_tab !== "movement";
         let ticket_tab = this.current_tab === "tickets" || this.current_tab === "analytics";
         // Sales Person attendance ignores the Technician filter, so show the person filters
@@ -2256,7 +2247,7 @@ class ChiefTechnicianDashboard {
         let sales_person_mode = this.current_tab === "attendance" && this.filters.person_type === "Sales Person";
 
         let pills_html = "";
-        if (this.filters.branch) pills_html += `<span class="ct-filter-pill">Branch: ${frappe.utils.escape_html(this.filters.branch)} <i class="fa fa-times ct-filter-remove" data-key="branch"></i></span>`;
+        if (panel_tab && this.filters.branch) pills_html += `<span class="ct-filter-pill">Branch: ${frappe.utils.escape_html(this.filters.branch)} <i class="fa fa-times ct-filter-remove" data-key="branch"></i></span>`;
         if (panel_tab && this.filters.date_from) pills_html += `<span class="ct-filter-pill">From: ${this.filters.date_from} <i class="fa fa-times ct-filter-remove" data-key="date_from"></i></span>`;
         if (panel_tab && this.filters.date_to) pills_html += `<span class="ct-filter-pill">To: ${this.filters.date_to} <i class="fa fa-times ct-filter-remove" data-key="date_to"></i></span>`;
         if (panel_tab && this.filters.technician && !sales_person_mode) {
@@ -2403,14 +2394,9 @@ class ChiefTechnicianDashboard {
     }
 
     // Put the Technician Map back to its opening filters and reload it. Map View is a display
-    // choice rather than a filter, so it is kept. Branch is reset too, on every tab: it is the
-    // same filter there.
+    // choice rather than a filter, so it is kept.
     clear_map_filters() {
         this.map_filters = this.default_map_filters();
-        this.filters.branch = "";
-        this.sync_branch_filter_controls();
-        this.update_url(false);
-        this.render_active_filters();
         this.wrapper.find("#ct-map-filter-date").val(this.map_filters.date);
         this.wrapper.find("#ct-map-filter-status").val(this.map_filters.status);
         if (this.map_tech_control) this.map_tech_control.set_value("");

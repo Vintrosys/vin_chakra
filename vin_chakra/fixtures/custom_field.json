@@ -3454,7 +3454,7 @@
     "non_negative": 0,
     "options": "Branch",
     "permlevel": 0,
-    "placeholder": null,
+    "placeholder": "Select Nearby Branch",
     "precision": "",
     "print_hide": 0,
     "print_hide_if_no_value": 0,

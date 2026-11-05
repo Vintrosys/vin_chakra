@@ -129,6 +129,25 @@ def set_technician(doc, method=None):
 	doc.flags.technician_abbr = technician.custom_abbr
 
 
+def check_ticket_can_be_invoiced(ticket: str) -> None:
+	"""Installation calls are not invoiced. The Technician Portal hides Create Invoice for them,
+	and this refuses them on save and when the portal starts an invoice."""
+	call_type = frappe.db.get_value("HD Ticket", ticket, "ticket_type") or ""
+	if call_type.strip().lower() == "installation":
+		frappe.throw(
+			_("Ticket {0} is an Installation call, so no Sales Invoice can be created for it.").format(frappe.bold(ticket)),
+			title=_("Invoice Not Allowed"),
+		)
+
+
+def check_invoice_ticket(doc, method=None):
+	"""before_validate: refuse an invoice for an Installation ticket. Checked when the ticket is
+	linked (a new invoice or a changed link), so invoices that already exist are left alone."""
+	ticket = doc.get("custom_hd_ticket")
+	if ticket and (doc.is_new() or doc.has_value_changed("custom_hd_ticket")):
+		check_ticket_can_be_invoiced(ticket)
+
+
 def get_new_invoice_branch(ticket: str | None, user: str) -> str | None:
 	"""The branch of a new invoice for `ticket` raised by `user`: the ticket's branch, otherwise the
 	branch of the user's Employee (the invoice's technician). None if neither has one."""

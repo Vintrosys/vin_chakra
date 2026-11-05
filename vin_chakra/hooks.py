@@ -115,6 +115,7 @@ doc_events = {
 		"autoname": "vin_chakra.vin_chakra.custom.sales_invoice.set_invoice_name",
 		"before_validate": [
 			"vin_chakra.vin_chakra.custom.sales_invoice.remove_empty_items",
+			"vin_chakra.vin_chakra.custom.sales_invoice.check_invoice_ticket",
 			"vin_chakra.vin_chakra.custom.sales_invoice.set_branch"
 		]
 	},
@@ -188,8 +189,6 @@ doctype_js = {
 
 doctype_list_js = {
     "Customer": "public/js/customer_list.js",
-    "Quotation": "public/js/branch_list_filter.js",
-    "Sales Invoice": "public/js/branch_list_filter.js",
 }
 
 

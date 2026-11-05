@@ -4,7 +4,7 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
-from vin_chakra.vin_chakra.custom.sales_invoice import get_new_invoice_branch
+from vin_chakra.vin_chakra.custom.sales_invoice import check_ticket_can_be_invoiced, get_new_invoice_branch
 
 
 def _is_technician(user=None):
@@ -186,6 +186,7 @@ def get_invoice_init_details(ticket_name: str = None, customer: str = None, phon
 	gst_bill_required = 0
 
 	if ticket_name and frappe.db.exists("HD Ticket", ticket_name):
+		check_ticket_can_be_invoiced(ticket_name)
 		t_dict = get_ticket_detail(ticket_name)
 		customer_id = t_dict.get("customer") or ""
 		customer_name = t_dict.get("custom_customer_name") or ""

@@ -619,7 +619,7 @@ class TechnicianPortal {
                             </button>
                         </div>
                     `;
-                } else {
+                } else if (this.can_create_invoice(t)) {
                     invoice_btn = `
                         <div style="margin-top: 10px; border-top: 1px solid #f1f5f9; padding-top: 10px;">
                             <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="width: 100%; border-radius: 6px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 12px; background-color: #10b981; border-color: #10b981; color: white;">
@@ -687,7 +687,7 @@ class TechnicianPortal {
                             </button>
                         </div>
                     `;
-                } else {
+                } else if (this.can_create_invoice(t)) {
                     invoice_btn = `
                         <div class="tp-list-action-col" style="flex-shrink:0;">
                             <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="border-radius:6px; font-weight:700; display: flex; align-items: center; gap: 4px; padding: 5px 10px; background-color: #10b981; border-color: #10b981; color: white;">
@@ -778,7 +778,7 @@ class TechnicianPortal {
                 let tickets_html = day_tickets.map(t => {
                     let is_res = t.status && t.status.trim().toLowerCase() === 'resolved';
                     let phone = t.custom_customer_mobile_number || t.primary_phone || t.custom__secondary_phone_number || '';
-                    let cal_inv_btn = is_res ? `
+                    let cal_inv_btn = is_res && this.can_create_invoice(t) ? `
                         <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${t.name}" data-customer="${t.customer || t.custom_customer_name || ''}" data-phone="${phone}" style="font-size: 10px; padding: 1px 4px; margin-top: 2px; width: 100%; border-radius: 3px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 3px; background-color: #10b981; border-color: #10b981; color: white;" title="Create Invoice">
                             <i class="fa fa-file-text-o"></i> Create Invoice
                         </button>
@@ -1459,11 +1459,11 @@ class TechnicianPortal {
                                 <button class="btn btn-xs tp-btn-send-invoice" data-ticket="${ticket.name}" data-invoice="${inv.name}" data-customer="${cust}" data-phone="${phone}" style="border-radius:6px; font-weight:700; display:flex; align-items:center; gap:6px; padding:6px 12px; background-color:#25D366; border-color:#25D366; color:white;">
                                     <i class="fa fa-whatsapp"></i> Send Invoice
                                 </button>
-                            ` : `
+                            ` : self.can_create_invoice(ticket) ? `
                                 <button class="btn btn-xs btn-success tp-btn-create-invoice" data-name="${ticket.name}" data-customer="${cust}" data-phone="${phone}" style="border-radius:6px; font-weight:700; padding:6px 12px; background-color:#10b981; border-color:#10b981; color:white;">
                                     <i class="fa fa-file-text-o"></i> Create Invoice
                                 </button>
-                            `}
+                            ` : ''}
                         </div>
                     </div>
                 `);
@@ -1778,6 +1778,11 @@ class TechnicianPortal {
         });
 
         dialog.show();
+    }
+
+    // Installation calls are not invoiced; the server refuses them too
+    can_create_invoice(t) {
+        return (t.ticket_type || "").trim().toLowerCase() !== "installation";
     }
 
     create_invoice(ticket_name, customer, phone) {
