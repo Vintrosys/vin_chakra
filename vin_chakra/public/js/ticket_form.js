@@ -133,7 +133,7 @@
           <div class="tk-header">
             <div class="tk-header-inner">
               <div class="tk-logo-wrap">${ICONS.ticket}</div>
-              <h1>Raise a Support Ticket</h1><p>Sree Chakra Sewing Systems</p>
+              <h1>Raise a Support Ticket</h1>
             </div>
           </div>
           <div class="tk-skeleton-wrap">
@@ -155,7 +155,7 @@
           <div class="tk-card">
             <div class="tk-header"><div class="tk-header-inner">
               <div class="tk-logo-wrap">${ICONS.ticket}</div>
-              <h1>Raise a Support Ticket</h1><p>Sree Chakra Sewing Systems</p>
+              <h1>Raise a Support Ticket</h1>
             </div></div>
             <div class="tk-body">
               <div class="tk-alert error" style="display:flex">${ICONS.err}
@@ -380,7 +380,7 @@
             customerInput.dataset.customerName = cust.customer_name || cust.name;
             this._renderCustomerDetailsCard(cust, customerInput.closest('.tk-field') || customerInput.parentElement);
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       // Restore active step
@@ -762,7 +762,7 @@
               if (c.state && modalForm.state) modalForm.state.value = c.state;
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
 
       // Initial focus
@@ -1340,7 +1340,6 @@
           <div class="tk-badge"><div class="tk-badge-dot"></div>Support</div>
           <div class="tk-logo-wrap">${ICONS.ticket}</div>
           <h1>${this.schema.title || 'Raise a Support Ticket'}</h1>
-          <p>Sree Chakra Sewing Systems</p>
         </div>`;
       return h;
     }
@@ -1743,7 +1742,7 @@
                         applyBrandAndModel(b, m);
                       }
                     })
-                    .catch(() => {});
+                    .catch(() => { });
                 }
               }
             });
