@@ -226,9 +226,6 @@ def get_dashboard_data(
         if technician:
             movement_conditions.append("cl.technician = %(technician)s")
             movement_values["technician"] = technician
-        if branch:
-            movement_conditions.append("t.custom_branch = %(branch)s")
-            movement_values["branch"] = branch
         if search_query:
             search_escaped = f"%{search_query}%"
             movement_conditions.append("(t.name LIKE %(search)s OR t.subject LIKE %(search)s OR t.custom_customer_name LIKE %(search)s)")
@@ -406,7 +403,7 @@ def get_status_summary(where, values):
 
 
 @frappe.whitelist()
-def get_technician_map_data(date, technician=None, customer=None, ticket_status=None, branch: str = None):
+def get_technician_map_data(date, technician=None, customer=None, ticket_status=None):
     if not (frappe.has_permission("HD Ticket", "read") and ("Chief Technician" in frappe.get_roles() or "System Manager" in frappe.get_roles())):
         frappe.throw("You are not permitted to access this dashboard.")
         
@@ -414,7 +411,6 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
     date_str = date if date not in (None, "", "None", "null", "undefined") else frappe.utils.today()
     technician = technician if technician not in (None, "", "None", "null", "undefined") else None
     customer = customer if customer not in (None, "", "None", "null", "undefined") else None
-    branch = get_branch_filter(branch)
     
     # Normalize ticket_status (None vs empty string "")
     if ticket_status in (None, "None", "null", "undefined"):
@@ -434,9 +430,6 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         if ticket_status:
             conditions.append("t.status = %(ticket_status)s")
             values["ticket_status"] = ticket_status
-        if branch:
-            conditions.append("t.custom_branch = %(branch)s")
-            values["branch"] = branch
             
         where_clause = " AND ".join(conditions)
         
@@ -493,10 +486,6 @@ def get_technician_map_data(date, technician=None, customer=None, ticket_status=
         else:
             # Defaults to 'Resolved' if None
             conditions.append("t.status = 'Resolved'")
-
-        if branch:
-            conditions.append("t.custom_branch = %(branch)s")
-            values["branch"] = branch
             
         where_clause = " AND ".join(conditions)
         

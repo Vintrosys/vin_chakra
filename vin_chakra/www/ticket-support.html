@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="/assets/vin_chakra/css/ticket_form.css"/>
+<link rel="stylesheet" href="/assets/vin_chakra/css/ticket_form.css?v={{ build_version }}"/>
 <style>
   /* Hide Frappe's default navbar/footer for a clean fullscreen look */
   .web-footer, .navbar, .page-header, .page-header-wrapper { display: none !important; }
@@ -19,5 +19,6 @@
 
 {% block page_content %}
 <div id="ticket-root"></div>
-<script src="/assets/vin_chakra/js/ticket_form.js"></script>
+{# The version makes browsers fetch the script again after each deploy instead of a cached copy #}
+<script src="/assets/vin_chakra/js/ticket_form.js?v={{ build_version }}"></script>
 {% endblock %}

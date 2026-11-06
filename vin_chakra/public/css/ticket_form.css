@@ -194,9 +194,10 @@
   outline:none; appearance:none; -webkit-appearance:none; line-height:1.5;
 }
 .tk-control::placeholder { color:var(--text-light); }
-.tk-control:hover:not(:disabled) { border-color:#d8c39a; background:#fff; }
+/* background-color, not the background shorthand, so a dropdown keeps its arrow */
+.tk-control:hover:not(:disabled) { border-color:#d8c39a; background-color:#fff; }
 .tk-control:focus {
-  border-color:var(--brass); background:var(--surface);
+  border-color:var(--brass); background-color:var(--surface);
   box-shadow:0 0 0 4px var(--brass-light);
 }
 textarea.tk-control { resize:vertical; min-height:110px; line-height:1.6; }

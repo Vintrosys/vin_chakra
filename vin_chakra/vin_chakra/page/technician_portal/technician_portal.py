@@ -30,7 +30,8 @@ TICKET_COLUMNS = """
     _assign,
     customer,
     contact,
-    custom_branch
+    custom_branch,
+    ticket_type
 """
 
 @frappe.whitelist()

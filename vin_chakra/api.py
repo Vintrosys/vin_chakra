@@ -183,6 +183,7 @@ def get_form_schema(template_name: str = None) -> dict:
 			"fieldtype": fieldtype,
 			"label": get_display_label(row, df),
 			"reqd": reqd,
+			"placeholder": df.placeholder if df else None,
 			"options": df.options if (df and df.fieldtype == "Table") else options_list,
 			"child_fields": child_fields,
 			"icon": row.icon or "tag"
