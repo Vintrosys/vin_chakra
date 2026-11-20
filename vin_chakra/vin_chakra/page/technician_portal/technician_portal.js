@@ -1948,8 +1948,8 @@ class TechnicianExpenseClaim {
             total += amount || 0;
             let [kind, label] = draft && this.problems[t.name] ? ["problem", __("Needs attention")]
                 : draft ? ["unsaved", __("Unsaved")]
-                : claim ? [claim.locked ? "locked" : "draft", __(claim.status)]
-                : ["none", __("Not claimed")];
+                    : claim ? [claim.locked ? "locked" : "draft", __(claim.status)]
+                        : ["none", __("Not claimed")];
             return `
                 <tr class="tp-ec-list-row" data-ticket="${esc(t.name)}" tabindex="0" role="button">
                     <td>
@@ -1967,7 +1967,7 @@ class TechnicianExpenseClaim {
         let from = frappe.datetime.str_to_user(data.from_date), to = frappe.datetime.str_to_user(data.to_date);
         let empty = data.from_date !== data.to_date ? __("No customer visits from {0} to {1}", [from, to])
             : data.to_date === frappe.datetime.get_today() ? __("No customer visits today")
-            : __("No customer visits on {0}", [to]);
+                : __("No customer visits on {0}", [to]);
         this.$body.find(".tp-ec-list-wrap").html(`
             ${data.employee_missing ? `<div class="tp-ec-banner is-warning">${__("No active Employee is linked to your user, so you can't save Expense Claims. Please contact HR.")}</div>` : ""}
             <table class="table table-bordered tp-ec-list">
@@ -2040,7 +2040,7 @@ class TechnicianExpenseClaim {
         let c = data.claim, d = data.defaults;
         if (!c) {
             return {
-                from_location: "",
+                from_location: d.from_location || "",
                 journey_date: d.journey_date || "",
                 no_of_days: String(d.no_of_days || 1),
                 payable_by_customer: d.payable_by_customer || "",
@@ -2049,7 +2049,7 @@ class TechnicianExpenseClaim {
             };
         }
         return {
-            from_location: c.from_location || "",
+            from_location: c.from_location || d.from_location || "",
             journey_date: c.journey_date || d.journey_date || "",
             no_of_days: String(c.no_of_days || d.no_of_days || ""),
             payable_by_customer: c.payable_by_customer || d.payable_by_customer || "",
@@ -2266,8 +2266,8 @@ class TechnicianExpenseClaim {
     // --- Footer, validation, Save and Share -------------------------------------------
 
     render_footer() {
-        let share = (disabled) => `<button type="button" class="btn btn-default tp-ec-share" ${disabled ? "disabled" : ""}>
-            ${frappe.utils.icon("file-spreadsheet", "sm")} <span>${__("Share (Excel)")}</span></button>`;
+        let share = (disabled) => `<button type="button" class="btn btn-default tp-ec-export" ${disabled ? "disabled" : ""}>
+    ${frappe.utils.icon("printer", "sm")} <span>${__("Export Documents")}</span></button>`;
         let save = (disabled) => `<button type="button" class="btn btn-primary tp-ec-save" ${disabled ? "disabled" : ""}>
             ${frappe.utils.icon("save", "sm")} <span>${__("Save")}</span></button>`;
         // Messages go in the footer, not in a toast: on phones a toast covers these buttons
@@ -2476,35 +2476,198 @@ class TechnicianExpenseClaim {
         }
     }
 
-    share() {
+    // What Print and Excel send: unsaved edits (as shown) plus the list's dates or the open ticket
+    export_args() {
         let drafts = {}, args;
         if (this.screen === "list") {
-            if (!this.list || !this.list.tickets.length) return;
+            if (!this.list || !this.list.tickets.length) return null;
             this.list.tickets.forEach((t) => {
                 let draft = this.drafts[t.name];
                 if (draft) drafts[t.name] = this.payload(draft.form, draft.modified, draft.period);
             });
             args = { from_date: this.list.from_date, to_date: this.list.to_date };
         } else {
-            if (!this.data) return;
-            // Unsaved values are exported as they are, but amounts have to be numbers
+            if (!this.data) return null;
             let f = this.form;
             let bad = f.expenses.some((e) => e.amount !== "" && !this.amount_ok(e.amount, true))
                 || (f.payable_by_customer === "Yes" && !this.amount_ok(f.amount_collected, true));
             if (bad) {
                 this.validate();
-                return;
+                return null;
             }
             if (this.drafts[this.ticket]) drafts[this.ticket] = this.payload(f, this.draft_modified, this.period);
             args = { ticket: this.ticket };
         }
         args.drafts = JSON.stringify(drafts);
-        this.download(TP_EXPENSE_API + "download_expense_claim_excel", args);
+        return args;
+    }
+
+    // Tickets with a claimed amount and their total, i.e. what Print / Excel will contain
+    claimed_summary() {
+        if (this.screen === "list") {
+            let amounts = this.list.tickets
+                .map((t) => (this.drafts[t.name] ? this.form_total(this.drafts[t.name].form) : t.claim ? t.claim.total : 0))
+                .filter((amount) => amount > 0);
+            return { count: amounts.length, total: amounts.reduce((a, b) => a + b, 0), currency: this.list.currency };
+        }
+        let total = this.form_total(this.form);
+        return { count: total > 0 ? 1 : 0, total, currency: this.data.currency };
+    }
+
+    // Export Documents: choose Print (the paper form) or Excel
+    export_documents() {
+        let args = this.export_args();
+        if (!args) return;
+        let sum = this.claimed_summary();
+        if (!sum.count) {
+            this.notice("error", __("There are no claimed expenses to export."));
+            return;
+        }
+        let d = new frappe.ui.Dialog({ title: __("Export Documents"), fields: [{ fieldtype: "HTML", fieldname: "choices" }] });
+        d.onhide = () => d.$wrapper.remove();
+        d.get_field("choices").$wrapper.html(`
+            <div style="display:flex; flex-direction:column; gap:10px; padding:6px 0;">
+                <div class="text-muted" style="font-size:12px;">
+                    ${sum.count === 1 ? __("1 claimed ticket") : __("{0} claimed tickets", [sum.count])} · ${format_currency(sum.total, sum.currency)}
+                </div>
+                <button type="button" class="btn btn-default btn-block" data-export="print">
+                    ${frappe.utils.icon("printer", "sm")} ${__("Print")}</button>
+                <button type="button" class="btn btn-default btn-block" data-export="excel">
+                    ${frappe.utils.icon("file-spreadsheet", "sm")} ${__("Excel")}</button>
+            </div>`);
+        d.$wrapper.on("click", "[data-export]", (e) => {
+            let kind = e.currentTarget.getAttribute("data-export");
+            d.hide();
+            if (kind === "print") this.export_print(args);
+            else this.download(TP_EXPENSE_API + "download_expense_claim_excel", args);
+        });
+        d.show();
+    }
+
+    async export_print(args) {
+        let $btn = this.$footer.find(".tp-ec-export").prop("disabled", true);
+        try {
+            this.print_forms(await frappe.xcall(TP_EXPENSE_API + "get_expense_claim_print", args));
+        } catch (e) {
+            // Frappe already shows the server's message
+        } finally {
+            $btn.prop("disabled", false);
+        }
+    }
+
+    // Print from a hidden frame, so the portal page itself is never printed
+    async print_forms(data) {
+        // Load the header as a data URI so the hidden frame always has it
+        let header_src = "";
+
+        let header_urls = [
+            "/assets/vin_chakra/js/lib/leaflet/images/header.jpeg"
+        ];
+        for (let url of header_urls) {
+            try {
+                let res = await fetch(url, { cache: "no-cache" });
+                if (!res.ok || !(res.headers.get("Content-Type") || "").startsWith("image/")) continue;
+                let blob = await res.blob();
+                header_src = await new Promise((resolve, reject) => {
+                    let reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+                break;
+            } catch (e) {
+                // try the next file name
+            }
+        }
+        if (!header_src) {
+            frappe.show_alert({ message: __("Header image not found. Put header.jpeg in vin_chakra/public/images."), indicator: "orange" });
+        }
+
+        let frame = document.createElement("iframe");
+        frame.style.cssText = "position:fixed; right:0; bottom:0; width:0; height:0; border:0;";
+        frame.onload = () => {
+            let imgs = Array.from(frame.contentDocument.images);
+            Promise.all(imgs.map((img) => (img.complete ? Promise.resolve() : new Promise((r) => { img.onload = img.onerror = r; }))))
+                .then(() => {
+                    frame.contentWindow.focus();
+                    frame.contentWindow.print();
+                    setTimeout(() => frame.remove(), 60000);
+                });
+        };
+        frame.srcdoc = this.print_html(data, header_src);
+        document.body.appendChild(frame);
+    }
+
+    // One "Staff Tour Settlement" page per ticket, laid out like the paper form
+    print_html(data, header_src) {
+        let esc = this.esc;
+        let date = (d) => (d ? frappe.datetime.str_to_user(d) : "");
+        let rs = (v) => (flt(v) ? flt(v).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "");
+        let val = (text, cls = "") => `<span class="v ${cls}">${text ? esc(String(text)) : "&nbsp;"}</span>`;
+        let money = (no, label, value, note = "") =>
+            `<div class="row"><span>${no}) ${label} Rs.</span>${val(rs(value) + (note && value ? ` (${note})` : ""))}</div>`;
+        let today = date(frappe.datetime.get_today());
+        header_src = header_src || (window.location.origin + "/assets/vin_chakra/images/header.png");
+
+        let pages = data.forms.map((f) => {
+            let reason = (f.trip_reason || "").toLowerCase();
+            let reasons = ["Service", "Installation", "Sales", "Promotion"]
+                .map((r) => `<span class="${reason.includes(r.toLowerCase()) ? "on" : ""}">${r}</span>`).join(" / ");
+            let l = f.lines;
+            return `
+            <section class="sheet">
+                <img class="hdr" src="${header_src}" alt="">
+                <h2>Staff Tour Settlement</h2>
+                <div class="row right"><span>Ticket No: <b>${esc(f.ticket)}</b></span><span>Date:</span>${val(today, "w120")}</div>
+                <div class="row"><span>1) Name of the Employee :</span>${val(data.employee_name)}</div>
+                <div class="row"><span>2) Date of journey :</span>${val(date(f.journey_date))}</div>
+                <div class="row"><span>3) From :</span>${val(f.from_location)}<span>To:</span>${val(f.to_location)}
+                    <span>No of Days:</span><span class="box">${esc(String(f.no_of_days))}</span></div>
+                <div class="row"><span>4) Customer name:</span>${val(f.customer_name)}</div>
+                <div class="row"><span>5) Reason For Trip: ${reasons}</span></div>
+                <div class="row"><span>6) If Amount Payable by customer :
+                    <span class="${f.payable_by_customer === "Yes" ? "on" : ""}">Yes</span> /
+                    <span class="${f.payable_by_customer === "No" ? "on" : ""}">No</span> &nbsp; Collected :Rs.</span>
+                    ${val(f.payable_by_customer === "Yes" ? rs(f.amount_collected) || "0.00" : "")}</div>
+                ${money(7, "Bus /train Fare : (Tickets to be attached)*", l.fare)}
+                ${money(8, "Hotel Bill : (Bill to be attached)*", l.hotel)}
+                ${money(9, "Conveyance : (Taxi/Auto/Local bus)", l.conveyance)}
+                ${money(10, "Food :", l.food)}
+                ${money(11, "Others :", l.others, f.others_note)}
+                <div class="row total"><span>12) Total Amount : Rs.</span>${val(rs(f.total))}</div>
+                ${money(13, "Advance received if any :", 0)}
+                ${money(14, "Balance to be Reimbursed:", 0)}
+                <p class="note">(BILL TO BE ATTACHED WHEREVER IT IS NECESSARY )</p>
+                <div class="sign"><span>Approved By</span><span>Accounted By</span><span>Employee Sign</span></div>
+            </section>`;
+        }).join("");
+
+        return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${__("Staff Tour Settlement")}</title>
+        
+        <style>
+            @page { size: A5 portrait; margin: 0; }
+            * { box-sizing: border-box; }
+            html, body { margin: 0; padding: 0; }
+            body { font: 11px/1.25 Arial, sans-serif; color: #000; }
+            .sheet { width: 148mm; height: 209mm; page-break-after: always; padding: 0 8mm 6mm; overflow: hidden; }
+            .sheet:last-child { page-break-after: auto; }
+            .hdr { display: block; width: calc(100% + 16mm); margin: 0 -8mm 4px; height: auto; }
+            h2 { text-align: center; text-decoration: underline; font-size: 14px; margin: 6px 0 4px; }
+            .row { display: flex; align-items: flex-end; gap: 4px; margin: 7px 0; }
+            .row.right { justify-content: flex-end; }
+            .v { flex: 1; border-bottom: 1px solid #000; min-height: 1.3em; padding: 0 3px; font-weight: 600; }
+            .v.w120 { flex: 0 0 80px; }
+            .box { border: 1px solid #000; min-width: 32px; text-align: center; font-weight: 600; padding: 1px 4px; }
+            .on { border: 1px solid #000; border-radius: 10px; padding: 0 5px; font-weight: 700; }
+            .total .v { font-weight: 800; }
+            .note { font-weight: 700; margin: 10px 0 0; font-size: 10px; }
+            .sign { display: flex; justify-content: space-between; margin-top: 38px; font-weight: 600; }
+        </style></head><body>${pages}</body></html>`;
     }
 
     // POST and save the file; on an error show the server's message instead of leaving the page
     async download(method, args) {
-        let $btn = this.$footer.find(".tp-ec-share").prop("disabled", true);
+        let $btn = this.$footer.find(".tp-ec-export").prop("disabled", true);
         try {
             let res = await fetch(`/api/method/${method}`, {
                 method: "POST",
@@ -2523,7 +2686,7 @@ class TechnicianExpenseClaim {
             a.remove();
             setTimeout(() => URL.revokeObjectURL(url), 10000);
         } catch (e) {
-            frappe.msgprint({ title: __("Share (Excel)"), message: e.message || __("The Excel file could not be made."), indicator: "red" });
+            frappe.msgprint({ title: __("Export Documents"), message: e.message || __("The Excel file could not be made."), indicator: "red" });
         } finally {
             $btn.prop("disabled", false);
         }
@@ -2630,7 +2793,7 @@ class TechnicianExpenseClaim {
             setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 300);
         });
 
-        this.$footer.on("click", ".tp-ec-share", () => this.share());
+        this.$footer.on("click", ".tp-ec-export", () => this.export_documents());
         this.$footer.on("click", ".tp-ec-save", () => (this.screen === "list" ? this.save_all() : this.save_ticket()));
     }
 }

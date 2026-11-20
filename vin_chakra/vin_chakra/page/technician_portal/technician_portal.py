@@ -17,7 +17,35 @@ from frappe.utils import (
     today,
 )
 
-from vin_chakra.technician_api import enrich_tickets_customer_details, get_line_ticket, ticket_claim_key
+from vin_chakra.technician_api import (
+    enrich_tickets_customer_details,
+    get_line_ticket,
+    reverse_geocode,
+    ticket_claim_key,
+)
+
+def get_day_start_location(employee, visits):
+    """Place name of the technician's Day Check-in (latest IN at or before the first visit)."""
+    if not employee:
+        return ""
+    filters = {"employee": employee.name, "log_type": "IN"}
+    if visits:
+        filters["time"] = ["<=", visits[0].timestamp]
+    logs = frappe.get_all(
+        "Employee Checkin",
+        filters=filters,
+        fields=["device_id", "latitude", "longitude"],
+        order_by="time desc",
+        limit=1,
+    )
+    if not logs:
+        return ""
+    log = logs[0]
+    place = cstr(log.device_id).strip()
+    if place.lower() in ("", "technician portal", "hrms"):
+        # older check-ins saved no place name: get it from the GPS position
+        place = reverse_geocode(log.latitude, log.longitude) if log.latitude and log.longitude else ""
+    return place[:140]
 
 # Ticket columns shown by the portal's card, list and calendar views
 TICKET_COLUMNS = """
@@ -287,7 +315,7 @@ def get_ticket_expense_claim(ticket: str, from_date: str | None = None, to_date:
         },
         "to_location": to_location,
         "to_location_warning": warning,
-        "defaults": get_defaults(t, visits),
+        "defaults": {**get_defaults(t, visits), "from_location": get_day_start_location(employee, visits)},
         "claim": claim_payload(claim),
         "cancelled_claim": get_cancelled_claim(employee, ticket),
         "expense_types": get_technician_expense_types(employee.company if employee else None),
@@ -403,28 +431,155 @@ def download_expense_claim_excel(
     from_date: str | None = None,
     to_date: str | None = None,
 ):
-    """Share (Excel): a compact sheet with one row per ticket: the ticket from its screen, or the
-    list's tickets (`from_date` to `to_date`; `date_range` / `date` from older pages). `drafts` ({ticket: values as sent to save_ticket_expense_claim})
-    holds edits not saved yet, which are exported as shown. Never writes to the database."""
+    """Excel: one row per claimed ticket: the ticket from its screen, or the list's tickets
+    (`from_date` to `to_date`; `date_range` / `date` from older pages). `drafts` holds edits
+    not saved yet, exported as shown. Never writes to the database."""
     user = require_login()
     drafts = parse_dict(drafts, _("Unsaved changes"))
     with read_only_transaction():
         employee = get_employee(user, required=False)
         types = get_technician_expense_types(employee.company if employee else None)
-        if ticket:
-            t = get_visited_ticket(user, ticket)
-            sheets = [get_export_ticket(user, employee, t, drafts.get(ticket))]
-            period = None
-            filename = f"expense_claim_{ticket}_{today()}.xlsx"
-        else:
-            period = get_list_period(from_date, to_date, date_range, date)
-            tickets = get_visited_tickets(user, *period)
-            sheets = [get_export_ticket(user, employee, t, drafts.get(t["name"])) for t in tickets]
-            filename = f"expense_claim_{period[0]}_{period[1]}.xlsx" if period[0] != period[1] else f"expense_claim_{period[1]}.xlsx"
+        period = None if ticket else get_list_period(from_date, to_date, date_range, date)
+        sheets = get_export_sheets(user, employee, ticket, period, drafts)
         content = build_expense_claim_xlsx(user, employee, sheets, types, period)
+    if ticket:
+        filename = f"expense_claim_{ticket}_{today()}.xlsx"
+    elif period[0] != period[1]:
+        filename = f"expense_claim_{period[0]}_{period[1]}.xlsx"
+    else:
+        filename = f"expense_claim_{period[1]}.xlsx"
     frappe.response["filename"] = filename
     frappe.response["filecontent"] = content
     frappe.response["type"] = "binary"
+
+
+@frappe.whitelist(methods=["POST"])
+def get_expense_claim_print(
+    ticket: str | None = None,
+    drafts: str | dict | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+):
+    """Print: one "Staff Tour Settlement" form per claimed ticket. Never writes."""
+    user = require_login()
+    drafts = parse_dict(drafts, _("Unsaved changes"))
+    with read_only_transaction():
+        employee = get_employee(user, required=False)
+        period = None if ticket else get_list_period(from_date, to_date)
+        forms = [print_form(v) for v in get_export_sheets(user, employee, ticket, period, drafts)]
+    return {"employee_name": employee.employee_name if employee else get_fullname(user), "forms": forms}
+
+
+def get_export_sheets(user, employee, ticket, period, drafts):
+    """Tickets to export. Only tickets with claimed expenses are kept."""
+    tickets = [get_visited_ticket(user, ticket)] if ticket else get_visited_tickets(user, *period)
+    claims = get_active_claims(employee, [t["name"] for t in tickets])  # one query for all tickets
+    sheets = [get_export_ticket(user, t, claims.get(t["name"]), drafts.get(t["name"])) for t in tickets]
+    sheets = [v for v in sheets if flt(v.get("total")) > 0]
+    if not sheets:
+        frappe.throw(_("There are no claimed expenses to export."))
+    return sheets
+
+
+# Expense type -> line of the paper form; anything else goes to line 11 (Others)
+FORM_LINES = (
+    ("fare", ("bus", "train", "fare")),
+    ("hotel", ("hotel",)),
+    ("conveyance", ("conveyance", "taxi", "auto")),
+    ("food", ("food", "meal")),
+)
+
+
+def form_line(expense_type):
+    name = cstr(expense_type).lower()
+    return next((line for line, words in FORM_LINES if any(w in name for w in words)), "others")
+
+
+def print_form(v):
+    lines = dict.fromkeys(("fare", "hotel", "conveyance", "food", "others"), 0)
+    others = []
+    for name, amount in type_totals(v["expenses"]).items():
+        line = form_line(name)
+        lines[line] += amount
+        if line == "others":
+            others.append(name)
+    return {
+        "ticket": v["ticket"],
+        "customer_name": v["customer_name"],
+        "journey_date": v.get("journey_date") or v["visit_date"],
+        "no_of_days": v.get("no_of_days") or 1,
+        "from_location": v.get("from_location") or "",
+        "to_location": v.get("to_location") or "",
+        "trip_reason": v.get("trip_reason") or "",
+        "payable_by_customer": v.get("payable_by_customer") or "",
+        "amount_collected": v.get("amount_collected"),
+        "lines": {k: flt(x, 2) for k, x in lines.items()},
+        "others_note": ", ".join(others),
+        "total": flt(sum(lines.values()), 2),
+    }
+
+@frappe.whitelist(methods=["POST"])
+def get_expense_claim_print(
+    ticket: str | None = None, drafts: str | dict | None = None,
+    from_date: str | None = None, to_date: str | None = None,
+):
+    """Print: one "Staff Tour Settlement" form per claimed ticket. Never writes."""
+    user = require_login()
+    drafts = parse_dict(drafts, _("Unsaved changes"))
+    with read_only_transaction():
+        employee = get_employee(user, required=False)
+        period = None if ticket else get_list_period(from_date, to_date)
+        forms = [print_form(v) for v in get_export_sheets(user, employee, ticket, period, drafts)]
+    return {"employee_name": employee.employee_name if employee else get_fullname(user), "forms": forms}
+
+
+def get_export_sheets(user, employee, ticket, period, drafts):
+    """Tickets to export. Only tickets with claimed expenses are kept (an unclaimed ticket is skipped)."""
+    tickets = [get_visited_ticket(user, ticket)] if ticket else get_visited_tickets(user, *period)
+    claims = get_active_claims(employee, [t["name"] for t in tickets])  # one query for all tickets
+    sheets = [get_export_ticket(user, t, claims.get(t["name"]), drafts.get(t["name"])) for t in tickets]
+    sheets = [v for v in sheets if flt(v.get("total")) > 0]
+    if not sheets:
+        frappe.throw(_("There are no claimed expenses to export."))
+    return sheets
+
+
+# Expense type -> line of the paper form; anything else goes to line 11 (Others)
+FORM_LINES = (
+    ("fare", ("bus", "train", "fare")),
+    ("hotel", ("hotel",)),
+    ("conveyance", ("conveyance", "taxi", "auto")),
+    ("food", ("food", "meal")),
+)
+
+
+def form_line(expense_type):
+    name = cstr(expense_type).lower()
+    return next((line for line, words in FORM_LINES if any(w in name for w in words)), "others")
+
+
+def print_form(v):
+    lines = dict.fromkeys(("fare", "hotel", "conveyance", "food", "others"), 0)
+    others = []
+    for name, amount in type_totals(v["expenses"]).items():
+        line = form_line(name)
+        lines[line] += amount
+        if line == "others":
+            others.append(name)
+    return {
+        "ticket": v["ticket"],
+        "customer_name": v["customer_name"],
+        "journey_date": v.get("journey_date") or v["visit_date"],
+        "no_of_days": v.get("no_of_days") or 1,
+        "from_location": v.get("from_location") or "",
+        "to_location": v.get("to_location") or "",
+        "trip_reason": v.get("trip_reason") or "",
+        "payable_by_customer": v.get("payable_by_customer") or "",
+        "amount_collected": v.get("amount_collected"),
+        "lines": {k: flt(x, 2) for k, x in lines.items()},
+        "others_note": ", ".join(others),
+        "total": flt(sum(lines.values()), 2),
+    }
 
 
 # --- Tickets and visits ------------------------------------------------------------------
@@ -862,21 +1017,20 @@ def read_only_transaction():
         frappe.db.rollback()
 
 
-def get_export_ticket(user, employee, t, draft):
-    """One ticket's values for the Excel: the saved claim, or the unsaved form when `draft` is sent."""
-    claim = get_active_claims(employee, [t["name"]]).get(t["name"])
+def get_export_ticket(user, t, claim, draft):
+    """One ticket's values for the Excel / print: the saved claim, or the unsaved form when `draft` is sent."""
     saved = claim_payload(claim) or {}
-    visits = get_visits(user, t["name"])
+    locked = saved.get("locked")
     values = dict(saved)
     # As the popup shows it: a submitted claim keeps its own; otherwise the customer's address,
     # which Save would store
-    values["to_location"] = saved.get("to_location") if saved.get("locked") else (customer_address(t) or saved.get("to_location") or "")
-    values["trip_reason"] = saved.get("trip_reason") if saved.get("locked") else (t.get("ticket_type") or "")
-    if draft and not saved.get("locked"):
+    values["to_location"] = saved.get("to_location") if locked else (customer_address(t) or saved.get("to_location") or "")
+    values["trip_reason"] = saved.get("trip_reason") if locked else (t.get("ticket_type") or "")
+    if draft and not locked:
         draft = parse_dict(draft, _("Unsaved changes"))
         # A line keeps its saved date; a new one gets the date Save would give it
         saved_dates = {e["name"]: e["expense_date"] for e in saved.get("expenses") or []}
-        visits = period_visits(visits, parse_period(draft.get("visit_from"), draft.get("visit_to")))
+        visits = period_visits(get_visits(user, t["name"]), parse_period(draft.get("visit_from"), draft.get("visit_to")))
         new_date = getdate(visits[-1].timestamp) if visits else getdate(t["visit_date"])
         days = cstr(draft.get("no_of_days")).strip()
         try:

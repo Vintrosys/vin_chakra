@@ -18,6 +18,22 @@ def _is_technician(user=None):
 	roles = frappe.get_roles(user)
 	return not ({"Agent Manager", "System Manager"} & set(roles))
 
+def reverse_geocode(lat, lng):
+    """GPS -> short place name (e.g. 'Vilankurichi, Coimbatore'). '' if it fails."""
+    import requests
+    try:
+        r = requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"format": "jsonv2", "lat": lat, "lon": lng, "zoom": 16},
+            headers={"User-Agent": "vin-chakra-erp"},
+            timeout=5,
+        )
+        a = r.json().get("address", {})
+        area = a.get("suburb") or a.get("neighbourhood") or a.get("village") or a.get("road")
+        city = a.get("city") or a.get("town") or a.get("county") or a.get("state_district")
+        return ", ".join(p for p in (area, city) if p)[:140]
+    except Exception:
+        return ""
 
 def enrich_tickets_customer_details(tickets: Union[List[dict], dict]) -> Union[List[dict], dict]:
 	"""
@@ -951,8 +967,14 @@ def mark_day_attendance(log_type: str, latitude: float = None, longitude: float 
 		else:
 			return {"status": "error", "message": "You are already checked out. Please check in first."}
 
-	# Determine device ID: use parameter or default to "Technician Portal"
-	effective_device_id = device_id.strip() if device_id and str(device_id).strip() else "Technician Portal"
+	# Device ID: the place name from the GPS position (e.g. "Vilankurichi, Coimbatore");
+	# falls back to the passed value or "Technician Portal" if there is no GPS or lookup fails
+	effective_device_id = ""
+	if latitude is not None and longitude is not None and str(latitude).strip() != "" and str(longitude).strip() != "":
+		effective_device_id = reverse_geocode(latitude, longitude)
+	if not effective_device_id:
+		effective_device_id = device_id.strip() if device_id and str(device_id).strip() else "Technician Portal"
+	
 
 	try:
 		checkin = frappe.get_doc({

@@ -18,18 +18,57 @@ def get_allowed_branches(user=None):
     return (sorted(allowed), default) if allowed else (None, None)
 
 
+REGION_PREFIX = "region::"
+REGION_FIELD = "custom_region"   # <- Branch-la nee create panna custom field name
+
+
+def get_region_branches(region):
+    """Branches whose Region is `region`, limited to what the user may see."""
+    allowed = get_allowed_branches()[0]
+    branches = frappe.get_all("Branch", filters={REGION_FIELD: region}, pluck="name", ignore_permissions=True)
+    if allowed is not None:
+        branches = [b for b in branches if b in allowed]
+    return sorted(branches)
+
+
+REGION_FIELD = "custom_region"   # Branch-la nee create panna region field name
+
+
+def get_region_branches(group_branch):
+    """If `group_branch` is an "All <Region>" Branch (e.g. All Chennai), return the branches in
+    that region. Returns None when it is a normal branch."""
+    if not group_branch.startswith("All "):
+        return None
+    # The region comes from the "All" branch's own Region field, else from its name
+    region = frappe.db.get_value("Branch", group_branch, REGION_FIELD) or group_branch[len("All "):]
+    branches = frappe.get_all(
+        "Branch",
+        filters={REGION_FIELD: region, "name": ["!=", group_branch]},
+        pluck="name",
+        ignore_permissions=True,
+    )
+    return sorted(branches)
+
+
 def get_branch_filter(branch):
-    """The Branches to filter on: the chosen one, else every branch the user is limited to, else
-    None for All Branches. A Branch that does not exist, or that the user may not see, is refused."""
+    """The Branches to filter on: the chosen one (or, for "All <Region>", every branch in that
+    region), else every branch the user is limited to, else None for All Branches."""
     allowed = get_allowed_branches()[0]
     if branch in (None, "", "None", "null", "undefined"):
         return allowed
     if not frappe.db.exists("Branch", branch):
         frappe.throw("The selected Branch does not exist.")
+
+    region_branches = get_region_branches(branch)
+    if region_branches is not None:
+        if allowed is not None:
+            region_branches = [b for b in region_branches if b in allowed]
+        # An empty list would mean "All Branches" to the callers, so use a name that matches nothing
+        return region_branches or ["__no_branch_in_region__"]
+
     if allowed is not None and branch not in allowed:
         frappe.throw(f"You are not permitted to view Branch {frappe.utils.escape_html(branch)}.", frappe.PermissionError)
     return [branch]
-
 
 @frappe.whitelist()
 def get_branch_options() -> dict:
@@ -51,8 +90,18 @@ def get_branch_options() -> dict:
     else:
         default_branch = None
 
+        branch_list = allowed if allowed is not None else get_branches()
+
+    # Regions that have at least one branch the user can see
+    region_rows = frappe.get_all(
+        "Branch",
+        filters={"name": ["in", branch_list or [""]], REGION_FIELD: ["is", "set"]},
+        pluck=REGION_FIELD,
+        ignore_permissions=True,
+    )
+
     return {
-        "branches": allowed if allowed is not None else get_branches(),
+        "branches": branch_list,
         "restricted": allowed is not None,
         "default_branch": default_branch,
     }
