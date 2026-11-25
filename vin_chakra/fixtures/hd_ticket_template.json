@@ -6,46 +6,52 @@
   "doctype": "HD Ticket Template",
   "fields": [
    {
+    "editable_after_creation": 0,
     "fieldname": "custom_date",
-    "hide_from_customer": 0,
     "placeholder": null,
     "required": 1,
-    "url_method": null
+    "url_method": null,
+    "visible_to": null
    },
    {
+    "editable_after_creation": 0,
     "fieldname": "custom_required_spares",
-    "hide_from_customer": 0,
     "placeholder": null,
     "required": 0,
-    "url_method": null
+    "url_method": null,
+    "visible_to": null
    },
    {
+    "editable_after_creation": 0,
     "fieldname": "custom_mode_of_payment",
-    "hide_from_customer": 0,
     "placeholder": null,
     "required": 1,
-    "url_method": null
+    "url_method": null,
+    "visible_to": null
    },
    {
+    "editable_after_creation": 0,
     "fieldname": "custom_gst_bill_required",
-    "hide_from_customer": 0,
     "placeholder": null,
     "required": 1,
-    "url_method": null
+    "url_method": null,
+    "visible_to": null
    },
    {
+    "editable_after_creation": 0,
     "fieldname": "custom_pending_reason",
-    "hide_from_customer": 0,
     "placeholder": null,
     "required": 0,
-    "url_method": null
+    "url_method": null,
+    "visible_to": null
    },
    {
+    "editable_after_creation": 0,
     "fieldname": "custom_reason",
-    "hide_from_customer": 0,
     "placeholder": null,
     "required": 0,
-    "url_method": null
+    "url_method": null,
+    "visible_to": null
    }
   ],
   "modified": "2026-09-25 15:49:59.996649",

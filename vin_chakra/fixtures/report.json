@@ -40,5 +40,59 @@
   ],
   "snapshot_report": 0,
   "timeout": 0
+ },
+ {
+  "add_total_row": 0,
+  "add_translate_data": 0,
+  "columns": [],
+  "disable_prepared_report_automation": 0,
+  "disabled": 0,
+  "docstatus": 0,
+  "doctype": "Report",
+  "doctype_to_sync": [],
+  "documentation_url": null,
+  "filters": [],
+  "is_standard": "Yes",
+  "javascript": null,
+  "json": null,
+  "letter_head": null,
+  "modified": "2026-11-23 12:56:48.346402",
+  "module": "vin_chakra",
+  "name": "Technician Dashboard report",
+  "prepared_report": 0,
+  "query": null,
+  "ref_doctype": "HD Ticket",
+  "reference_report": null,
+  "report_name": "Technician Dashboard report",
+  "report_script": null,
+  "report_type": "Script Report",
+  "roles": [
+   {
+    "role": "System Manager"
+   },
+   {
+    "role": "All"
+   },
+   {
+    "role": "Agent"
+   },
+   {
+    "role": "Agent Manager"
+   },
+   {
+    "role": "Chief Technician"
+   },
+   {
+    "role": "CEO"
+   },
+   {
+    "role": "HD Customer"
+   },
+   {
+    "role": "HD Customer Manager"
+   }
+  ],
+  "snapshot_report": 0,
+  "timeout": 0
  }
 ]
