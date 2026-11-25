@@ -1,4 +1,4 @@
-frappe.pages['chief-technician-das'].on_page_load = function(wrapper) {
+frappe.pages['chief-technician-das'].on_page_load = function (wrapper) {
     if (!frappe.user.has_role("Chief Technician") && !frappe.user.has_role("System Manager")) {
         frappe.msgprint(__("You do not have permission to access this dashboard."));
         frappe.set_route("app");
@@ -8,7 +8,7 @@ frappe.pages['chief-technician-das'].on_page_load = function(wrapper) {
     frappe.pages['chief-technician-das']._dashboard = wrapper._dashboard;
 };
 
-frappe.pages['chief-technician-das'].on_page_show = function(wrapper) {
+frappe.pages['chief-technician-das'].on_page_show = function (wrapper) {
     if (wrapper._dashboard) {
         wrapper._dashboard.read_url_params();
         wrapper._dashboard.sync_ui_from_state();
@@ -25,11 +25,11 @@ class ChiefTechnicianDashboard {
             title: 'Chief Technician Dashboard',
             single_column: true
         });
-        
+
         // State variables
         this.current_tab = "tickets"; // tickets, analytics, movement, attendance
         this.view_type = localStorage.getItem("ct_dashboard_view_type") || "card"; // card, list, calendar
-        
+
         // Paginated tickets filter state
         this.tickets_start = 0;
         this.tickets_length = 10;
@@ -50,13 +50,13 @@ class ChiefTechnicianDashboard {
         };
         this.search_query = "";
         this.debounce_timer = null;
-        
+
         // Paginated movement log state
         this.movement_start = 0;
         this.movement_length = 10;
         this.movement_total = 0;
         this.movement_request = 0; // id of the latest Technician Map request; older responses are dropped
-        
+
         // Paginated attendance log state
         this.attendance_start = 0;
         this.attendance_length = 10;
@@ -82,15 +82,15 @@ class ChiefTechnicianDashboard {
         this.tech_control = null;
         this.sales_person_control = null;
         this.ticket_type_control = null;
-        
+
         // Map specific state
         this.map_filters = this.default_map_filters();
         this.map_tech_control = null;
         this.map_customer_control = null;
-        
+
         this.init();
     }
-    
+
     init() {
         this.read_url_params();
         this.render_skeleton();
@@ -103,31 +103,31 @@ class ChiefTechnicianDashboard {
 
     read_url_params() {
         let params = new URLSearchParams(window.location.search);
-        
+
         let tab = params.get("tab");
         if (tab && ["tickets", "analytics", "movement", "attendance"].includes(tab)) {
             this.current_tab = tab;
         }
-        
+
         let view = params.get("view");
         if (view && ["card", "list", "calendar"].includes(view)) {
             this.view_type = view;
         }
-        
+
         let tickets_page = parseInt(params.get("tickets_page") || params.get("page") || "1");
         if (!isNaN(tickets_page) && tickets_page > 0) {
             this.tickets_start = (tickets_page - 1) * this.tickets_length;
         } else {
             this.tickets_start = 0;
         }
-        
+
         let attendance_page = parseInt(params.get("attendance_page") || "1");
         if (!isNaN(attendance_page) && attendance_page > 0) {
             this.attendance_start = (attendance_page - 1) * this.attendance_length;
         } else {
             this.attendance_start = 0;
         }
-        
+
         this.filters.date_from = params.get("date_from") || "";
         this.filters.date_to = params.get("date_to") || "";
         this.filters.technician = params.get("technician") || "";
@@ -148,10 +148,10 @@ class ChiefTechnicianDashboard {
 
     update_url(push = false) {
         let params = new URLSearchParams(window.location.search);
-        
+
         params.set("tab", this.current_tab);
         params.set("view", this.view_type);
-        
+
         let tickets_page = Math.floor(this.tickets_start / this.tickets_length) + 1;
         if (tickets_page > 1) {
             params.set("tickets_page", tickets_page);
@@ -159,14 +159,14 @@ class ChiefTechnicianDashboard {
             params.delete("tickets_page");
             params.delete("page");
         }
-        
+
         let attendance_page = Math.floor(this.attendance_start / this.attendance_length) + 1;
         if (attendance_page > 1) {
             params.set("attendance_page", attendance_page);
         } else {
             params.delete("attendance_page");
         }
-        
+
         if (this.filters.date_from) params.set("date_from", this.filters.date_from); else params.delete("date_from");
         if (this.filters.date_to) params.set("date_to", this.filters.date_to); else params.delete("date_to");
         if (this.filters.technician) params.set("technician", this.filters.technician); else params.delete("technician");
@@ -185,10 +185,10 @@ class ChiefTechnicianDashboard {
         if (this.filters.person_type === "Sales Person") params.set("person_type", this.filters.person_type); else params.delete("person_type");
         if (this.filters.sales_person) params.set("sales_person", this.filters.sales_person); else params.delete("sales_person");
         if (this.search_query) params.set("search", this.search_query); else params.delete("search");
-        
+
         let queryString = params.toString();
         let newUrl = window.location.pathname + (queryString ? "?" + queryString : "") + window.location.hash;
-        
+
         if (newUrl !== (window.location.pathname + window.location.search + window.location.hash)) {
             if (push) {
                 history.pushState({ tab: this.current_tab, tickets_start: this.tickets_start }, "", newUrl);
@@ -275,6 +275,11 @@ class ChiefTechnicianDashboard {
 
     set_branch(branch) {
         this.filters.branch = branch || "";
+        // A technician from another branch must not stay selected
+        if (this.filters.technician) {
+            this.filters.technician = "";
+            if (this.tech_control) this.tech_control.set_value("");
+        }
         this.sync_branch_filter_controls();
         this.reset_pagination(); // also keeps the URL in step
         this.load_data();
@@ -306,7 +311,7 @@ class ChiefTechnicianDashboard {
 
     bind_popstate() {
         let self = this;
-        $(window).off("popstate.chief_tech_dash").on("popstate.chief_tech_dash", function() {
+        $(window).off("popstate.chief_tech_dash").on("popstate.chief_tech_dash", function () {
             if (!self.wrapper || !$.contains(document.documentElement, self.wrapper[0])) {
                 $(window).off("popstate.chief_tech_dash");
                 return;
@@ -317,17 +322,17 @@ class ChiefTechnicianDashboard {
             self.load_data();
         });
     }
-    
+
     reset_pagination() {
         this.tickets_start = 0;
         this.movement_start = 0;
         this.attendance_start = 0;
         this.update_url(false);
     }
-    
+
     render_skeleton() {
         this.page.main.addClass("ct-dashboard");
-        
+
         this.page.main.html(`
             <div class="ct-dashboard-wrapper">
                 <!-- Header Area -->
@@ -342,8 +347,10 @@ class ChiefTechnicianDashboard {
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <!-- Quick Date Filters (Three dot button) -->
                         <div class="ct-time-filter-dropdown" id="ct-time-filter-dropdown" style="display: none; position: relative;">
-                            <button class="ct-filter-btn" id="ct-btn-time-filter" style="padding: 4px 8px; border-radius: 4px;" title="Quick Date Filter">
-                                <i class="fa fa-ellipsis-v"></i>
+                            <button class="ct-filter-btn" id="ct-btn-time-filter" style="padding: 6px 10px; border-radius: 6px; display: inline-flex; align-items: center;" title="Quick Date Filter">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                    <circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/>
+                                </svg>
                             </button>
                             <div class="ct-time-filter-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 100; min-width: 120px; overflow: hidden; margin-top: 5px;">
                                 <div class="ct-time-filter-option" data-val="today" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 13px; font-weight: 500;">Today</div>
@@ -431,13 +438,13 @@ class ChiefTechnicianDashboard {
                  <div id="ct-view-content"></div>
             </div>
         `);
-        
+
         this.render_tech_filter_control();
         this.render_sales_person_filter_control();
         this.render_ticket_type_filter_control();
         this.render_view_structure();
     }
-    
+
     render_tech_filter_control() {
         let self = this;
         this.tech_control = frappe.ui.form.make_control({
@@ -445,6 +452,11 @@ class ChiefTechnicianDashboard {
                 fieldtype: "Link",
                 options: "User",
                 placeholder: "Select Technician",
+                // Only the technicians of the chosen Branch (All <Region> = its branches)
+                get_query: () => ({
+                    query: "vin_chakra.vin_chakra.page.chief_technician_das.chief_technician_das.technician_query",
+                    filters: { branch: self.filters.branch || "" }
+                }),
                 onchange: () => {
                     // set_value() always fires this, even when the value is unchanged —
                     // only reload for an actual change of filter
@@ -458,23 +470,23 @@ class ChiefTechnicianDashboard {
             parent: this.wrapper.find("#ct-filter-technician-control"),
             render_input: true
         });
-        
+
         // Remove standard Frappe margins/padding and style the input to match custom inputs
         setTimeout(() => {
-            this.tech_control.$wrapper.find('.form-group').css({'margin': '0'});
+            this.tech_control.$wrapper.find('.form-group').css({ 'margin': '0' });
             this.tech_control.$wrapper.find('.clearfix').hide(); // Hide the empty Frappe label
             this.tech_control.$input.css({
-                'background': '#fff', 
-                'border': '1px solid #e2e8f0', 
-                'border-radius': '6px', 
-                'height': '36px', 
+                'background': '#fff',
+                'border': '1px solid #e2e8f0',
+                'border-radius': '6px',
+                'height': '36px',
                 'padding': '0 12px',
                 'box-shadow': 'none'
             });
-            this.tech_control.$wrapper.css({'background': 'transparent'});
+            this.tech_control.$wrapper.css({ 'background': 'transparent' });
         }, 100);
     }
-    
+
     render_sales_person_filter_control() {
         let self = this;
         this.sales_person_control = frappe.ui.form.make_control({
@@ -497,7 +509,7 @@ class ChiefTechnicianDashboard {
         });
 
         setTimeout(() => {
-            this.sales_person_control.$wrapper.find('.form-group').css({'margin': '0'});
+            this.sales_person_control.$wrapper.find('.form-group').css({ 'margin': '0' });
             this.sales_person_control.$wrapper.find('.clearfix').hide();
             this.sales_person_control.$input.css({
                 'background': '#fff',
@@ -507,7 +519,7 @@ class ChiefTechnicianDashboard {
                 'padding': '0 12px',
                 'box-shadow': 'none'
             });
-            this.sales_person_control.$wrapper.css({'background': 'transparent'});
+            this.sales_person_control.$wrapper.css({ 'background': 'transparent' });
         }, 100);
     }
 
@@ -531,19 +543,19 @@ class ChiefTechnicianDashboard {
             parent: this.wrapper.find("#ct-filter-ticket-type-control"),
             render_input: true
         });
-        
+
         setTimeout(() => {
-            this.ticket_type_control.$wrapper.find('.form-group').css({'margin': '0'});
+            this.ticket_type_control.$wrapper.find('.form-group').css({ 'margin': '0' });
             this.ticket_type_control.$wrapper.find('.clearfix').hide();
             this.ticket_type_control.$input.css({
-                'background': '#fff', 
-                'border': '1px solid #e2e8f0', 
-                'border-radius': '6px', 
-                'height': '36px', 
+                'background': '#fff',
+                'border': '1px solid #e2e8f0',
+                'border-radius': '6px',
+                'height': '36px',
                 'padding': '0 12px',
                 'box-shadow': 'none'
             });
-            this.ticket_type_control.$wrapper.css({'background': 'transparent'});
+            this.ticket_type_control.$wrapper.css({ 'background': 'transparent' });
 
             // Fallback: bind a change event directly on the input in case df.onchange
             // doesn't fire reliably in page context (Link controls outside forms)
@@ -557,7 +569,7 @@ class ChiefTechnicianDashboard {
             });
         }, 100);
     }
-    
+
     destroy_maps() {
         if (this.map) {
             if (window.google && window.google.maps) {
@@ -566,20 +578,20 @@ class ChiefTechnicianDashboard {
             this.map = null;
         }
         if (this.leaflet_map) {
-            try { this.leaflet_map.remove(); } catch(e){}
+            try { this.leaflet_map.remove(); } catch (e) { }
             this.leaflet_map = null;
         }
-        (this.gm_markers || []).forEach(m => { if(m && m.setMap) m.setMap(null); });
-        (this.gm_polylines || []).forEach(p => { if(p && p.setMap) p.setMap(null); });
-        (this.leaflet_markers || []).forEach(m => { if(m && m.remove) m.remove(); });
-        (this.leaflet_polylines || []).forEach(p => { if(p && p.remove) p.remove(); });
+        (this.gm_markers || []).forEach(m => { if (m && m.setMap) m.setMap(null); });
+        (this.gm_polylines || []).forEach(p => { if (p && p.setMap) p.setMap(null); });
+        (this.leaflet_markers || []).forEach(m => { if (m && m.remove) m.remove(); });
+        (this.leaflet_polylines || []).forEach(p => { if (p && p.remove) p.remove(); });
         this.gm_markers = [];
         this.gm_polylines = [];
         this.leaflet_markers = [];
         this.leaflet_polylines = [];
-        if (this._open_info_window) { 
-            if (this._open_info_window.close) this._open_info_window.close(); 
-            this._open_info_window = null; 
+        if (this._open_info_window) {
+            if (this._open_info_window.close) this._open_info_window.close();
+            this._open_info_window = null;
         }
         this.wrapper.find("#ct-movement-map").empty();
     }
@@ -688,17 +700,17 @@ class ChiefTechnicianDashboard {
         // The quick time filter dropdown should only show for analytics and attendance
         this.wrapper.find("#ct-time-filter-dropdown")
             .toggle(this.current_tab === "analytics" || this.current_tab === "attendance");
-            
+
         // Hide the global filter button in the technician map
         this.wrapper.find("#ct-btn-filter-toggle")
             .toggle(this.current_tab !== "movement");
-            
+
         // Hide the filters panel if it is open when navigating to movement tab
         if (this.current_tab === "movement") {
             this.wrapper.find("#ct-filters-panel").hide();
             this.wrapper.find("#ct-btn-filter-toggle").removeClass("active");
         }
-            
+
         // Hide global summary row (box filters) on the movement and attendance tabs
         this.wrapper.find("#ct-summary-row")
             .toggle(this.current_tab !== "movement" && this.current_tab !== "attendance");
@@ -742,10 +754,10 @@ class ChiefTechnicianDashboard {
         } else if (this.current_tab === "movement") {
             let map_status_options = '<option value="">All Statuses</option>';
             let map_statuses = this.enabled_statuses || [
-                {name: "Open"},
-                {name: "Working"},
-                {name: "Pending"},
-                {name: "Resolved"}
+                { name: "Open" },
+                { name: "Working" },
+                { name: "Pending" },
+                { name: "Resolved" }
             ];
             map_statuses.forEach(status => {
                 map_status_options += `<option value="${status.name}" ${this.map_filters.status === status.name ? 'selected' : ''}>${status.name}</option>`;
@@ -820,7 +832,7 @@ class ChiefTechnicianDashboard {
             `);
         }
     }
-    
+
     render_map_filter_controls() {
         let self = this;
         this.map_tech_control = frappe.ui.form.make_control({
@@ -833,7 +845,7 @@ class ChiefTechnicianDashboard {
             parent: this.wrapper.find("#ct-map-technician-control"),
             render_input: true
         });
-        
+
         this.map_customer_control = frappe.ui.form.make_control({
             df: {
                 fieldtype: "Link",
@@ -844,27 +856,27 @@ class ChiefTechnicianDashboard {
             parent: this.wrapper.find("#ct-map-customer-control"),
             render_input: true
         });
-        
+
         setTimeout(() => {
             [this.map_tech_control, this.map_customer_control].forEach(ctrl => {
-                if(ctrl) {
-                    ctrl.$wrapper.find('.form-group').css({'margin': '0'});
+                if (ctrl) {
+                    ctrl.$wrapper.find('.form-group').css({ 'margin': '0' });
                     ctrl.$wrapper.find('.clearfix').hide();
                     ctrl.$input.css({
-                        'background': '#fff', 
-                        'border': '1px solid #e2e8f0', 
-                        'border-radius': '6px', 
-                        'height': '36px', 
+                        'background': '#fff',
+                        'border': '1px solid #e2e8f0',
+                        'border-radius': '6px',
+                        'height': '36px',
                         'padding': '0 12px',
                         'box-shadow': 'none',
                         'font-size': '13px'
                     });
-                    ctrl.$wrapper.css({'background': 'transparent'});
+                    ctrl.$wrapper.css({ 'background': 'transparent' });
                 }
             });
         }, 100);
     }
-    
+
     _load_google_maps(callback) {
         if (window.google && window.google.maps) {
             callback();
@@ -927,7 +939,7 @@ class ChiefTechnicianDashboard {
                                 window._vc_gm_error_code = m[1];
                                 show_gm_error(m[1]);
                             }
-                        } catch (e) {}
+                        } catch (e) { }
                         orig_error(...args);
                     };
                 }
@@ -964,8 +976,8 @@ class ChiefTechnicianDashboard {
                 if (self.map) self.destroy_maps();
                 if (self.leaflet_map) {
                     // Map already exists – just force size recalculations and reload data
-                    try { self.leaflet_map.invalidateSize(); } catch(e){}
-                    setTimeout(() => { if (self.leaflet_map) try { self.leaflet_map.invalidateSize(); } catch(e){} }, 200);
+                    try { self.leaflet_map.invalidateSize(); } catch (e) { }
+                    setTimeout(() => { if (self.leaflet_map) try { self.leaflet_map.invalidateSize(); } catch (e) { } }, 200);
                     self.load_movement_data();
                     return;
                 }
@@ -993,13 +1005,13 @@ class ChiefTechnicianDashboard {
                     });
 
                     let tileErrorHandled = false;
-                    primaryTile.on('tileerror', function() {
+                    primaryTile.on('tileerror', function () {
                         if (!tileErrorHandled && self.leaflet_map) {
                             tileErrorHandled = true;
                             try {
                                 self.leaflet_map.removeLayer(primaryTile);
                                 fallbackTile.addTo(self.leaflet_map);
-                            } catch(e) {}
+                            } catch (e) { }
                         }
                     });
 
@@ -1011,7 +1023,7 @@ class ChiefTechnicianDashboard {
                     [100, 300, 600].forEach(delay => {
                         setTimeout(() => {
                             if (self.leaflet_map) {
-                                try { self.leaflet_map.invalidateSize(); } catch(e){}
+                                try { self.leaflet_map.invalidateSize(); } catch (e) { }
                             }
                         }, delay);
                     });
@@ -1045,12 +1057,12 @@ class ChiefTechnicianDashboard {
             }
         }, 250);
     }
-    
+
     bind_events() {
         let self = this;
-        
+
         // Tab switching
-        this.wrapper.on("click", ".ct-tab-btn", function() {
+        this.wrapper.on("click", ".ct-tab-btn", function () {
             let tab = $(this).data("tab");
             self.wrapper.find(".ct-tab-btn").removeClass("active");
             $(this).addClass("active");
@@ -1059,9 +1071,9 @@ class ChiefTechnicianDashboard {
             self.render_view_structure();
             self.load_data();
         });
-        
+
         // View switching
-        this.wrapper.on("click", ".ct-view-btn", function() {
+        this.wrapper.on("click", ".ct-view-btn", function () {
             let view = $(this).data("view");
             self.wrapper.find(".ct-view-btn").removeClass("active");
             $(this).addClass("active");
@@ -1071,11 +1083,11 @@ class ChiefTechnicianDashboard {
             self.render_view_structure();
             self.load_data();
         });
-        
+
         // Search input debounce
 
 
-        this.wrapper.on("input", "#ct-ticket-search", function() {
+        this.wrapper.on("input", "#ct-ticket-search", function () {
             clearTimeout(self.debounce_timer);
             self.debounce_timer = setTimeout(() => {
                 self.search_query = $(this).val();
@@ -1083,42 +1095,42 @@ class ChiefTechnicianDashboard {
                 self.load_data();
             }, 400);
         });
-        
+
         // Filter elements change
-        this.wrapper.on("change", "#ct-filter-status", function() {
+        this.wrapper.on("change", "#ct-filter-status", function () {
             self.filters.status = $(this).val();
             self.reset_pagination();
             self.load_data();
         });
-        
-        this.wrapper.on("change", "#ct-filter-priority", function() {
+
+        this.wrapper.on("change", "#ct-filter-priority", function () {
             self.filters.priority = $(this).val();
             self.reset_pagination();
             self.load_data();
         });
-        
-        this.wrapper.on("change", "#ct-filter-date-from", function() {
+
+        this.wrapper.on("change", "#ct-filter-date-from", function () {
             self.filters.date_from = $(this).val();
             self.reset_pagination();
             self.load_data();
         });
-        
-        this.wrapper.on("change", "#ct-filter-date-to", function() {
+
+        this.wrapper.on("change", "#ct-filter-date-to", function () {
             self.filters.date_to = $(this).val();
             self.reset_pagination();
             self.load_data();
         });
 
-        this.wrapper.on("change", "#ct-filter-person-type", function() {
+        this.wrapper.on("change", "#ct-filter-person-type", function () {
             self.set_person_type($(this).val());
         });
 
-        this.wrapper.on("change", "#ct-filter-branch", function() {
+        this.wrapper.on("change", "#ct-filter-branch", function () {
             self.set_branch($(this).val());
         });
 
         // Clear Filters resets the filters of the tab it is pressed on
-        this.wrapper.on("click", "#ct-btn-clear-filters", function() {
+        this.wrapper.on("click", "#ct-btn-clear-filters", function () {
             if (self.current_tab === "attendance") {
                 self.clear_attendance_filters();
             } else {
@@ -1127,29 +1139,29 @@ class ChiefTechnicianDashboard {
         });
 
         // Toggle Filters Panel
-        this.wrapper.on("click", "#ct-btn-filter-toggle", function() {
+        this.wrapper.on("click", "#ct-btn-filter-toggle", function () {
             $(this).toggleClass("active");
             self.wrapper.find("#ct-filters-panel").slideToggle(200);
         });
-        
+
         // Time filter dropdown toggle
-        this.wrapper.on("click", "#ct-btn-time-filter", function(e) {
+        this.wrapper.on("click", "#ct-btn-time-filter", function (e) {
             e.stopPropagation();
             self.wrapper.find(".ct-time-filter-menu").toggle();
         });
-        
-        $(document).on("click", function(e) {
+
+        $(document).on("click", function (e) {
             if (!$(e.target).closest(".ct-time-filter-dropdown").length) {
                 self.wrapper.find(".ct-time-filter-menu").hide();
             }
         });
-        
+
         // Time filter option click
-        this.wrapper.on("click", ".ct-time-filter-option", function() {
+        this.wrapper.on("click", ".ct-time-filter-option", function () {
             let val = $(this).data("val");
             let today = frappe.datetime.get_today();
             self.wrapper.find(".ct-time-filter-menu").hide();
-            
+
             if (val === "today") {
                 self.filters.date_from = today;
                 self.filters.date_to = today;
@@ -1160,35 +1172,35 @@ class ChiefTechnicianDashboard {
                 self.filters.date_from = frappe.datetime.month_start();
                 self.filters.date_to = frappe.datetime.month_end();
             }
-            
+
             // Sync with date inputs
             self.wrapper.find("#ct-filter-date-from").val(self.filters.date_from);
             self.wrapper.find("#ct-filter-date-to").val(self.filters.date_to);
-            
+
             self.reset_pagination();
             self.load_data();
         });
-        
+
         // Hover effects for the time filter options
-        this.wrapper.on("mouseenter", ".ct-time-filter-option", function() {
+        this.wrapper.on("mouseenter", ".ct-time-filter-option", function () {
             $(this).css("background-color", "#f8fafc");
         });
-        this.wrapper.on("mouseleave", ".ct-time-filter-option", function() {
+        this.wrapper.on("mouseleave", ".ct-time-filter-option", function () {
             $(this).css("background-color", "white");
         });
-        
+
         // Calendar navigation
-        this.wrapper.on("click", ".ct-cal-prev", function() {
+        this.wrapper.on("click", ".ct-cal-prev", function () {
             self.calendar_date.setMonth(self.calendar_date.getMonth() - 1);
             self.load_data();
         });
-        this.wrapper.on("click", ".ct-cal-next", function() {
+        this.wrapper.on("click", ".ct-cal-next", function () {
             self.calendar_date.setMonth(self.calendar_date.getMonth() + 1);
             self.load_data();
         });
-        
+
         // Pagination clicks - Tickets
-        this.wrapper.on("click", "#ct-tickets-pagination .ct-page-btn", function() {
+        this.wrapper.on("click", "#ct-tickets-pagination .ct-page-btn", function () {
             let action = $(this).data("action");
             if (action === "prev" && self.tickets_start > 0) {
                 self.tickets_start -= self.tickets_length;
@@ -1199,9 +1211,9 @@ class ChiefTechnicianDashboard {
             self.load_data();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
-        
+
         // Pagination clicks - Movement logs
-        this.wrapper.on("click", "#ct-logs-pagination .ct-page-btn", function() {
+        this.wrapper.on("click", "#ct-logs-pagination .ct-page-btn", function () {
             let action = $(this).data("action");
             if (action === "prev" && self.movement_start > 0) {
                 self.movement_start -= self.movement_length;
@@ -1211,9 +1223,9 @@ class ChiefTechnicianDashboard {
             self.update_url(true);
             self.load_data();
         });
-        
+
         // Pagination clicks - Attendance logs
-        this.wrapper.on("click", "#ct-attendance-pagination .ct-page-btn", function() {
+        this.wrapper.on("click", "#ct-attendance-pagination .ct-page-btn", function () {
             let action = $(this).data("action");
             if (action === "prev" && self.attendance_start > 0) {
                 self.attendance_start -= self.attendance_length;
@@ -1224,18 +1236,18 @@ class ChiefTechnicianDashboard {
             self.load_data();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
-        
+
         // Summary Cards click filter
-        this.wrapper.on("click", ".ct-summary-card", function() {
+        this.wrapper.on("click", ".ct-summary-card", function () {
             let status = $(this).data("status");
             self.filters.status = status;
             self.wrapper.find("#ct-filter-status").val(status);
             self.reset_pagination();
             self.load_data();
         });
-        
+
         // Map Provider Direct Selection Change
-        this.wrapper.on("change", "#ct-map-filter-provider", function() {
+        this.wrapper.on("change", "#ct-map-filter-provider", function () {
             let new_provider = $(this).val() || "google";
             if (new_provider !== self.map_provider) {
                 self.map_provider = new_provider;
@@ -1246,22 +1258,22 @@ class ChiefTechnicianDashboard {
         });
 
         // Apply Map Filters
-        this.wrapper.on("click", "#ct-map-filter-apply", function() {
+        this.wrapper.on("click", "#ct-map-filter-apply", function () {
             self.map_filters.date = self.wrapper.find("#ct-map-filter-date").val();
             self.map_filters.technician = self.map_tech_control.get_value();
             self.map_filters.customer = self.map_customer_control.get_value();
             self.map_filters.status = self.wrapper.find("#ct-map-filter-status").val();
-            
+
             let new_provider = self.wrapper.find("#ct-map-filter-provider").val() || "google";
             let provider_changed = (new_provider !== self.map_provider);
             self.map_provider = new_provider;
             localStorage.setItem("ct_map_provider", self.map_provider);
-            
-            if(!self.map_filters.date) {
+
+            if (!self.map_filters.date) {
                 frappe.msgprint("Date is mandatory for the Technician Map.");
                 return;
             }
-            
+
             if (provider_changed) {
                 self.destroy_maps();
                 self.init_map();
@@ -1271,17 +1283,17 @@ class ChiefTechnicianDashboard {
             }
         });
 
-        this.wrapper.on("click", "#ct-map-filter-clear", function() {
+        this.wrapper.on("click", "#ct-map-filter-clear", function () {
             self.clear_map_filters();
         });
 
         // Redirect to raise ticket page
-        this.wrapper.on("click", "#ct-btn-raise-ticket", function() {
+        this.wrapper.on("click", "#ct-btn-raise-ticket", function () {
             window.location.href = "/ticket-support";
         });
-        
+
         // Attendance location map popup click
-        this.wrapper.on("click", ".ct-attendance-map-link", function(e) {
+        this.wrapper.on("click", ".ct-attendance-map-link", function (e) {
             e.preventDefault();
             let lat = parseFloat($(this).data("lat"));
             let lng = parseFloat($(this).data("lng"));
@@ -1291,7 +1303,7 @@ class ChiefTechnicianDashboard {
         });
 
         // Popup Lat & Long Google Map modal click
-        $(document).off("click", ".ct-popup-gmap-link").on("click", ".ct-popup-gmap-link", function(e) {
+        $(document).off("click", ".ct-popup-gmap-link").on("click", ".ct-popup-gmap-link", function (e) {
             e.preventDefault();
             let lat = parseFloat($(this).data("lat"));
             let lng = parseFloat($(this).data("lng"));
@@ -1300,7 +1312,7 @@ class ChiefTechnicianDashboard {
             }
         });
     }
-    
+
     load_data() {
         this.render_active_filters();
         this.wrapper.find("#ct-loader").show();
@@ -1318,20 +1330,20 @@ class ChiefTechnicianDashboard {
             this.load_attendance_data();
         }
     }
-    
+
     load_tickets_data() {
         let self = this;
         // Filters can change while a request is in flight; only the latest response is shown
         let request_id = ++this.tickets_request;
         let limit_start = this.tickets_start;
         let limit_len = this.tickets_length;
-        
+
         // In calendar mode, load all tickets in the current month range to plot them
         if (this.view_type === "calendar") {
             limit_start = 0;
             limit_len = 1000;
         }
-        
+
         frappe.call({
             method: "vin_chakra.vin_chakra.page.chief_technician_das.chief_technician_das.get_dashboard_data",
             args: {
@@ -1347,14 +1359,14 @@ class ChiefTechnicianDashboard {
                 limit_page_length: limit_len,
                 view: "tickets"
             },
-            callback: function(r) {
+            callback: function (r) {
                 if (request_id !== self.tickets_request) return;
                 if (r.message) {
                     let data = r.message;
                     self.tickets_total = data.total_count;
-                                        // Update Summary Row
-                     self.update_summary_row(data.summary, data.enabled_statuses);
-                    
+                    // Update Summary Row
+                    self.update_summary_row(data.summary, data.enabled_statuses);
+
                     // Render Tickets
                     if (self.view_type === "card") {
                         self.render_ticket_cards(data.tickets);
@@ -1368,12 +1380,12 @@ class ChiefTechnicianDashboard {
                     }
                 }
             },
-            always: function() {
+            always: function () {
                 if (request_id === self.tickets_request) self.wrapper.find("#ct-loader").hide();
             }
         });
     }
-    
+
     update_summary_row(summary, enabled_statuses) {
         if (enabled_statuses) {
             this.enabled_statuses = enabled_statuses;
@@ -1384,7 +1396,7 @@ class ChiefTechnicianDashboard {
         if (!row_container.length) return;
 
         let current_status = this.filters.status || "";
-        
+
         let html = `
             <div class="ct-summary-card ${current_status === "" ? "active" : ""}" data-status="" style="border-top-color: #64748b; cursor: pointer;">
                 <div class="ct-summary-val">${summary.Total}</div>
@@ -1407,10 +1419,10 @@ class ChiefTechnicianDashboard {
         };
 
         let statuses = this.enabled_statuses || [
-            {name: "Open", color: "Gray"},
-            {name: "Working", color: "Blue"},
-            {name: "Resolved", color: "Green"},
-            {name: "Pending", color: "Orange"}
+            { name: "Open", color: "Gray" },
+            { name: "Working", color: "Blue" },
+            { name: "Resolved", color: "Green" },
+            { name: "Pending", color: "Orange" }
         ];
 
         statuses.forEach(status => {
@@ -1418,7 +1430,7 @@ class ChiefTechnicianDashboard {
             let color_val = (status.color && status.color.startsWith("#"))
                 ? status.color
                 : (STATUS_COLOR_MAP[status.color] || "#64748b");
-            
+
             html += `
                 <div class="ct-summary-card ${current_status === status.name ? "active" : ""}" data-status="${status.name}" style="border-top-color: ${color_val}; cursor: pointer;">
                     <div class="ct-summary-val">${count}</div>
@@ -1461,7 +1473,7 @@ class ChiefTechnicianDashboard {
         };
 
         let badge_style = BADGE_COLOR_MAP[color] || BADGE_COLOR_MAP["Gray"];
-        
+
         return `
             <span class="ct-badge" 
                   onclick="event.stopPropagation(); frappe.pages['chief-technician-das']._dashboard.open_status_change_dialog('${ticket_name}', '${status}')" 
@@ -1483,7 +1495,7 @@ class ChiefTechnicianDashboard {
         let is_resolved = ["Resolved", "Closed", "Self-Completed"].includes(t.status);
         if (!is_resolved) return null;
         let assignees = [];
-        try { assignees = JSON.parse(t._assign || "[]"); } catch(e) { assignees = []; }
+        try { assignees = JSON.parse(t._assign || "[]"); } catch (e) { assignees = []; }
         if (!assignees.length) return null;
         return frappe.user.full_name(assignees[0]) || assignees[0];
     }
@@ -1500,7 +1512,7 @@ class ChiefTechnicianDashboard {
             `);
             return;
         }
-        
+
         let html = tickets.map(t => {
             let assignees = [];
             try { assignees = JSON.parse(t._assign || "[]"); } catch (e) { assignees = []; }
@@ -1508,16 +1520,16 @@ class ChiefTechnicianDashboard {
                 let initial = u.charAt(0).toUpperCase();
                 return `<div class="ct-assignee-avatar" title="${u}">${initial}</div>`;
             }).join("");
-            
-         let status_badge = self.get_status_badge(t.status, t.name);
-        let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
-        let res_date = self.get_resolved_date_formatted(t);
-        let resolved_by = self.get_resolved_by_formatted(t);
-        let res_date_html = res_date 
-            ? `<div><i class="fa fa-check-circle" style="color: #10b981;"></i> <span>Resolved Date: <strong>${res_date}</strong></span></div>
-            ${resolved_by ? `<div><i class="fa fa-user-o" style="color: #10b981;"></i> <span>Resolved by: <strong>${resolved_by}</strong></span></div>` : ""}` 
-            : "";
-            
+
+            let status_badge = self.get_status_badge(t.status, t.name);
+            let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
+            let res_date = self.get_resolved_date_formatted(t);
+            let resolved_by = self.get_resolved_by_formatted(t);
+            let res_date_html = res_date
+                ? `<div><i class="fa fa-check-circle" style="color: #10b981;"></i> <span>Resolved Date: <strong>${res_date}</strong></span></div>
+            ${resolved_by ? `<div><i class="fa fa-user-o" style="color: #10b981;"></i> <span>Resolved by: <strong>${resolved_by}</strong></span></div>` : ""}`
+                : "";
+
             return `
                 <div class="ct-ticket-card" onclick="window.location.href='/helpdesk/tickets/${t.name}'">
                     <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1539,10 +1551,10 @@ class ChiefTechnicianDashboard {
                 </div>
             `;
         }).join("");
-        
+
         container.removeClass("ct-tickets-list").addClass("ct-tickets-grid").html(html);
     }
-    
+
     render_ticket_list(tickets) {
         let self = this;
         let container = this.wrapper.find("#ct-tickets-container");
@@ -1556,7 +1568,7 @@ class ChiefTechnicianDashboard {
             `);
             return;
         }
-        
+
         let html = tickets.map(t => {
             let assignees = [];
             try { assignees = JSON.parse(t._assign || "[]"); } catch (e) { assignees = []; }
@@ -1564,16 +1576,16 @@ class ChiefTechnicianDashboard {
                 let initial = u.charAt(0).toUpperCase();
                 return `<div class="ct-assignee-avatar" title="${u}">${initial}</div>`;
             }).join("");
-            
+
             let status_badge = self.get_status_badge(t.status, t.name);
             let priority_badge = `<span class="ct-badge ct-badge-priority-${t.priority}">${t.priority}</span>`;
             let res_date = self.get_resolved_date_formatted(t);
             let resolved_by = self.get_resolved_by_formatted(t);
-            let res_date_html = res_date 
+            let res_date_html = res_date
                 ? `<div><i class="fa fa-check-circle" style="color: #10b981;"></i> <span>Resolved Date: <strong>${res_date}</strong></span></div>
-                ${resolved_by ? `<div><i class="fa fa-user-o" style="color: #10b981;"></i> <span>Resolved by: <strong>${resolved_by}</strong></span></div>` : ""}` 
+                ${resolved_by ? `<div><i class="fa fa-user-o" style="color: #10b981;"></i> <span>Resolved by: <strong>${resolved_by}</strong></span></div>` : ""}`
                 : "";
-            
+
             return `
                 <div class="ct-ticket-list-row" onclick="window.location.href='/helpdesk/tickets/${t.name}'">
                     <div class="ct-list-subject-col">
@@ -1595,15 +1607,15 @@ class ChiefTechnicianDashboard {
                 </div>
             `;
         }).join("");
-        
+
         container.removeClass("ct-tickets-grid").addClass("ct-tickets-list").html(html);
     }
-    
+
     render_ticket_calendar(tickets) {
         let self = this;
         let container = this.wrapper.find("#ct-tickets-container");
         container.removeClass("ct-tickets-grid ct-tickets-list");
-        
+
         let month = this.calendar_date.getMonth();
         let year = this.calendar_date.getFullYear();
         let firstDay = new Date(year, month, 1).getDay();
@@ -1670,7 +1682,7 @@ class ChiefTechnicianDashboard {
                         </div>
                     `;
                 }).join("");
-                
+
                 html += `
                     <td style="height: 100px; vertical-align: top; position: relative; border: 1px solid #e2e8f0; padding: 6px;">
                         <div style="font-weight: 700; margin-bottom: 6px; font-size: 12px; color: var(--ct-text-muted); text-align: right;">${d}</div>
@@ -1680,21 +1692,21 @@ class ChiefTechnicianDashboard {
                 d++;
             }
         }
-        
+
         html += `</tr></tbody></table></div>`;
         container.html(html);
     }
-    
+
     render_tickets_pagination() {
         let container = this.wrapper.find("#ct-tickets-pagination");
         if (this.tickets_total <= this.tickets_length) {
             container.empty();
             return;
         }
-        
+
         let current_page = Math.floor(this.tickets_start / this.tickets_length) + 1;
         let total_pages = Math.ceil(this.tickets_total / this.tickets_length);
-        
+
         container.html(`
             <button class="ct-page-btn" data-action="prev" ${this.tickets_start === 0 ? "disabled" : ""}>
                 <i class="fa fa-chevron-left"></i> Previous
@@ -1705,7 +1717,7 @@ class ChiefTechnicianDashboard {
             </button>
         `);
     }
-    
+
     load_analytics_data() {
         let self = this;
         let request_id = ++this.analytics_request;
@@ -1721,7 +1733,7 @@ class ChiefTechnicianDashboard {
                 search_query: this.search_query,
                 view: "analytics"
             },
-            callback: function(r) {
+            callback: function (r) {
                 if (request_id !== self.analytics_request) return;
                 if (r.message) {
                     let data = r.message;
@@ -1733,7 +1745,7 @@ class ChiefTechnicianDashboard {
                     // Render Status Chart
                     let status_labels = data.status_summary.map(d => d.status);
                     let status_values = data.status_summary.map(d => d.count);
-                    
+
                     self.wrapper.find("#ct-chart-status").empty();
                     new frappe.Chart("#ct-chart-status", {
                         data: {
@@ -1744,11 +1756,11 @@ class ChiefTechnicianDashboard {
                         height: 250,
                         colors: ['#6366f1', '#10b981', '#f59e0b', '#ef4444']
                     });
-                    
+
                     // Render Priority Chart
                     let priority_labels = data.priority_summary.map(d => d.priority);
                     let priority_values = data.priority_summary.map(d => d.count);
-                    
+
                     self.wrapper.find("#ct-chart-priority").empty();
                     new frappe.Chart("#ct-chart-priority", {
                         data: {
@@ -1759,24 +1771,24 @@ class ChiefTechnicianDashboard {
                         height: 250,
                         colors: ['#10b981', '#f59e0b', '#ea580c', '#ef4444']
                     });
-                    
+
                     // Render Leaderboard
                     self.render_leaderboard(data.performance);
                 }
             },
-            always: function() {
+            always: function () {
                 if (request_id === self.analytics_request) self.wrapper.find("#ct-loader").hide();
             }
         });
     }
-    
+
     render_leaderboard(performance) {
         let container = this.wrapper.find("#ct-leaderboard-container");
         if (!performance || performance.length === 0) {
             container.html(`<div class="ct-empty-state"><p>No technician performance records found.</p></div>`);
             return;
         }
-        
+
         let html = `<ul class="ct-leaderboard-list">`;
         performance.forEach(d => {
             let percent = d.total_assigned ? Math.round((d.total_resolved / d.total_assigned) * 100) : 0;
@@ -1796,7 +1808,7 @@ class ChiefTechnicianDashboard {
         html += `</ul>`;
         container.html(html);
     }
-    
+
     load_movement_data() {
         let self = this;
         let request_id = ++this.movement_request;
@@ -1808,11 +1820,11 @@ class ChiefTechnicianDashboard {
                 customer: this.map_filters.customer,
                 ticket_status: this.map_filters.status
             },
-            callback: function(r) {
+            callback: function (r) {
                 if (request_id !== self.movement_request) return;
                 if (r.message) {
                     let data = r.message;
-                    
+
                     if (data.mode === "all_technicians") {
                         if (self.map_provider === "osm") {
                             self.render_all_tech_osm_map(data.markers);
@@ -1834,7 +1846,7 @@ class ChiefTechnicianDashboard {
                     }
                 }
             },
-            always: function() {
+            always: function () {
                 if (request_id === self.movement_request) self.wrapper.find("#ct-loader").hide();
             }
         });
@@ -1848,8 +1860,8 @@ class ChiefTechnicianDashboard {
         let self = this;
         if (!self.leaflet_map) return;
 
-        (self.leaflet_markers || []).forEach(m => { if(m && m.remove) m.remove(); });
-        (self.leaflet_polylines || []).forEach(p => { if(p && p.remove) p.remove(); });
+        (self.leaflet_markers || []).forEach(m => { if (m && m.remove) m.remove(); });
+        (self.leaflet_polylines || []).forEach(p => { if (p && p.remove) p.remove(); });
         self.leaflet_markers = [];
         self.leaflet_polylines = [];
 
@@ -1907,7 +1919,7 @@ class ChiefTechnicianDashboard {
             self.leaflet_map.setView([20.5937, 78.9629], 5);
         }
         setTimeout(() => {
-            if (self.leaflet_map) { try { self.leaflet_map.invalidateSize(); } catch(e){} }
+            if (self.leaflet_map) { try { self.leaflet_map.invalidateSize(); } catch (e) { } }
         }, 200);
     }
 
@@ -1915,8 +1927,8 @@ class ChiefTechnicianDashboard {
         let self = this;
         if (!self.leaflet_map) return;
 
-        (self.leaflet_markers || []).forEach(m => { if(m && m.remove) m.remove(); });
-        (self.leaflet_polylines || []).forEach(p => { if(p && p.remove) p.remove(); });
+        (self.leaflet_markers || []).forEach(m => { if (m && m.remove) m.remove(); });
+        (self.leaflet_polylines || []).forEach(p => { if (p && p.remove) p.remove(); });
         self.leaflet_markers = [];
         self.leaflet_polylines = [];
 
@@ -1930,7 +1942,7 @@ class ChiefTechnicianDashboard {
             <div class="ct-map-legend-item"><span class="badge" style="background:#ef4444;color:white;font-size:9px;padding:2px 4px;margin-right:6px;">END</span>Last Ticket</div>`);
 
         let path = visits.filter(v => v.latitude && v.longitude)
-                         .map(v => [parseFloat(v.latitude), parseFloat(v.longitude)]);
+            .map(v => [parseFloat(v.latitude), parseFloat(v.longitude)]);
 
         if (path.length > 1) {
             let polyline = window.vc_leaflet.polyline(path, { color: tech_color, opacity: 0.85, weight: 4 }).addTo(self.leaflet_map);
@@ -1998,11 +2010,11 @@ class ChiefTechnicianDashboard {
                 .bindPopup(iwContent);
 
             marker.on("click", () => {
-                $(".ct-timeline-item").removeClass("active").css({"border-color": "transparent", "background": "white"});
+                $(".ct-timeline-item").removeClass("active").css({ "border-color": "transparent", "background": "white" });
                 let t_el = $(`#timeline-item-${v.ticket}`);
-                if (t_el.length) { 
-                    t_el.addClass("active").css({"border-color": "var(--ct-primary)", "background": "#f8fafc"}); 
-                    t_el[0].scrollIntoView({behavior:"smooth",block:"nearest",inline:"center"}); 
+                if (t_el.length) {
+                    t_el.addClass("active").css({ "border-color": "var(--ct-primary)", "background": "#f8fafc" });
+                    t_el[0].scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
                 }
             });
 
@@ -2017,7 +2029,7 @@ class ChiefTechnicianDashboard {
             self.leaflet_map.setView([20.5937, 78.9629], 5);
         }
         setTimeout(() => {
-            if (self.leaflet_map) { try { self.leaflet_map.invalidateSize(); } catch(e){} }
+            if (self.leaflet_map) { try { self.leaflet_map.invalidateSize(); } catch (e) { } }
         }, 200);
     }
 
@@ -2059,8 +2071,9 @@ class ChiefTechnicianDashboard {
             });
             let time_only = frappe.datetime.get_time(log.creation).substring(0, 5);
             let lat_num = parseFloat(log.latitude), lng_num = parseFloat(log.longitude);
-            let iw = new google.maps.InfoWindow({ content:
-                `<div style="font-family:'Inter',sans-serif;padding:4px;width:240px;">
+            let iw = new google.maps.InfoWindow({
+                content:
+                    `<div style="font-family:'Inter',sans-serif;padding:4px;width:240px;">
                 <div style="font-weight:800;font-size:13px;margin-bottom:4px;">${tech_name}</div>
                 <div style="font-size:11px;color:#64748b;margin-bottom:6px;font-weight:600;">Latest location at ${time_only}</div>
                 <div style="font-size:12px;line-height:1.4;border-top:1px solid #f1f5f9;padding-top:6px;">
@@ -2110,7 +2123,7 @@ class ChiefTechnicianDashboard {
 
         if (visits.length > 1) {
             let path = visits.filter(v => v.latitude && v.longitude)
-                             .map(v => ({ lat: parseFloat(v.latitude), lng: parseFloat(v.longitude) }));
+                .map(v => ({ lat: parseFloat(v.latitude), lng: parseFloat(v.longitude) }));
             let polyline = new google.maps.Polyline({ path, geodesic: true, strokeColor: tech_color, strokeOpacity: 0.85, strokeWeight: 4, map: self.map });
             self.gm_polylines.push(polyline);
             for (let i = 0; i < path.length - 1; i++) {
@@ -2148,8 +2161,9 @@ class ChiefTechnicianDashboard {
                 dur = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
             }
             let lat_num = parseFloat(v.latitude), lng_num = parseFloat(v.longitude);
-            let iw = new google.maps.InfoWindow({ content:
-                `<div style="font-family:'Inter',sans-serif;padding:4px;width:240px;">
+            let iw = new google.maps.InfoWindow({
+                content:
+                    `<div style="font-family:'Inter',sans-serif;padding:4px;width:240px;">
                 <div style="font-weight:800;font-size:14px;margin-bottom:4px;">Ticket #${index + 1}</div>
                 <div style="font-size:12px;line-height:1.5;border-top:1px solid #f1f5f9;padding-top:6px;">
                     <strong>Ticket ID:</strong> <a href="/helpdesk/tickets/${v.ticket}" style="color:#6366f1;font-weight:700;">${v.ticket}</a><br>
@@ -2166,9 +2180,9 @@ class ChiefTechnicianDashboard {
                 if (self._open_info_window) self._open_info_window.close();
                 iw.open(self.map, marker);
                 self._open_info_window = iw;
-                $(".ct-timeline-item").removeClass("active").css({"border-color": "transparent", "background": "white"});
+                $(".ct-timeline-item").removeClass("active").css({ "border-color": "transparent", "background": "white" });
                 let t_el = $(`#timeline-item-${v.ticket}`);
-                if (t_el.length) { t_el.addClass("active").css({"border-color": "var(--ct-primary)", "background": "#f8fafc"}); t_el[0].scrollIntoView({behavior:"smooth",block:"nearest",inline:"center"}); }
+                if (t_el.length) { t_el.addClass("active").css({ "border-color": "var(--ct-primary)", "background": "#f8fafc" }); t_el[0].scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" }); }
             });
             self.gm_markers.push(marker);
             self.map_markers[v.ticket] = { marker, iw };
@@ -2188,16 +2202,16 @@ class ChiefTechnicianDashboard {
             container.hide();
             return;
         }
-        
+
         let format_time = (t) => t ? frappe.datetime.get_time(t).substring(0, 5) : "-";
-        
+
         let format_dur = (sec) => {
             if (!sec) return "-";
             let h = Math.floor(sec / 3600);
             let m = Math.floor((sec % 3600) / 60);
             return h > 0 ? `${h}h ${m}m` : `${m}m`;
         };
-        
+
         let html = `
             <div class="ct-summary-card" style="border-top-color: #6366f1; cursor: default;">
                 <div class="ct-summary-val">${summary.total_tickets}</div>
@@ -2222,17 +2236,17 @@ class ChiefTechnicianDashboard {
         `;
         container.html(html);
     }
-    
+
     render_map_timeline(visits) {
         let container = this.wrapper.find("#ct-timeline-list");
         if (!visits || visits.length === 0) {
             container.html(`<div style="color: var(--ct-text-muted); font-size: 13px;">No tickets found for this technician on the selected date.</div>`);
             return;
         }
-        
+
         let format_time = (t) => t ? frappe.datetime.get_time(t).substring(0, 5) : "--:--";
         let self = this;
-        
+
         let html = "";
         visits.forEach((v, index) => {
             let dur_str = "";
@@ -2240,7 +2254,7 @@ class ChiefTechnicianDashboard {
                 let m = Math.floor(v.time_spent_seconds / 60);
                 dur_str = `<div style="font-size:10px; color:var(--ct-text-muted); margin-top:4px;"><i class="fa fa-clock-o"></i> ${m} min spent</div>`;
             }
-            
+
             html += `
                 <div class="ct-timeline-item" id="timeline-item-${v.ticket}" data-ticket="${v.ticket}" style="min-width: 200px; border: 1px solid transparent; border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.2s; position: relative;">
                     <div style="position: absolute; top: 12px; right: 12px; font-weight: 800; color: #cbd5e1; font-size: 20px;">#${index + 1}</div>
@@ -2256,10 +2270,10 @@ class ChiefTechnicianDashboard {
                 ${index < visits.length - 1 ? `<div style="color: #cbd5e1; flex-shrink: 0;"><i class="fa fa-arrow-right"></i></div>` : ""}
             `;
         });
-        
+
         container.html(html);
-        
-        container.off("click", ".ct-timeline-item").on("click", ".ct-timeline-item", function() {
+
+        container.off("click", ".ct-timeline-item").on("click", ".ct-timeline-item", function () {
             let t_id = $(this).data("ticket");
             if (self.map_markers && self.map_markers[t_id]) {
                 let item = self.map_markers[t_id];
@@ -2280,11 +2294,11 @@ class ChiefTechnicianDashboard {
             }
         });
     }
-    
+
     render_active_filters() {
         let container = this.wrapper.find("#ct-active-filters");
         if (!container.length) return;
-        
+
         // Sync active class on summary cards
         let current_status = this.filters.status || "";
         this.wrapper.find(".ct-summary-card").removeClass("active");
@@ -2316,12 +2330,12 @@ class ChiefTechnicianDashboard {
         if (ticket_tab && this.filters.priority) pills_html += `<span class="ct-filter-pill">Priority: ${this.filters.priority} <i class="fa fa-times ct-filter-remove" data-key="priority"></i></span>`;
         if (ticket_tab && this.filters.ticket_type) pills_html += `<span class="ct-filter-pill">Type: ${this.filters.ticket_type} <i class="fa fa-times ct-filter-remove" data-key="ticket_type"></i></span>`;
         if (ticket_tab && this.search_query) pills_html += `<span class="ct-filter-pill">Search: ${this.search_query} <i class="fa fa-times ct-filter-remove" data-key="search"></i></span>`;
-        
+
         container.html(pills_html);
-        
+
         // Remove filters
         let self = this;
-        container.off("click", ".ct-filter-remove").on("click", ".ct-filter-remove", function() {
+        container.off("click", ".ct-filter-remove").on("click", ".ct-filter-remove", function () {
             let key = $(this).data("key");
             if (key === "branch") {
                 self.set_branch("");
@@ -2354,11 +2368,11 @@ class ChiefTechnicianDashboard {
             self.load_data();
         });
     }
-    
+
     open_status_change_dialog(ticket_id, current_status) {
         let self = this;
-        let options = this.enabled_status_names && this.enabled_status_names.length 
-            ? this.enabled_status_names 
+        let options = this.enabled_status_names && this.enabled_status_names.length
+            ? this.enabled_status_names
             : ["Open", "Working", "Pending", "Resolved"];
         let d = new frappe.ui.Dialog({
             title: __("Change Ticket Status"),
@@ -2392,7 +2406,7 @@ class ChiefTechnicianDashboard {
         };
         d.show();
     }
-    
+
     set_person_type(person_type) {
         this.filters.person_type = person_type === "Sales Person" ? "Sales Person" : "Technician";
         // Drop the previous selection whichever way it switched, so a Technician can never
@@ -2489,7 +2503,7 @@ class ChiefTechnicianDashboard {
                 limit_page_length: this.attendance_length,
                 view: "attendance"
             },
-            callback: function(r) {
+            callback: function (r) {
                 if (request_id !== self.attendance_request) return;
                 if (r.message) {
                     let data = r.message;
@@ -2498,14 +2512,14 @@ class ChiefTechnicianDashboard {
                     self.render_attendance_pagination();
                 }
             },
-            error: function() {
+            error: function () {
                 // frappe.call shows the server's message; don't leave the previous results up
                 if (request_id !== self.attendance_request) return;
                 self.attendance_total = 0;
                 self.render_attendance_list([], "Could not load attendance for these filters.");
                 self.render_attendance_pagination();
             },
-            always: function() {
+            always: function () {
                 if (request_id === self.attendance_request) self.wrapper.find("#ct-loader").hide();
             }
         });
@@ -2538,12 +2552,12 @@ class ChiefTechnicianDashboard {
             <tbody>`;
 
         logs.forEach(log => {
-            let log_type_badge = log.log_type === "IN" 
+            let log_type_badge = log.log_type === "IN"
                 ? `<span class="badge" style="background: #dcfce7; color: #15803d;">IN</span>`
                 : `<span class="badge" style="background: #fee2e2; color: #b91c1c;">OUT</span>`;
-            
+
             let time_str = log.time ? frappe.datetime.global_date_format(log.time) + " " + log.time.split(" ")[1].substring(0, 5) : "-";
-            
+
             let accuracy_indicator = "";
             let acc = log.custom_accuracy || log.accuracy;
             if (acc) {
@@ -2557,10 +2571,10 @@ class ChiefTechnicianDashboard {
             let lat = log.latitude !== null && log.latitude !== undefined ? parseFloat(log.latitude) : null;
             let lng = log.longitude !== null && log.longitude !== undefined ? parseFloat(log.longitude) : null;
 
-            let location_str = (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) 
+            let location_str = (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng))
                 ? `<a href="javascript:void(0)" class="ct-attendance-map-link" data-lat="${lat}" data-lng="${lng}" style="color: var(--ct-primary); font-weight: 600;"><i class="fa fa-map-marker"></i> ${lat.toFixed(5)}, ${lng.toFixed(5)}</a>`
                 : "-";
-            
+
             if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng) && accuracy_indicator) {
                 location_str += accuracy_indicator;
             }
@@ -2575,7 +2589,7 @@ class ChiefTechnicianDashboard {
                 </tr>
             `;
         });
-        
+
         html += `</tbody></table>`;
         container.html(html);
     }
@@ -2586,10 +2600,10 @@ class ChiefTechnicianDashboard {
             container.empty();
             return;
         }
-        
+
         let current_page = Math.floor(this.attendance_start / this.attendance_length) + 1;
         let total_pages = Math.ceil(this.attendance_total / this.attendance_length);
-        
+
         container.html(`
             <button class="ct-page-btn" data-action="prev" ${this.attendance_start === 0 ? "disabled" : ""}>
                 <i class="fa fa-chevron-left"></i> Previous
@@ -2635,20 +2649,20 @@ class ChiefTechnicianDashboard {
                             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                         });
                         let tileErrorHandled = false;
-                        primaryTile.on('tileerror', function() {
+                        primaryTile.on('tileerror', function () {
                             if (!tileErrorHandled) {
                                 tileErrorHandled = true;
                                 try {
                                     popup_map.removeLayer(primaryTile);
                                     fallbackTile.addTo(popup_map);
-                                } catch(e) {}
+                                } catch (e) { }
                             }
                         });
                         primaryTile.addTo(popup_map);
 
                         window.vc_leaflet.marker([lat, lng]).addTo(popup_map);
-                        setTimeout(() => { try { popup_map.invalidateSize(); } catch(e){} }, 100);
-                    } catch(e) {
+                        setTimeout(() => { try { popup_map.invalidateSize(); } catch (e) { } }, 100);
+                    } catch (e) {
                         console.error("Error initializing popup OSM map:", e);
                     }
                 });
@@ -2669,7 +2683,7 @@ class ChiefTechnicianDashboard {
                             map: popup_map,
                             title: `${lat.toFixed(5)}, ${lng.toFixed(5)}`
                         });
-                    } catch(e) {
+                    } catch (e) {
                         console.error("Error initializing popup map:", e);
                     }
                 });
@@ -2707,7 +2721,7 @@ class ChiefTechnicianDashboard {
                         map: popup_map,
                         title: `${lat.toFixed(5)}, ${lng.toFixed(5)}`
                     });
-                } catch(e) {
+                } catch (e) {
                     console.error("Error initializing Google map popup:", e);
                 }
             });

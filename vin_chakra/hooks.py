@@ -83,14 +83,18 @@ doc_events = {
 	"Customer": {
 		"on_update": "vin_chakra.vin_chakra.custom.customer.sync_secondary_phone_to_contact"
 	},
-	"HD Ticket": {
+		"HD Ticket": {
 		"before_validate": "vin_chakra.vin_chakra.custom.hd_ticket.fix_phone_numbers",
 		"after_insert": [
 			"vin_chakra.vin_chakra.custom.hd_ticket.assign_to_chief_technician",
+			"vin_chakra.api.enforce_branch_assignment",
 			"vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches"
 		],
 		"validate": "vin_chakra.vin_chakra.custom.hd_ticket.validate_ticket",
-		"on_update": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches",
+		"on_update": [
+			"vin_chakra.api.enforce_branch_assignment",
+			"vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches"
+		],
 		"on_trash": "vin_chakra.vin_chakra.custom.hd_ticket.clear_dashboard_caches"
 	},
 	"Employee Checkin": {
@@ -193,6 +197,7 @@ doctype_js = {
 
 doctype_list_js = {
     "Customer": "public/js/customer_list.js",
+    "Employee": "public/js/employee_list.js",
 }
 
 
@@ -269,7 +274,17 @@ fixtures = [
     {
         "dt": "Report",
         "filters": [
-            ["name", "in", ["Age-wise Quotation Report"]]
+            ["name", "in", ["Age-wise Quotation Report","Technician Dashboard report"]]
         ]
-    }
+    },
+    
+    {
+    "dt": "Print Format",
+    "filters": [
+        ["name", "=", "Expense Claim"]
+    ]
+}
+
+
+
 ]

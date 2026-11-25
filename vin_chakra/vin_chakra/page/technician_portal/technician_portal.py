@@ -427,6 +427,71 @@ def download_expense_claim_excel(
     frappe.response["type"] = "binary"
 
 
+@frappe.whitelist(methods=["POST"])
+def get_expense_claim_print(
+    ticket: str | None = None,
+    drafts: str | dict | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+):
+    """Print: one "Staff Tour Settlement" form per claimed ticket. Never writes."""
+    user = require_login()
+    drafts = parse_dict(drafts, _("Unsaved changes"))
+    with read_only_transaction():
+        employee = get_employee(user, required=False)
+        period = None if ticket else get_list_period(from_date, to_date)
+        forms = [print_form(v) for v in get_export_sheets(user, employee, ticket, period, drafts)]
+    return {"employee_name": employee.employee_name if employee else get_fullname(user), "forms": forms}
+
+
+def get_export_sheets(user, employee, ticket, period, drafts):
+    """Tickets to export. Only tickets with claimed expenses are kept."""
+    tickets = [get_visited_ticket(user, ticket)] if ticket else get_visited_tickets(user, *period)
+    claims = get_active_claims(employee, [t["name"] for t in tickets])  # one query for all tickets
+    sheets = [get_export_ticket(user, employee, t, drafts.get(t["name"])) for t in tickets]
+    sheets = [v for v in sheets if flt(v.get("total")) > 0]
+    if not sheets:
+        frappe.throw(_("There are no claimed expenses to export."))
+    return sheets
+
+
+# Expense type -> line of the paper form; anything else goes to line 11 (Others)
+FORM_LINES = (
+    ("fare", ("bus", "train", "fare")),
+    ("hotel", ("hotel",)),
+    ("conveyance", ("conveyance", "taxi", "auto")),
+    ("food", ("food", "meal")),
+)
+
+
+def form_line(expense_type):
+    name = cstr(expense_type).lower()
+    return next((line for line, words in FORM_LINES if any(w in name for w in words)), "others")
+
+
+def print_form(v):
+    lines = dict.fromkeys(("fare", "hotel", "conveyance", "food", "others"), 0)
+    others = []
+    for name, amount in type_totals(v["expenses"]).items():
+        line = form_line(name)
+        lines[line] += amount
+        if line == "others":
+            others.append(name)
+    return {
+        "ticket": v["ticket"],
+        "customer_name": v["customer_name"],
+        "journey_date": v.get("journey_date") or v["visit_date"],
+        "no_of_days": v.get("no_of_days") or 1,
+        "from_location": v.get("from_location") or "",
+        "to_location": v.get("to_location") or "",
+        "trip_reason": v.get("trip_reason") or "",
+        "payable_by_customer": v.get("payable_by_customer") or "",
+        "amount_collected": v.get("amount_collected"),
+        "lines": {k: flt(x, 2) for k, x in lines.items()},
+        "others_note": ", ".join(others),
+        "total": flt(sum(lines.values()), 2),
+    }
+
 # --- Tickets and visits ------------------------------------------------------------------
 
 
@@ -1045,3 +1110,39 @@ def display_place(to_location):
     """The To Location to show. Claims saved by an earlier version can hold the check-in's
     "lat, lng"; those numbers are never shown (empty until the claim is saved again)."""
     return "" if POSITION.fullmatch(cstr(to_location)) else cstr(to_location)
+
+
+
+# Branch -> region. Branch names unga system-la irukkura exact name-ah check pannikko
+BRANCH_REGION = {
+    "Chennai Branch": "Chennai",
+    "Madurai Head Office": "Madurai",
+    "Showroom-Madurai": "Madurai",
+    "Dhalavaipuram": "Madurai",
+}
+
+
+def _region_branches(branch):
+    region = BRANCH_REGION.get(branch)
+    if not region:
+        return [branch] if branch else []
+    return [b for b, r in BRANCH_REGION.items() if r == region]
+
+
+@frappe.whitelist()
+def get_agents_by_branch(branch=None):
+    """HD Agents whose Employee branch is in the selected branch's region."""
+    branches = _region_branches(branch)
+    if not branches:
+        return []
+    return frappe.db.sql(
+        """
+        SELECT agent.name AS user, agent.agent_name, emp.branch
+        FROM `tabHD Agent` agent
+        JOIN `tabEmployee` emp ON emp.user_id = agent.user AND emp.status = 'Active'
+        WHERE emp.branch IN %(branches)s
+        ORDER BY agent.agent_name
+        """,
+        {"branches": tuple(branches)},
+        as_dict=True,
+    )

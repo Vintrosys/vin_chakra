@@ -6,7 +6,20 @@ from typing import Optional, Union
 from frappe import _
 from frappe.desk.form.assign_to import add as add_assign
 
+
 from vin_chakra.vin_chakra.custom.hd_ticket import _is_technician
+
+REGION_FIELD = "custom_region"   
+
+ALWAYS_ELIGIBLE_USERS = {
+	"Administrator",
+	"ceo@sreechakrasewing.com",
+	"erpadmin@example.com",
+}
+
+
+ALWAYS_ELIGIBLE_ROLES = set()  
+TECHNICIAN_ROLES = ("Agent", "TP Agent", "Chief Technician")
 
 
 @frappe.whitelist(allow_guest=True)
@@ -31,10 +44,17 @@ def get_item_details(item_code: str) -> dict:
 
 
 @frappe.whitelist()
-def get_branches() -> list:
+def get_branches(exclude_region_groups: Union[bool, int, str] = False) -> list:
 	"""Branch names for the Branch dropdowns, which every desk user sees, though only HR
-	roles can read the Branch doctype."""
-	return frappe.get_all("Branch", pluck="name", order_by="name asc", ignore_permissions=True)
+	roles can read the Branch doctype.
+
+	exclude_region_groups: leave out the "All <Region>" branches (All Chennai, All Madurai).
+	Only the public ticket form and the Employee list use this; every other caller
+	(e.g. the Chief Technician Dashboard) still gets them."""
+	branches = frappe.get_all("Branch", pluck="name", order_by="name asc", ignore_permissions=True)
+	if frappe.utils.sbool(exclude_region_groups):
+		branches = [b for b in branches if not b.startswith("All ")]
+	return branches
 
 
 @frappe.whitelist(allow_guest=True)
@@ -152,7 +172,7 @@ def get_form_schema(template_name: str = None) -> dict:
 				except Exception:
 					options_list = []
 			elif df.options == "Branch":
-				options_list = get_branches()
+				options_list = get_branches(exclude_region_groups=True)
 			else:
 				try:
 					options_list = frappe.get_all(df.options, pluck="name", ignore_permissions=True)
@@ -233,6 +253,8 @@ def _get_legacy_form_schema() -> dict:
 					options_list = [{"value": c.name, "label": f"{c.customer_name} ({c.name})" if c.customer_name and c.customer_name != c.name else (c.customer_name or c.name), "customer_name": c.customer_name or c.name, "mobile_no": c.mobile_no or ""} for c in customers]
 				except Exception:
 					options_list = []
+			elif f.options == "Branch":
+				options_list = get_branches(exclude_region_groups=True)
 			else:
 				try:
 					options_list = frappe.get_all(f.options, pluck="name", ignore_permissions=True)
@@ -292,6 +314,8 @@ def _get_branch_error(branch) -> str:
 		return _("Please select a Branch.") if frappe.db.count("Branch") else ""
 	if not isinstance(branch, str) or not frappe.db.exists("Branch", branch):
 		return _("Please select a valid Branch.")
+	if branch.startswith("All "):
+		return _("Please select a specific Branch.")
 	return ""
 
 
@@ -572,7 +596,7 @@ def _get_assignment_info(doc) -> dict:
 		],
 		"options": [] if read_only_reason else [
 			{"value": a.name, "label": a.agent_name or a.name}
-			for a in _get_assignable_agents(doc.agent_group)
+			for a in _get_assignable_agents(doc.agent_group, branch=doc.get("custom_branch"))
 		],
 		"can_assign": not read_only_reason,
 		"read_only_reason": read_only_reason
@@ -605,10 +629,74 @@ def _get_restricted_team(team: Optional[str]) -> Optional[str]:
 		return team
 	return None
 
+def get_branch_region(branch):
+	return (frappe.db.get_value("Branch", branch, REGION_FIELD) or None) if branch else None
 
-def _get_assignable_agents(team: Optional[str], users: Optional[list] = None) -> list:
-	"""Active HD Agents the ticket can be assigned to (the core Assignee picker's
-	list). `users` narrows the lookup to those User IDs."""
+
+def get_user_regions(user):
+	"""User-oda region: Employee branch, illana Branch User Permission."""
+	branch = frappe.db.get_value("Employee", {"user_id": user, "status": "Active"}, "branch")
+	if branch:
+		region = get_branch_region(branch)
+		return {region} if region else set()
+	perms = frappe.permissions.get_user_permissions(user).get("Branch") or []
+	return {r for r in (get_branch_region(p.get("doc")) for p in perms) if r}
+
+
+def is_user_eligible(user, branch):
+	"""Ticket branch-oda region-ku intha user assign aaga mudiyuma?"""
+	region = get_branch_region(branch)
+	if not region:
+		return True   # region set pannala na restrict pannala
+	if user in ALWAYS_ELIGIBLE_USERS:
+		return True
+	if ALWAYS_ELIGIBLE_ROLES & set(frappe.get_roles(user)):
+		return True
+	return region in get_user_regions(user)
+
+
+def get_eligible_users(branch):
+	"""Same-region technicians + CEO / ERP Admin / Administrator."""
+	roles = list(set(TECHNICIAN_ROLES) | ALWAYS_ELIGIBLE_ROLES)
+	users = set(frappe.get_all("Has Role", filters={"role": ["in", roles], "parenttype": "User"},
+							   pluck="parent", distinct=True))
+	users |= ALWAYS_ELIGIBLE_USERS
+	enabled = set(frappe.get_all("User", filters={"name": ["in", list(users)], "enabled": 1}, pluck="name"))
+	return sorted(u for u in enabled if is_user_eligible(u, branch))
+
+
+def enforce_branch_assignment(doc, method=None):
+	"""Ticket create / Branch maarum pothu: vera region assignees remove,
+	ticket branch region-la irukkura aalunga add."""
+	from helpdesk.api.doc import remove_assignments
+
+	branch = doc.get("custom_branch")
+	if not branch or not get_branch_region(branch):
+		return
+	if method == "on_update" and not doc.flags.in_insert and not doc.has_value_changed("custom_branch"):
+		return
+
+	eligible = set(get_eligible_users(branch))
+	current = json.loads(frappe.db.get_value("HD Ticket", doc.name, "_assign") or "[]")
+
+	to_remove = [u for u in current if u not in eligible]
+	if to_remove:
+		remove_assignments(doctype="HD Ticket", name=doc.name, assignees=to_remove)
+
+
+	if method == "after_insert":
+		current = json.loads(frappe.db.get_value("HD Ticket", doc.name, "_assign") or "[]")
+		to_add = [u for u in eligible if u not in ALWAYS_ELIGIBLE_USERS and u not in current]
+		if to_add:
+			try:
+				add_assign({"assign_to": to_add, "doctype": "HD Ticket", "name": doc.name})
+			except Exception:
+				frappe.log_error(frappe.get_traceback(), "Branch auto-assign failed")
+
+
+def _get_assignable_agents(team: Optional[str], users: Optional[list] = None, branch: Optional[str] = None) -> list:
+	"""Active HD Agents the ticket can be assigned to. `branch` limits them to that
+	branch's region (plus CEO / ERP Admin / Administrator)."""
 	filters = [["is_active", "=", 1]]
 	restricted_team = _get_restricted_team(team)
 	if restricted_team:
@@ -616,8 +704,10 @@ def _get_assignable_agents(team: Optional[str], users: Optional[list] = None) ->
 		filters.append(["name", "in", members or [""]])
 	if users is not None:
 		filters.append(["name", "in", users or [""]])
-	return frappe.get_all("HD Agent", filters=filters, fields=["name", "agent_name"], order_by="agent_name asc")
-
+	agents = frappe.get_all("HD Agent", filters=filters, fields=["name", "agent_name"], order_by="agent_name asc")
+	if branch:
+		agents = [a for a in agents if is_user_eligible(a.name, branch)]
+	return agents
 
 def _parse_user_ids(users: Union[list, str, None]) -> list:
 	"""De-duplicated User IDs from an assign/unassign list."""
@@ -660,7 +750,7 @@ def _apply_assignment_changes(doc, assign: list, unassign: list) -> None:
 	to_add = [u for u in assign if u not in current]
 
 	if to_add:
-		eligible = {a.name for a in _get_assignable_agents(doc.agent_group, to_add)}
+		eligible = {a.name for a in _get_assignable_agents(doc.agent_group, to_add, branch=doc.get("custom_branch"))}
 		ineligible = [u for u in to_add if u not in eligible]
 		if ineligible:
 			restricted_team = _get_restricted_team(doc.agent_group)
@@ -669,8 +759,8 @@ def _apply_assignment_changes(doc, assign: list, unassign: list) -> None:
 					", ".join(ineligible), restricted_team
 				)
 			else:
-				msg = _("Cannot assign {0}: tickets can only be assigned to active Helpdesk agents.").format(
-					", ".join(ineligible)
+				msg = _("Cannot assign {0}: they are not eligible for Branch {1}.").format(
+					", ".join(ineligible), doc.get("custom_branch") or "-"
 				)
 			frappe.throw(msg)
 

@@ -374,6 +374,7 @@
         let selected = [...initial];
         let visible = [];
         let highlighted = 0;
+        let allowed = null;
 
         const getChanges = () => canAssign
             ? { assign: selected.filter(v => !initial.includes(v)), unassign: initial.filter(v => !selected.includes(v)) }
@@ -461,7 +462,9 @@
 
         const renderList = () => {
             const q = input.value.trim().toLowerCase();
-            visible = options.filter(o => !q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q));
+            visible = options.filter(o =>
+                (!allowed || allowed.has(o.value)) &&
+                (!q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)));
             highlighted = Math.max(0, Math.min(highlighted, visible.length - 1));
             list.innerHTML = '';
 
@@ -589,7 +592,15 @@
                 const ineligible = getChanges().assign.filter(v => !eligible.has(v));
                 return ineligible.length ? `${describe(ineligible)} cannot be assigned to this ticket.` : '';
             },
-            removesEveryone: () => canAssign && initial.length > 0 && selected.length === 0
+            removesEveryone: () => canAssign && initial.length > 0 && selected.length === 0,
+            // Called when the Branch changes: only these users are offered in the list
+            setAllowed(users) {
+                allowed = users ? new Set(users) : null;
+                if (list.style.display === 'block') {
+                    renderList();
+                    positionList();
+                }
+            }
         };
     }
 
@@ -858,6 +869,35 @@
 
         // Wire up the Assignee multi-select
         const assigneeField = assignment ? initAssigneeField(bodyEl, assignment) : null;
+
+        // The Assignee list follows the Branch: Chennai -> Chennai technicians,
+        // Madurai Head Office / Showroom-Madurai / Dhalavaipuram -> Madurai technicians
+        const branchSelect = bodyEl.querySelector('[data-fieldname="custom_branch"]');
+        if (assigneeField && branchSelect) {
+            let branchRequest = 0;
+            const applyBranch = async () => {
+                const branch = branchSelect.value;
+                const requestId = ++branchRequest;
+                if (!branch) {
+                    assigneeField.setAllowed(null);
+                    return;
+                }
+                try {
+                    const resp = await fetch(`/api/method/vin_chakra.technician_api.get_branch_agents?branch=${encodeURIComponent(branch)}`, {
+                        cache: 'no-store',
+                        headers: { 'X-Frappe-CSRF-Token': getCsrfToken() }
+                    });
+                    const res = await resp.json();
+                    // Ignore a slower answer for a Branch that was changed again
+                    if (requestId !== branchRequest) return;
+                    assigneeField.setAllowed(Array.isArray(res.message) ? res.message : null);
+                } catch (e) {
+                    if (requestId === branchRequest) assigneeField.setAllowed(null);
+                }
+            };
+            branchSelect.addEventListener('change', applyBranch);
+            applyBranch();
+        }
 
         // Initialize table rows with doc existing data
         tableGroup.forEach(tf => {

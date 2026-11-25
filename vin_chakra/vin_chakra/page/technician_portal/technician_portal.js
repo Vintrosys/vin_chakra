@@ -1817,6 +1817,7 @@ class TechnicianPortal {
 // file. Server side: the Expense Claim popup section of technician_portal.py.
 const TP_EXPENSE_API = "vin_chakra.vin_chakra.page.technician_portal.technician_portal.";
 const TP_EC_MAX_LIST_DAYS = 92;  // the longest From–To period (MAX_LIST_DAYS on the server)
+const TP_EC_PRINT_FORMAT = "Expense Claim";  // Print Format name, exact-ah (Print Format list la irukkura name)
 
 class TechnicianExpenseClaim {
     constructor(portal) {
@@ -1978,8 +1979,8 @@ class TechnicianExpenseClaim {
             total += amount || 0;
             let [kind, label] = draft && this.problems[t.name] ? ["problem", __("Needs attention")]
                 : draft ? ["unsaved", __("Unsaved")]
-                : claim ? [claim.locked ? "locked" : "draft", __(claim.status)]
-                : ["none", __("Not claimed")];
+                    : claim ? [claim.locked ? "locked" : "draft", __(claim.status)]
+                        : ["none", __("Not claimed")];
             return `
                 <tr class="tp-ec-list-row" data-ticket="${esc(t.name)}" tabindex="0" role="button">
                     <td>
@@ -1997,7 +1998,7 @@ class TechnicianExpenseClaim {
         let from = frappe.datetime.str_to_user(data.from_date), to = frappe.datetime.str_to_user(data.to_date);
         let empty = data.from_date !== data.to_date ? __("No customer visits from {0} to {1}", [from, to])
             : data.to_date === frappe.datetime.get_today() ? __("No customer visits today")
-            : __("No customer visits on {0}", [to]);
+                : __("No customer visits on {0}", [to]);
         this.$body.find(".tp-ec-list-wrap").html(`
             ${data.employee_missing ? `<div class="tp-ec-banner is-warning">${__("No active Employee is linked to your user, so you can't save Expense Claims. Please contact HR.")}</div>` : ""}
             <table class="table table-bordered tp-ec-list">
@@ -2506,7 +2507,7 @@ class TechnicianExpenseClaim {
         }
     }
 
-    share() {
+    export_args() {
         let drafts = {}, args;
         if (this.screen === "list") {
             if (!this.list || !this.list.tickets.length) return;
@@ -2529,7 +2530,93 @@ class TechnicianExpenseClaim {
             args = { ticket: this.ticket };
         }
         args.drafts = JSON.stringify(drafts);
-        this.download(TP_EXPENSE_API + "download_expense_claim_excel", args);
+        return args;
+    }
+
+    // Tickets with a claimed amount and their total, i.e. what Print / Excel will contain
+    claimed_summary() {
+        if (this.screen === "list") {
+            let amounts = this.list.tickets
+                .map((t) => (this.drafts[t.name] ? this.form_total(this.drafts[t.name].form) : t.claim ? t.claim.total : 0))
+                .filter((amount) => amount > 0);
+            return { count: amounts.length, total: amounts.reduce((a, b) => a + b, 0), currency: this.list.currency };
+        }
+        let total = this.form_total(this.form);
+        return { count: total > 0 ? 1 : 0, total, currency: this.data.currency };
+    }
+
+    // Export Documents: choose Print (the paper form) or Excel
+    export_documents() {
+        let args = this.export_args();
+        if (!args) return;
+        let sum = this.claimed_summary();
+        if (!sum.count) {
+            this.notice("error", __("There are no claimed expenses to export."));
+            return;
+        }
+        let d = new frappe.ui.Dialog({ title: __("Export Documents"), fields: [{ fieldtype: "HTML", fieldname: "choices" }] });
+        d.onhide = () => d.$wrapper.remove();
+        d.get_field("choices").$wrapper.html(`
+            <div style="display:flex; flex-direction:column; gap:10px; padding:6px 0;">
+                <div class="text-muted" style="font-size:12px;">
+                    ${sum.count === 1 ? __("1 claimed ticket") : __("{0} claimed tickets", [sum.count])} · ${format_currency(sum.total, sum.currency)}
+                </div>
+                <button type="button" class="btn btn-default btn-block" data-export="print">
+                    ${frappe.utils.icon("printer", "sm")} ${__("Print")}</button>
+                <button type="button" class="btn btn-default btn-block" data-export="excel">
+                    ${frappe.utils.icon("file-spreadsheet", "sm")} ${__("Excel")}</button>
+            </div>`);
+        d.$wrapper.on("click", "[data-export]", (e) => {
+            let kind = e.currentTarget.getAttribute("data-export");
+            d.hide();
+            if (kind === "print") this.export_print();
+            else this.download(TP_EXPENSE_API + "download_expense_claim_excel", args);
+        });
+        d.show();
+    }
+
+    // Print: opens the Print Format PDF of the saved Expense Claim(s)
+    export_print() {
+        let names = [], unsaved = [];
+
+        if (this.screen === "list") {
+            (this.list ? this.list.tickets : []).forEach((t) => {
+                let draft = this.drafts[t.name];
+                if (draft) {
+                    if (this.form_total(draft.form) > 0) unsaved.push(t.name);
+                } else if (t.claim && t.claim.total > 0) {
+                    names.push(t.claim.name);
+                }
+            });
+        } else if (this.drafts[this.ticket]) {
+            unsaved.push(this.ticket);
+        } else if (this.data && this.data.claim && this.data.claim.total > 0) {
+            names.push(this.data.claim.name);
+        }
+
+        if (unsaved.length) {
+            frappe.msgprint({
+                title: __("Save first"),
+                indicator: "orange",
+                message: __("Print uses the saved Expense Claim. Please click Save first for: {0}", [unsaved.join(", ")]),
+            });
+            return;
+        }
+        if (!names.length) {
+            frappe.msgprint(__("There are no saved claimed expenses to print."));
+            return;
+        }
+
+        let q = { format: TP_EC_PRINT_FORMAT, no_letterhead: 1 };
+        let url;
+        if (names.length === 1) {
+            url = "/api/method/frappe.utils.print_format.download_pdf?" +
+                $.param({ doctype: "Expense Claim", name: names[0], ...q });
+        } else {
+            url = "/api/method/frappe.utils.print_format.download_multi_pdf?" +
+                $.param({ doctype: "Expense Claim", name: JSON.stringify(names), ...q });
+        }
+        window.open(url, "_blank");
     }
 
     // POST and save the file; on an error show the server's message instead of leaving the page
@@ -2660,7 +2747,7 @@ class TechnicianExpenseClaim {
             setTimeout(() => e.target.scrollIntoView({ block: "center", behavior: "smooth" }), 300);
         });
 
-        this.$footer.on("click", ".tp-ec-share", () => this.share());
+        this.$footer.on("click", ".tp-ec-share", () => this.export_documents());
         this.$footer.on("click", ".tp-ec-save", () => (this.screen === "list" ? this.save_all() : this.save_ticket()));
     }
 }
